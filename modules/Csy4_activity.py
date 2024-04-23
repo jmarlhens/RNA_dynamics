@@ -1,12 +1,12 @@
-from pysb import Rule
+from pysb import Rule, Model
 
 from modules.reactioncomplex import ReactionComplex
 from modules.molecules import RNA
 
 
 class Csy4Activity(ReactionComplex):
-    def __init__(self, rna: RNA = None, product_rna_names: [str] = None, model=None):
-        products = [RNA(sequence_name=seq_name, model=model) for seq_name in product_rna_names]
+    def __init__(self, rna: RNA = None, product_rna_names: [str] = None, model: Model = None):
+        products = [RNA.get_instance(sequence_name=seq_name, model=model) for seq_name in product_rna_names]
 
         super().__init__(substrate=rna, product=products, model=model)
 
