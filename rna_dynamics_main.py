@@ -9,6 +9,7 @@ from modules.Csy4_activity import Csy4Activity
 from modules.base_modules import Transcription, Translation
 from modules.molecules import RNA
 from modules.toehold import Toehold
+from modules.star import STAR
 from utils import print_odes
 
 from pydream.core import run_dream
@@ -73,6 +74,10 @@ def process_plasmid(plasmid, model):
     # After their transcription, they can be cleaved
     if transcriptional_control:
         pass
+        # Add STAR
+        # (self, rna: RNA = None, rna_regulator: RNA = None, model: Model = None)
+        # star_tmp = STAR(rna=rna_name, rna_regulator=transcriptional_control, model=model)
+        # products = star_tmp.product
     else:
         transcription = Transcription(sequence_name=rna_name, model=model)
         rna = transcription.product
