@@ -1,4 +1,3 @@
-
 from pysb import *
 from pysb.simulator import ScipyOdeSimulator
 from pylab import linspace, plot, xlabel, ylabel, show

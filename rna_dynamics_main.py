@@ -146,7 +146,7 @@ def test_cleaved_transcription_and_translation():
     """
     Model Setup
     """
-    omega_val = 6 * 1e23 * np.pi / 2 * 1e-15
+    # omega_val = 6 * 1e23 * np.pi / 2 * 1e-15
     omega_val = 1000000
     model = Model()
     Parameter('omega', omega_val)  # in L
@@ -212,6 +212,43 @@ def test_toehold():
     visualize_simulation(t, y_res, species_to_plot=species_to_plot)
 
 
+def test_AND_gate():
+    plasmids = [(("Sense_6", "STAR_6"), ("Toehold_3", "Trigger_3"), [(True, "GFP")]),
+                (None, None, [(False, "STAR_6")]),
+                (None, None, [(False, "Trigger_3")]),
+                ]
+
+    parameters = {"k_tx": 2,
+                  "k_rna_deg": 0.5,
+                  "k_tl": 2,
+                  "k_prot_deg": 0.5,
+                  "k_mat": 1,
+                  "k_csy4": 1,
+                  "k_tl_bound_toehold": 0.1,
+                  "k_trigger_binding": 5,
+                  "k_trigger_unbinding": 0.5}
+
+    omega_val = 1000000
+    model = Model()
+    Parameter('omega', omega_val)  # in L
+
+    for param in parameters:
+        Parameter(param, parameters[param])
+
+    for plasmid in plasmids:
+        process_plasmid(plasmid=plasmid, model=model)
+
+    # Observe the gfp protein
+    Observable("Protein_GFP", Protein_GFP(state="mature"))
+
+    n_steps = 100
+    t = np.linspace(0, 20, n_steps)
+    y_res = simulate_model(model, t)
+    species_to_plot = list(model.observables.keys())
+    visualize_simulation(t, y_res, species_to_plot=species_to_plot)
+
+
+
 simulator = None
 experimental_data_protein = None
 param_ids = None
@@ -236,6 +273,13 @@ def likelihood(params):
 
 
 if __name__ == '__main__':
+    """
+    AND gate
+    """
+
+    test_AND_gate()
+
+
     # test_cleaved_transcription_and_translation()
     test_toehold()
     exit(0)
