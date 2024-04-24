@@ -8,8 +8,9 @@ from pysb.simulator import ScipyOdeSimulator
 from modules.Csy4_activity import Csy4Activity
 from modules.base_modules import Transcription, Translation
 from modules.molecules import RNA
+from modules.star_ek import STAR
 from modules.toehold import Toehold
-from modules.star import STAR
+from modules.star_ek import STAR
 from utils import print_odes
 
 from pydream.core import run_dream
@@ -73,7 +74,9 @@ def process_plasmid(plasmid, model):
     # All sequences encoded are transcribed jointly
     # After their transcription, they can be cleaved
     if transcriptional_control:
-        pass
+        star = STAR(sequence_name=rna_name, transcriptional_control=transcriptional_control, model=model)
+        rna = star.product
+        products = [rna]
         # Add STAR
         # (self, rna: RNA = None, rna_regulator: RNA = None, model: Model = None)
         # star_tmp = STAR(rna=rna_name, rna_regulator=transcriptional_control, model=model)
@@ -126,7 +129,7 @@ def visualize_simulation(t, y_res, species_to_plot):
         if spec not in species_to_plot:
             continue
 
-        ax.plot(t, y_res.dataframe[spec], linestyle=(iS * 2, [3, 6]), lw=3, label=spec.replace("obs_", ""))
+        ax.plot(t, y_res.dataframe[spec], linestyle=(iS, [2, 6]), lw=3, label=spec.replace("obs_", ""))
 
     ax.legend()
     plt.show()
@@ -178,7 +181,7 @@ def test_toehold():
 
     # The plasmid defines the design of the system
     plasmids = [(None, ("Toehold1", "Trigger1"), [(True, "GFP")]),
-                (None, None, [(False, "Trigger1")]),
+                # (None, None, [(False, "Trigger1")]),
                 (None, None, [(False, "Trigger2")]),
                 ]
 
@@ -209,6 +212,61 @@ def test_toehold():
     Observable("Free_Trigger", RNA_Trigger1(state="full", toehold=None))
     Observable("Bound_Toehold",
                RNA_Trigger1(state="full", toehold=1) % RNA_Toehold1_GFP(state="full", toehold=1))
+
+    n_steps = 100
+    t = np.linspace(0, 20, n_steps)
+    y_res = simulate_model(model, t)
+    species_to_plot = list(model.observables.keys())
+    visualize_simulation(t, y_res, species_to_plot=species_to_plot)
+
+
+def test_star():
+    # Plasmid design:   First position is transcriptional control (not added to the compartment)
+    #                   Second position is translational control (added to the compartment as complex with the following)
+    #                   Third position is a list of tuples containing a boolean (True for translation) and a sequence to express (added to the compartment and can be RNA, cleaved RNA (indicated by "cleavage-") and protein)
+    # None encodes no control and no sequence
+
+    # The plasmid defines the design of the system
+    plasmids = [(("Sense1", "Star1"), None, [(True, "GFP")]),
+                (None, None, [(True, "RFP")]),
+                # (None, None, [(False, "Trigger1")]),
+                (None, None, [(False, "Star1")]),
+                ]
+
+    parameters = {"k_tx": 2,
+                  "k_rna_deg": 0.5,
+                  "k_tl": 2,
+                  "k_prot_deg": 0.5,
+                  "k_mat": 1,
+                  "k_csy4": 1,
+                  "k_tl_bound_toehold": 0.1,
+                  "k_trigger_binding": 5,
+                  "k_trigger_unbinding": 0.5,
+                  "k_tx_init": 1,
+                  "k_star_bind": 5,
+                  "k_star_unbind": 0.1,
+                  "k_star_act": 2,
+                  "k_star_act_reg": 0.01,
+                  "k_star_stop": 1,
+                  "k_star_stop_reg": 0.01}
+
+    """
+    Model Setup
+    """
+    omega_val = 6 * 1e23 * np.pi / 2 * 1e-15
+    omega_val = 1000000
+    model = Model()
+    Parameter('omega', omega_val)  # in L
+
+    for param in parameters:
+        Parameter(param, parameters[param])
+
+    for plasmid in plasmids:
+        process_plasmid(plasmid=plasmid, model=model)
+
+    # Observable("Free_Trigger", RNA_Trigger1(state="full", toehold=None))
+    # Observable("Bound_Toehold",
+    #            RNA_Trigger1(state="full", toehold=1) % RNA_Toehold1_GFP(state="full", toehold=1))
 
     n_steps = 100
     t = np.linspace(0, 20, n_steps)
@@ -287,6 +345,7 @@ if __name__ == '__main__':
 
     # test_cleaved_transcription_and_translation()
     test_toehold()
+    # test_star()
     exit(0)
     # Plasmid design:   First position is transcriptional control (not added to the compartment)
     #                   Second position is translational control (added to the compartment as complex with the following)

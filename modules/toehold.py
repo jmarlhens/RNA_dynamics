@@ -5,7 +5,7 @@ from modules.reactioncomplex import ReactionComplex
 
 
 class Toehold(ReactionComplex):
-    def __init__(self, rna: RNA = None, translational_control: RNA = None, prot_name: str = None, model: Model = None):
+    def __init__(self, rna: RNA = None, translational_control: tuple = None, prot_name: str = None, model: Model = None):
         assert RNA is not None
         assert translational_control is not None
 
