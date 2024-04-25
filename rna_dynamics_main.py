@@ -8,9 +8,8 @@ from pysb.simulator import ScipyOdeSimulator
 from modules.Csy4_activity import Csy4Activity
 from modules.base_modules import Transcription, Translation
 from modules.molecules import RNA
-from modules.star_ek import STAR
+from modules.star import STAR
 from modules.toehold import Toehold
-from modules.star_ek import STAR
 from utils import print_odes
 
 from pydream.core import run_dream
