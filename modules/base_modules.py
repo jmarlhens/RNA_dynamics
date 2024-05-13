@@ -30,7 +30,7 @@ class Transcription(ReactionComplex):
 class Translation(ReactionComplex):
     def __init__(self, rna: RNA = None, prot_name:str=None, model:Model=None):
         sequence_name = rna.sequence_name if prot_name is None else prot_name
-        protein = Protein.get_instance(sequence_name=rna.sequence_name, model=model)
+        protein = Protein.get_instance(sequence_name=sequence_name, model=model)
 
         super().__init__(substrate=rna, product=protein, model=model)
 

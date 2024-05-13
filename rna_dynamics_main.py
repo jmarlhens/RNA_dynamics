@@ -64,11 +64,20 @@ def process_plasmid(plasmid, model):
 
     sequence_names = [elem[1] for elem in cds]
 
-    rna_name = transcriptional_control[0] if transcriptional_control else ""
-    rna_name += "_" if len(rna_name) > 0 else ""
-    rna_name += translational_control[0] if translational_control else ""
-    rna_name += "_" if len(rna_name) > 0 else ""
-    rna_name += "_".join([elem[1] for elem in cds])
+    # rna_name = transcriptional_control[0] if transcriptional_control else ""
+    # rna_name += "_" if len(rna_name) > 0 else ""
+    # rna_name += translational_control[0] if translational_control else ""
+    # rna_name += "_" if len(rna_name) > 0 and rna_name[-1] != "_" else ""
+    # rna_name += "_".join([elem[1] for elem in cds])
+
+    rna_name = []
+    if transcriptional_control:
+        rna_name.append(transcriptional_control[0])
+    if translational_control:
+        rna_name.append(translational_control[0])
+    rna_name += [elem[1] for elem in cds]
+    rna_name = "_".join(rna_name)
+
 
     # All sequences encoded are transcribed jointly
     # After their transcription, they can be cleaved
@@ -96,7 +105,7 @@ def process_plasmid(plasmid, model):
         if translational_control:
             Toehold(rna=rna, translational_control=translational_control, prot_name=seq, model=model)
         else:
-            Translation(rna=rna, model=model)
+            Translation(rna=rna, prot_name=seq, model=model)
 
 
 def simulate_model(model, t):
@@ -310,7 +319,6 @@ def test_AND_gate():
     visualize_simulation(t, y_res, species_to_plot=species_to_plot)
 
 
-
 simulator = None
 experimental_data_protein = None
 param_ids = None
@@ -334,17 +342,22 @@ def likelihood(params):
     return ll
 
 
+"""
+One can include time dependency into the simulation by separating the intervals of different inducer concentrations and apply multiple simulation runs.
+Results need to be joined afterwards
+"""
+
 if __name__ == '__main__':
     """
     AND gate
     """
+    test_star()
 
-    test_AND_gate()
-
+    # test_AND_gate()
 
     # test_cleaved_transcription_and_translation()
     test_toehold()
-    # test_star()
+
     exit(0)
     # Plasmid design:   First position is transcriptional control (not added to the compartment)
     #                   Second position is translational control (added to the compartment as complex with the following)
