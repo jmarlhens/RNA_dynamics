@@ -1,20 +1,23 @@
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
+import pandas as pd
 from pydream.convergence import Gelman_Rubin
 from pysb import Model, Parameter, Rule, Observable
-from pysb.simulator import ScipyOdeSimulator
+from pysb.simulator import ScipyOdeSimulator, BngSimulator
 
 from modules.Csy4_activity import Csy4Activity
 from modules.base_modules import Transcription, Translation
 from modules.molecules import RNA
 from modules.star import STAR
 from modules.toehold import Toehold
+from optimization.parallel_tempering import ParallelTempering
 from utils import print_odes
 
 from pydream.core import run_dream
 from pydream.parameters import SampledParam
 from scipy.stats import norm
+import scipy.stats
 
 
 #
@@ -78,7 +81,6 @@ def process_plasmid(plasmid, model):
     rna_name += [elem[1] for elem in cds]
     rna_name = "_".join(rna_name)
 
-
     # All sequences encoded are transcribed jointly
     # After their transcription, they can be cleaved
     if transcriptional_control:
@@ -121,8 +123,9 @@ def simulate_model(model, t):
     # Observable("Protein_immature", Protein_GFP(state="immature"))
 
     # List of parameters yield that the same model is evaluated for different parameter instantiations but not for changing parameters.
-    simulator = ScipyOdeSimulator(model)
-    y_res = simulator.run(tspan=t)
+    # cur_simulator = BngSimulator(model)
+    cur_simulator = ScipyOdeSimulator(model)
+    y_res = cur_simulator.run(tspan=t)
     # odes = print_odes.find_ODEs_from_Pysb_model(model)
 
     return y_res
@@ -189,8 +192,8 @@ def test_toehold():
 
     # The plasmid defines the design of the system
     plasmids = [(None, ("Toehold1", "Trigger1"), [(True, "GFP")]),
-                # (None, None, [(False, "Trigger1")]),
-                (None, None, [(False, "Trigger2")]),
+                (None, None, [(False, "Trigger1")]),
+                # (None, None, [(False, "Trigger2")]),
                 ]
 
     parameters = {"k_tx": 2,
@@ -221,7 +224,7 @@ def test_toehold():
     Observable("Bound_Toehold",
                RNA_Trigger1(state="full", toehold=1) % RNA_Toehold1_GFP(state="full", toehold=1))
 
-    n_steps = 100
+    n_steps = 1000
     t = np.linspace(0, 20, n_steps)
     y_res = simulate_model(model, t)
     species_to_plot = list(model.observables.keys())
@@ -297,7 +300,14 @@ def test_AND_gate():
                   "k_csy4": 1,
                   "k_tl_bound_toehold": 0.1,
                   "k_trigger_binding": 5,
-                  "k_trigger_unbinding": 0.5}
+                  "k_trigger_unbinding": 0.5,
+                  "k_tx_init": 1,
+                  "k_star_bind": 5,
+                  "k_star_unbind": 0.1,
+                  "k_star_act": 2,
+                  "k_star_act_reg": 0.01,
+                  "k_star_stop": 1,
+                  "k_star_stop_reg": 0.01}
 
     omega_val = 1000000
     model = Model()
@@ -310,13 +320,202 @@ def test_AND_gate():
         process_plasmid(plasmid=plasmid, model=model)
 
     # Observe the gfp protein
-    Observable("Protein_GFP", Protein_GFP(state="mature"))
+    # Observable("Protein_GFP", Protein_GFP(state="mature"))
 
     n_steps = 100
     t = np.linspace(0, 20, n_steps)
     y_res = simulate_model(model, t)
     species_to_plot = list(model.observables.keys())
     visualize_simulation(t, y_res, species_to_plot=species_to_plot)
+
+
+def get_model(t, plasmids, observable_names, fixed_parameters=None):
+    # Plasmid design:   First position is transcriptional control (not added to the compartment)
+    #                   Second position is translational control (added to the compartment as complex with the following)
+    #                   Third position is a list of tuples containing a boolean (True for translation) and a sequence to express (added to the compartment and can be RNA, cleaved RNA (indicated by "cleavage-") and protein)
+    # None encodes no control and no sequence
+    def my_model(parameters: dict):
+        cur_params = {id: 10 ** (parameters[id]) for id in parameters}
+        if fixed_parameters:
+            cur_params.update({id: 10 ** (fixed_parameters[id]) for id in fixed_parameters})
+
+        """
+        Model Setup
+        """
+        omega_val = 6 * 1e23 * np.pi / 2 * 1e-15
+        omega_val = 1000000
+        model = Model()
+        Parameter('omega', omega_val)  # in L
+
+        for id in cur_params:
+            Parameter(id, cur_params[id])
+
+        for plasmid in plasmids:
+            process_plasmid(plasmid=plasmid, model=model)
+
+        y_res = simulate_model(model, t)
+        species_to_plot = list(model.observables.keys())
+        # visualize_simulation(t, y_res, species_to_plot=species_to_plot)
+        measurement_data = y_res.dataframe[observable_names]
+        return measurement_data
+
+    return my_model
+
+
+def get_model_dummy(t, plasmids, observable_names, fixed_parameters=None):
+    # Plasmid design:   First position is transcriptional control (not added to the compartment)
+    #                   Second position is translational control (added to the compartment as complex with the following)
+    #                   Third position is a list of tuples containing a boolean (True for translation) and a sequence to express (added to the compartment and can be RNA, cleaved RNA (indicated by "cleavage-") and protein)
+    # None encodes no control and no sequence
+    def my_model(parameters: dict):
+        cur_params = {id: 10 ** (parameters[id]) for id in parameters}
+        if fixed_parameters:
+            cur_params.update({id: 10 ** (fixed_parameters[id]) for id in fixed_parameters})
+
+        """
+        Model Setup
+        """
+        l = cur_params["k_tx"] * cur_params["k_tl"] / (cur_params["k_rna_deg"] * cur_params["k_prot_deg"])
+        vals = l * (t ** 3 / (np.sqrt(l) ** 3 + t ** 3))
+        data = {"t": t, "obs_Protein_RFP": vals}
+        measurement_data = pd.DataFrame(data=data)
+        measurement_data.set_index("t", inplace=True)
+        return measurement_data
+
+    return my_model
+
+
+def get_log_likelihood(model, observable_names: list, n_replicates: int, experimental_data: pd.DataFrame):
+    def log_likelihood(parameters):
+        sim_result = model(parameters)
+
+        sim_data_protein = sim_result[observable_names]
+        # ToDo For adequate likelihood treatment see:
+        # https://github.com/LoLab-MSM/PyDREAM/blob/master/pydream/examples/robertson/example_sample_robertson_with_dream.py#L38
+        ll = 0
+        for observable in observable_names:
+            y_pred = sim_data_protein[observable].values.reshape(-1, 1)
+            y_meas = experimental_data[[col for col in experimental_data.columns if observable in col]].values
+            cur_var = np.var(y_meas, axis=1).reshape(-1, 1)
+            exp_part = np.power(y_meas - y_pred, 2) / (2 * cur_var)
+            non_exp_part = 0.5 * np.log(2 * np.pi * cur_var)
+            cur_ll = non_exp_part + exp_part
+            cur_ll[np.isnan(cur_ll)] = 0
+            ll += - np.sum(cur_ll)
+            # ll_mRNA = -np.sum((sim_data_mRNA - experimental_data_mRNA) ** 2)
+
+        return ll
+
+    return log_likelihood
+
+
+def fit_model_to_data(log_likelihood, priors):
+    opt = ParallelTempering()
+
+    n_chains = 20
+    minimal_temp = 10 ** (-14)
+    var_ref = 1
+    n_samples = 10 ** 3
+    n_swaps = 2
+
+    sample_history, posterior_history, tempered_posterior_history, map_params = opt.run(log_likelihood=log_likelihood,
+                                                                                        priors=priors,
+                                                                                        n_chains=n_chains,
+                                                                                        minimal_temp=minimal_temp,
+                                                                                        var_ref=var_ref,
+                                                                                        n_samples=n_samples,
+                                                                                        n_swaps=n_swaps)
+
+    return map_params
+
+
+def exemplary_model_fitting():
+    observable_names = [
+        # "obs_Protein_GFP",
+        "obs_Protein_RFP",
+    ]
+    n_steps = 10
+    t = np.linspace(0, 10, n_steps)
+
+    n_replicates = 3
+    fixed_parameters = {
+
+    }
+    parameters = {"k_tx": 2,
+                  "k_tl": 2,
+                  "k_mat": 10 ** 10,
+                  "k_rna_deg": 0.5,
+                  "k_prot_deg": 0.5,
+                  # "k_csy4": 1,
+                  # "k_tl_bound_toehold": 0.1,
+                  # "k_trigger_binding": 5,
+                  # "k_trigger_unbinding": 0.5,
+                  # "k_tx_init": 1,
+                  # "k_star_bind": 5,
+                  # "k_star_unbind": 0.1,
+                  # "k_star_act": 2,
+                  # "k_star_act_reg": 0.01,
+                  # "k_star_stop": 1,
+                  # "k_star_stop_reg": 0.01
+                  }
+    parameters = {id: np.log10(parameters[id]) for id in parameters}
+    fixed_parameters = {id: np.log10(fixed_parameters[id]) for id in fixed_parameters}
+    priors = {}
+    for id in parameters:
+        act_val = parameters[id]
+        a = act_val - 5
+        b = act_val + 5
+        priors[id] = scipy.stats.uniform(loc=a, scale=b - a)
+
+    plasmids = [
+        # (("Sense1", "Star1"), None, [(True, "GFP")]),
+        (None, None, [(True, "RFP")]),
+        # (None, None, [(False, "Trigger1")]),
+        # (None, None, [(False, "Star1")]),
+    ]
+
+    # my_model = get_model(t=t, plasmids=plasmids, observable_names=observable_names, fixed_parameters=fixed_parameters)
+    my_model = get_model_dummy(t=t, plasmids=plasmids, observable_names=observable_names,
+                               fixed_parameters=fixed_parameters)
+
+    measurements = my_model(parameters)
+
+    fig, ax = plt.subplots()
+    T = t
+    Y_true = measurements
+    ax.plot(T, Y_true, label="Reference")
+    ax.plot(T, 16 * (T ** 3 / (4 ** 3 + T ** 3)), "--")
+    ax.legend()
+    ax.set_title("Measurement")
+    plt.show()
+
+    cols = list(measurements.columns)
+    for col in cols:
+        for iR in range(n_replicates):
+            measurements[col + f" Replicate {iR}"] = measurements[col].map(
+                lambda val: np.random.randn() * 0.1 * val + val if val > 0 else val)
+    experimental_data = measurements[[col for col in measurements.columns if "Replicate" in col]]
+
+    l_likelihood = get_log_likelihood(model=my_model, observable_names=observable_names, n_replicates=n_replicates,
+                                      experimental_data=experimental_data)
+
+    best_fit = fit_model_to_data(l_likelihood, priors=priors)
+
+    fig, ax = plt.subplots()
+    T = t
+    Y_true = my_model(parameters)
+    Y_pred = my_model(best_fit)
+    ax.plot(T, Y_true, label="Reference")
+    ax.plot(T, Y_pred, "--", label="Prediction")
+    ax.legend()
+    ax.set_title("Prediction vs. Measurement")
+    plt.show()
+
+    parameters = {id: 10 ** (parameters[id]) for id in parameters}
+    best_fit = {id: 10 ** (best_fit[id]) for id in best_fit}
+    print("Original Params:", parameters)
+    print("Best Fit Params:", best_fit)
+    pass
 
 
 simulator = None
@@ -351,9 +550,12 @@ if __name__ == '__main__':
     """
     AND gate
     """
-    test_star()
 
-    # test_AND_gate()
+    # exemplary_model_fitting()
+    # exit(0)
+    # test_star()
+
+    test_AND_gate()
 
     # test_cleaved_transcription_and_translation()
     test_toehold()
