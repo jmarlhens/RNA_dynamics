@@ -329,7 +329,7 @@ def test_AND_gate():
     visualize_simulation(t, y_res, species_to_plot=species_to_plot)
 
 
-def get_model(t, plasmids, observable_names, fixed_parameters=None):
+def get_wrapped_model(t, plasmids, observable_names, fixed_parameters=None):
     # Plasmid design:   First position is transcriptional control (not added to the compartment)
     #                   Second position is translational control (added to the compartment as complex with the following)
     #                   Third position is a list of tuples containing a boolean (True for translation) and a sequence to express (added to the compartment and can be RNA, cleaved RNA (indicated by "cleavage-") and protein)
@@ -385,9 +385,16 @@ def get_model_dummy(t, plasmids, observable_names, fixed_parameters=None):
     return my_model
 
 
-def get_log_likelihood(model, observable_names: list, n_replicates: int, experimental_data: pd.DataFrame):
+def get_log_likelihood(wrapped_model, observable_names: list, n_replicates: int, experimental_data: pd.DataFrame):
+    likelihoods = {}
+    for observable in observable_names:
+        y_meas = experimental_data[[col for col in experimental_data.columns if observable in col]].values
+        mean = np.mean(y_meas, axis=1)
+        var = np.var(y_meas, axis=1)
+        likelihoods[observable] = norm(loc=mean, scale=np.sqrt(var))
+
     def log_likelihood(parameters):
-        sim_result = model(parameters)
+        sim_result = wrapped_model(parameters)
 
         sim_data_protein = sim_result[observable_names]
         # ToDo For adequate likelihood treatment see:
@@ -405,6 +412,38 @@ def get_log_likelihood(model, observable_names: list, n_replicates: int, experim
             # ll_mRNA = -np.sum((sim_data_mRNA - experimental_data_mRNA) ** 2)
 
         return ll
+
+    return log_likelihood
+
+
+def get_log_likelihood_dream(solver,
+                             parameter_names: list,
+                             observable_names: list,
+                             experimental_data: pd.DataFrame,
+                             fixed_parameters: dict = None):
+    likelihoods = {}
+    for observable in observable_names:
+        y_meas = experimental_data[[col for col in experimental_data.columns if observable in col]].values
+        mean = np.mean(y_meas, axis=1)
+        var = np.var(y_meas, axis=1)
+        likelihoods[observable] = norm(loc=mean, scale=np.sqrt(var))
+
+    def log_likelihood(parameter_vector):
+        parameters = {p_name: p_val for p_name, p_val in zip(parameter_names, parameter_vector)}
+        if fixed_parameters:
+            parameters.update(fixed_parameters)
+
+        sim_result = solver.run(parameters)
+
+        # ToDo For adequate likelihood treatment see:
+        # https://github.com/LoLab-MSM/PyDREAM/blob/master/pydream/examples/robertson/example_sample_robertson_with_dream.py#L38
+        ll = []
+        for observable in observable_names:
+            cur_vals = solver.yobs[observable]
+            cur_ll = likelihoods[observable].logpdf(cur_vals)
+            ll.append(np.sum(cur_ll))
+
+        return np.sum(ll)
 
     return log_likelihood
 
@@ -439,11 +478,11 @@ def exemplary_model_fitting():
 
     n_replicates = 3
     fixed_parameters = {
-
+        "k_mat": 10 ** 10,
     }
     parameters = {"k_tx": 2,
                   "k_tl": 2,
-                  "k_mat": 10 ** 10,
+                  # "k_mat": 10 ** 10,
                   "k_rna_deg": 0.5,
                   "k_prot_deg": 0.5,
                   # "k_csy4": 1,
@@ -474,9 +513,9 @@ def exemplary_model_fitting():
         # (None, None, [(False, "Star1")]),
     ]
 
-    # my_model = get_model(t=t, plasmids=plasmids, observable_names=observable_names, fixed_parameters=fixed_parameters)
-    my_model = get_model_dummy(t=t, plasmids=plasmids, observable_names=observable_names,
-                               fixed_parameters=fixed_parameters)
+    my_model = get_wrapped_model(t=t, plasmids=plasmids, observable_names=observable_names,
+                                 fixed_parameters=fixed_parameters)
+    # my_model = get_model_dummy(t=t, plasmids=plasmids, observable_names=observable_names, fixed_parameters=fixed_parameters)
 
     measurements = my_model(parameters)
 
@@ -484,7 +523,7 @@ def exemplary_model_fitting():
     T = t
     Y_true = measurements
     ax.plot(T, Y_true, label="Reference")
-    ax.plot(T, 16 * (T ** 3 / (4 ** 3 + T ** 3)), "--")
+    ax.plot(T, 16 * (T ** 3 / (4 ** 3 + T ** 3)), "--", label="Approximation")
     ax.legend()
     ax.set_title("Measurement")
     plt.show()
@@ -496,7 +535,8 @@ def exemplary_model_fitting():
                 lambda val: np.random.randn() * 0.1 * val + val if val > 0 else val)
     experimental_data = measurements[[col for col in measurements.columns if "Replicate" in col]]
 
-    l_likelihood = get_log_likelihood(model=my_model, observable_names=observable_names, n_replicates=n_replicates,
+    l_likelihood = get_log_likelihood(wrapped_model=my_model, observable_names=observable_names,
+                                      n_replicates=n_replicates,
                                       experimental_data=experimental_data)
 
     best_fit = fit_model_to_data(l_likelihood, priors=priors)

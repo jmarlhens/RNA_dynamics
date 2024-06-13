@@ -1,4 +1,6 @@
 import multiprocessing
+import concurrent.futures
+
 import os
 import sys
 import time
@@ -21,8 +23,11 @@ class ParallelTempering(OptimizationAlgorithm):
         pass
 
     @staticmethod
-    def __step__(param_ids, cur_temp, cur_var, prev_samples, prev_tempered_posterior, prev_posterior, prev_log_likelihood):
+    def __step__(args):
+        log_likelihood, cur_temp, cur_var, prev_samples, prev_tempered_posterior, prev_posterior, prev_log_likelihood = args
+        param_ids = list(prev_samples.keys())
         proposal_means = [prev_samples[id] for id in param_ids]
+
         samples = np.random.normal(proposal_means, cur_var)
         samples = {id: samples[iI] for iI, id in enumerate(param_ids)}
 
@@ -33,7 +38,7 @@ class ParallelTempering(OptimizationAlgorithm):
         tempered_posterior = cur_temp * log_likelihood_val + log_prob
         posterior = log_likelihood_val + log_prob
 
-        # Due to logarithms the reference is zero (e.g. np.log(1)=0 and the fraction is a difference
+        # Due to logarithms the reference is zero (e.g. np.log(1)=0 and the fraction is a difference)
         a = min(0, tempered_posterior - prev_tempered_posterior)
         a = np.exp(a)
         samp = np.random.rand()
@@ -74,7 +79,8 @@ class ParallelTempering(OptimizationAlgorithm):
         temperatures = np.power(q, np.arange(n_chains))
 
         num_processes = os.cpu_count()
-        pool = multiprocessing.Pool(num_processes - 1)
+        # pool = multiprocessing.Pool(num_processes - 1)
+        pool = concurrent.futures.ThreadPoolExecutor(num_processes - 1)
 
         """
         Sample Initial Parameters from Priors
@@ -124,6 +130,8 @@ class ParallelTempering(OptimizationAlgorithm):
         sample_history = [cur_samples]
         log_likelihood_history = [cur_log_likelihood]
 
+        log_likelihood_references = [log_likelihood for _ in range(n_chains)]
+
         start = time.time()
         for iS in range(1, n_samples + 1):
             cur_samples = []
@@ -133,27 +141,42 @@ class ParallelTempering(OptimizationAlgorithm):
             cur_accepts = []
             swap_count = 0
 
-
-
-            for iC in range(n_chains):
-                cur_temp = temperatures[iC]  # [len(temperatures) - iC]
-                cur_var = var_ref * radii[iC] * np.exp(2 * cur_temp)
-                # cur_var = var_ref * np.exp(2 * cur_temp)
-                # cur_var = var_ref * 10**(cur_temp)
-                prev_samples = sample_history[-1][iC]
-                prev_tempered_posterior = tempered_posterior_history[-1][iC]
-
-                prev_posterior = posterior_history[-1][iC]
-                prev_log_likelihood = log_likelihood_history[-1][iC]
-
-                accept, samples, tempered_posterior, posterior, log_likelihood_val = ParallelTempering.__step__(param_ids, cur_temp, cur_var, prev_samples, prev_tempered_posterior, prev_posterior, prev_log_likelihood)
-
-                cur_samples.append(samples)
-                cur_tempered_posterior.append(tempered_posterior)
-                cur_posterior.append(posterior)
-                cur_log_likelihood.append(log_likelihood_val)
-                acceptance_rates[iC] += accept
-                cur_accepts.append(accept)
+            # for iC in range(n_chains):
+            #     cur_temp = temperatures[iC]  # [len(temperatures) - iC]
+            #     cur_radius = radii[iC]
+            #
+            #     # cur_var = var_ref * np.exp(2 * cur_temp)
+            #     # cur_var = var_ref * 10**(cur_temp)
+            #     prev_samples = sample_history[-1][iC]
+            #     prev_tempered_posterior = tempered_posterior_history[-1][iC]
+            #
+            #     prev_posterior = posterior_history[-1][iC]
+            #     prev_log_likelihood = log_likelihood_history[-1][iC]
+            #
+            #     accept, samples, tempered_posterior, posterior, log_likelihood_val = ParallelTempering.__step__(
+            #         param_ids, cur_temp, cur_radius, prev_samples, prev_tempered_posterior, prev_posterior,
+            #         prev_log_likelihood)
+            #
+            #     cur_samples.append(samples)
+            #     cur_tempered_posterior.append(tempered_posterior)
+            #     cur_posterior.append(posterior)
+            #     cur_log_likelihood.append(log_likelihood_val)
+            #     acceptance_rates[iC] += accept
+            #     cur_accepts.append(accept)
+            variances = var_ref * radii * np.exp(2 * temperatures)
+            arguments = zip(log_likelihood_references,
+                            temperatures,
+                            variances,
+                            sample_history[-1],
+                            tempered_posterior_history[-1],
+                            posterior_history[-1],
+                            log_likelihood_history[-1])
+            # Alternative is to implement vectorized versions, as ScipyOde employed allows for multiprocessed parallelism in case of multiple parameter sets.
+            results = pool.map(ParallelTempering.__step__, arguments)
+            results = list(results)
+            print(results)
+            results = list(map(list, zip(*results)))
+            cur_accepts, cur_samples, cur_tempered_posterior, cur_posterior, cur_log_likelihood = results
 
             for _ in range(n_swaps):
                 iC = np.random.randint(0, n_chains - 1)
@@ -196,8 +219,8 @@ class ParallelTempering(OptimizationAlgorithm):
 
         pass
 
-        pool.close()
-        pool.terminate()
+        # pool.close()
+        # pool.terminate()
 
         posterior_history = np.array(posterior_history)
         tempered_posterior_history = np.array(tempered_posterior_history)
@@ -219,13 +242,13 @@ class ParallelTempering(OptimizationAlgorithm):
 
 
 if __name__ == '__main__':
-    n_chains = 20
+    n_chains = 50
     minimal_temp = 10 ** (-6)
     n_samples = 1000
     n_swaps = 2
     var_ref = 1
 
-    n_measurement_samples = 100
+    n_measurement_samples = 10
 
     p1 = 5
     p2 = 1
