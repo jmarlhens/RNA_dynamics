@@ -460,7 +460,7 @@ def fit_model_to_data(log_likelihood, priors):
     sample_history, posterior_history, tempered_posterior_history, map_params = opt.run(log_likelihood=log_likelihood,
                                                                                         priors=priors,
                                                                                         n_chains=n_chains,
-                                                                                        minimal_temp=minimal_temp,
+                                                                                        minimal_inverse_temp=minimal_temp,
                                                                                         var_ref=var_ref,
                                                                                         n_samples=n_samples,
                                                                                         n_swaps=n_swaps)
