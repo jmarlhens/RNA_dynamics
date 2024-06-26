@@ -78,7 +78,7 @@ def load_and_process_csv(file_path, time_unit_output='min', time_col_name='time'
     return new_data
 
 
-def plot_replicates(data):
+def plot_replicates(data, title):
     """
     Plot the data columns with unique colors for each condition.
 
@@ -91,7 +91,7 @@ def plot_replicates(data):
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.xlabel('Time')
     plt.ylabel('Fluorescence')
-    plt.title('Data Plot with Unique Colors for Conditions')
+    plt.title(title)
     plt.grid(True)
     plt.tight_layout()
     plt.show()
@@ -100,7 +100,8 @@ def plot_replicates(data):
 # Load and process the CSV file
 file_path = './data/AND-Gate_Se6To3.csv'
 new_data = load_and_process_csv(file_path)
+title = 'AND-Gate'
 
 # Plot the processed data
-plot_replicates(new_data)
+plot_replicates(new_data, title)
 
