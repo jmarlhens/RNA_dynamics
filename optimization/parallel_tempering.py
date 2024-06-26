@@ -23,37 +23,54 @@ class ParallelTempering(OptimizationAlgorithm):
         pass
 
     @staticmethod
-    def __step__(args):
-        chain_id, priors, log_likelihood, cur_inv_temp, cur_var, prev_samples, prev_tempered_posterior, prev_posterior, prev_log_likelihood = args
-        param_ids = list(prev_samples.keys())
-        proposal_means = [prev_samples[id] for id in param_ids]
-
-        samples = np.random.normal(proposal_means, cur_var)
-        samples = {id: samples[iI] for iI, id in enumerate(param_ids)}
-
-        log_prob = np.sum([priors[id].logpdf(samples[id]) for id in param_ids])
+    def evaluate_posterior(priors, log_likelihood, samples):
+        log_prob = np.sum([priors[id].logpdf(samples[id]) for id in samples.keys()])
         if np.isinf(
                 log_prob):  # In case the parameters do not satisfy the priors, we can ommit evaluating the corresponding likelihood
             log_likelihood_val = - np.inf
         else:
             log_likelihood_val = log_likelihood(parameters=samples)
 
+        return log_likelihood_val, log_prob
+
+    @staticmethod
+    def __step__(args):
+        chain_id, priors, log_likelihood, cur_inv_temp, cur_var, prev_samples, prev_posterior, prev_log_likelihood, prev_log_prob = args
+        param_ids = list(prev_samples.keys())
+        proposal_means = [prev_samples[id] for id in param_ids]
+
+        samples = np.random.normal(proposal_means, cur_var)
+        samples = {id: samples[iI] for iI, id in enumerate(param_ids)}
+
+        samples = {'k_tx': 1, 'k_tl': 0.5, 'k_rna_deg': -0.25}
+
+        log_likelihood_val, log_prob = ParallelTempering.evaluate_posterior(priors, log_likelihood, samples)
+
         # ToDo Crosscheck whether log_prob is the right quantitiy here
         # As we consider logarithmic quantities, the multiplication is an addition
         tempered_posterior = cur_inv_temp * log_likelihood_val + log_prob
         posterior = log_likelihood_val + log_prob
+
+        print(f"Step Chain {chain_id}: {posterior}")
+        prev_tempered_posterior = cur_inv_temp * prev_log_likelihood + prev_log_prob
 
         # Due to logarithms the reference is zero (e.g. np.log(1)=0 and the fraction is a difference)
         a = min(0, tempered_posterior - prev_tempered_posterior)
         a = np.exp(a)
         samp = np.random.rand()
         accept = samp < a
+
+        prev_posterior_test = sum(ParallelTempering.evaluate_posterior(priors, log_likelihood, prev_samples))
+        # if prev_posterior_test != prev_posterior:
+        #     raise Exception("The history is not correct in case this exception is thrown.")
+
         if accept:
             # Accept
             samples_to_append = samples
             tempered_posterior_to_append = tempered_posterior
             posterior_to_append = posterior
             log_likelihood_val_to_append = log_likelihood_val
+            log_probability_to_append = log_prob
 
         else:
             # Reject
@@ -61,8 +78,9 @@ class ParallelTempering(OptimizationAlgorithm):
             tempered_posterior_to_append = prev_tempered_posterior
             posterior_to_append = prev_posterior
             log_likelihood_val_to_append = prev_log_likelihood
+            log_probability_to_append = prev_log_prob
 
-        return accept, samples_to_append, tempered_posterior_to_append, posterior_to_append, log_likelihood_val_to_append
+        return accept, samples_to_append, tempered_posterior_to_append, posterior_to_append, log_likelihood_val_to_append, log_probability_to_append
 
     def run(self, log_likelihood, priors: dict, n_chains: int = 10, n_swaps: int = 2, n_samples: int = 1000,
             minimal_inverse_temp: float = 10 ** (-3), var_ref: float = 0.01):
@@ -80,7 +98,9 @@ class ParallelTempering(OptimizationAlgorithm):
         target_acceptance_rate = 0.44
 
         param_ids = list(priors.keys())
-        q = np.power(minimal_inverse_temp, 1 / (n_chains - 1))
+        q = 1
+        if n_chains > 1:
+            q = np.power(minimal_inverse_temp, 1 / (n_chains - 1))
         inverse_temperatures = np.power(q, np.arange(n_chains))
 
         num_processes = os.cpu_count()
@@ -97,23 +117,26 @@ class ParallelTempering(OptimizationAlgorithm):
         cur_tempered_posterior = []
         cur_posterior = []
         cur_log_likelihood = []
+        cur_log_prob = []
         cur_accepts = []
         for iC in range(n_chains):
             samples = {}
             for id in param_ids:
                 samples[id] = priors[id].rvs()
 
-            log_likelihood_val = log_likelihood(parameters=samples)
-            log_prob = np.sum([priors[id].logpdf(samples[id]) for id in param_ids])
+            samples = {'k_tx': 1, 'k_tl': 0.5, 'k_rna_deg': -0.25}
+
+            log_likelihood_val, log_prob = ParallelTempering.evaluate_posterior(priors, log_likelihood, samples)
             # ToDo Crosscheck whether log_prob is the right quantitiy here
             # As we consider logarithmic quantities, the multiplication is an addition
             tempered_posterior = inverse_temperatures[iC] * log_likelihood_val + log_prob
             posterior = log_likelihood_val + log_prob
-
+            print(f"Chain {iC}: {posterior} ({samples})")
             cur_samples.append(samples)
             cur_tempered_posterior.append(tempered_posterior)
             cur_posterior.append(posterior)
             cur_log_likelihood.append(log_likelihood_val)
+            cur_log_prob.append(log_prob)
             cur_accepts.append(1)
 
         """
@@ -136,6 +159,7 @@ class ParallelTempering(OptimizationAlgorithm):
         posterior_history = [cur_posterior]
         sample_history = [cur_samples]
         log_likelihood_history = [cur_log_likelihood]
+        log_probability_history = [cur_log_prob]
 
         chain_ids = np.arange(n_chains)
         prior_references = [priors for _ in range(n_chains)]
@@ -183,16 +207,21 @@ class ParallelTempering(OptimizationAlgorithm):
                             inverse_temperatures,
                             variances,
                             sample_history[-1],
-                            tempered_posterior_history[-1],
                             posterior_history[-1],
-                            log_likelihood_history[-1])
+                            log_likelihood_history[-1],
+                            log_probability_history[-1])
             # Alternative is to implement vectorized versions, as ScipyOde employed allows for multiprocessed parallelism in case of multiple parameter sets.
             results = pool.map(ParallelTempering.__step__, arguments)
             # results = map(ParallelTempering.__step__, arguments)
             results = list(results)
             # print(results)
             results = list(map(list, zip(*results)))
-            cur_accepts, cur_samples, cur_tempered_posterior, cur_posterior, cur_log_likelihood = results
+            cur_accepts, cur_samples, cur_tempered_posterior, cur_posterior, cur_log_likelihood, cur_log_prob = results
+
+            samples = {'k_tx': 1, 'k_tl': 0.5, 'k_rna_deg': -0.25}
+            res = ParallelTempering.evaluate_posterior(priors, log_likelihood, samples)
+            print(f"After Posterior: {sum(res)}.")
+            exit()
 
             accepted_swaps = []
             for _ in range(n_swaps):
@@ -210,9 +239,10 @@ class ParallelTempering(OptimizationAlgorithm):
                 if accept:
                     # Accept Swap
                     swap_elems(cur_samples, iC, iC + 1)
-                    swap_elems(cur_tempered_posterior, iC, iC + 1)
+                    # swap_elems(cur_tempered_posterior, iC, iC + 1) # Swapping Tempered Posteriors is useless
                     swap_elems(cur_posterior, iC, iC + 1)
                     swap_elems(cur_log_likelihood, iC, iC + 1)
+                    swap_elems(cur_log_prob, iC, iC + 1)
                     swap_acceptance_rates[iC] += 1
                     swap_count += 1
 
@@ -224,6 +254,7 @@ class ParallelTempering(OptimizationAlgorithm):
             sample_history.append(cur_samples)
             posterior_history.append(cur_posterior)
             log_likelihood_history.append(cur_log_likelihood)
+            log_probability_history.append(cur_log_prob)
             acceptance_history.append(cur_accepts)
 
             # Adaptive Radius selection to adapt variance to yield beneficial acceptance rates
@@ -234,14 +265,15 @@ class ParallelTempering(OptimizationAlgorithm):
             if iS % 10 == 0 and True:
                 radii[cur_acceptance_rates > target_acceptance_rate * 1.3] *= 1.2
                 radii[cur_acceptance_rates < target_acceptance_rate * 0.7] *= 0.9
-            radii[radii < 0.000001] = 0.000001
+            radii[radii < 0.01] = 0.01
             radii[radii > 100] = 100
             if n_swaps > 0:
                 cur_swap_count = len(accepted_swaps)
                 cur_swap_acceptance_rate = cur_swap_count / n_swaps * 100
             duration = time.time() - start
             print(f"Iteration {iS}:")
-            print(f"    cur acceptance rates [{', '.join(map(lambda val: f'{val:0.3}', cur_acceptance_rates))}] ({duration / iS} s per iteration)")
+            print(
+                f"    cur acceptance rates [{', '.join(map(lambda val: f'{val:0.3}', cur_acceptance_rates))}] ({duration / iS} s per iteration)")
             print(f"    Accepted {cur_swap_count} ({cur_swap_acceptance_rate}%): {', '.join(accepted_swaps)}")
             print(f"    Radii: [{', '.join(map(lambda val: f'{val:0.2}', radii))}]")
             print(f"    Posteriors: [{', '.join(map(lambda val: f'{val:0.2}', cur_posterior))}]")
@@ -254,7 +286,7 @@ class ParallelTempering(OptimizationAlgorithm):
 
         pass
 
-        # pool.close()
+        pool.close()
         # pool.terminate()
 
         posterior_history = np.array(posterior_history)
@@ -266,6 +298,7 @@ class ParallelTempering(OptimizationAlgorithm):
         self.sample_history = sample_history
         self.posterior_history = posterior_history
         self.tempered_posterior_history = tempered_posterior_history
+        self.acceptance_history = acceptance_history
 
         acceptance_rates = acceptance_rates / n_samples
         swap_acceptance_rates = swap_acceptance_rates / n_samples

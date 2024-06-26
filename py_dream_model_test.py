@@ -18,32 +18,44 @@ from optimization.parallel_tempering import ParallelTempering
 from rna_dynamics_main import process_plasmid
 
 import matplotlib.pyplot as plt
-
-import cython
+import seaborn as sns
+# import cython
 
 """
 Setup Parameters
 """
+# fixed_parameters = {
+#     "k_tx": 2,
+#     "k_tl": 1,
+#     "k_rna_deg": 0.5,
+#     "k_prot_deg": 0.0,  # 0.25,
+#     "k_csy4": 1,
+#     "k_mat": 10 ** 2,
+# }
+# parameters = {
+#     # "k_mat": 10 ** 10,
+#     "k_tl_bound_toehold": 0.1,
+#     "k_trigger_binding": 5,
+#     "k_trigger_unbinding": 0.5,
+#     "k_tx_init": 1,
+#     "k_star_bind": 5,
+#     "k_star_unbind": 0.1,
+#     "k_star_act": 2,
+#     "k_star_act_reg": 0.01,
+#     "k_star_stop": 1,
+#     "k_star_stop_reg": 0.01
+# }
+
 fixed_parameters = {
+    "k_csy4": 1,
+    "k_mat": 10 ** 2,
+    "k_prot_deg": 0.0,  # 0.25,
+}
+
+parameters = {
     "k_tx": 2,
     "k_tl": 1,
     "k_rna_deg": 0.5,
-    "k_prot_deg": 0.0,  # 0.25,
-    "k_csy4": 1,
-    "k_mat": 10 ** 2,
-}
-parameters = {
-    # "k_mat": 10 ** 10,
-    "k_tl_bound_toehold": 0.1,
-    "k_trigger_binding": 5,
-    "k_trigger_unbinding": 0.5,
-    "k_tx_init": 1,
-    "k_star_bind": 5,
-    "k_star_unbind": 0.1,
-    "k_star_act": 2,
-    "k_star_act_reg": 0.01,
-    "k_star_stop": 1,
-    "k_star_stop_reg": 0.01
 }
 
 # parameters = {"k_tx": 2,
@@ -70,28 +82,28 @@ log_fixed_parameters = {p_name: np.log10(fixed_parameters[p_name]) for p_name in
 Setup Model
 """
 
-# plasmids = [
-#     (("Sense1", "Star1"), None, [(True, "GFP")]),
-#     (None, None, [(True, "RFP")]),
-#     # (None, None, [(False, "Trigger1")]),
-#     (None, None, [(False, "Star1")]),
-# ]
+plasmids = [
+    # (("Sense1", "Star1"), None, [(True, "GFP")]),
+    (None, None, [(True, "RFP")]),
+    # (None, None, [(False, "Trigger1")]),
+    # (None, None, [(False, "Star1")]),
+]
 
-plasmids = [(("Sense_6", "STAR_6"), ("Toehold_3", "Trigger_3"), [(True, "GFP")]),
-            (None, None, [(False, "STAR_6")]),
-            (None, None, [(False, "Trigger_3")]),
-            ]
+# plasmids = [(("Sense_6", "STAR_6"), ("Toehold_3", "Trigger_3"), [(True, "GFP")]),
+#             (None, None, [(False, "STAR_6")]),
+#             (None, None, [(False, "Trigger_3")]),
+#             ]
 
 omega_val = 1000000
 model = Model()
 Parameter('omega', omega_val)  # in L
 
-cur_parameters = dict()
-cur_parameters.update(parameters)
-cur_parameters.update(fixed_parameters)
+target_parameters = dict()
+target_parameters.update(parameters)
+target_parameters.update(fixed_parameters)
 
-for param in cur_parameters:
-    Parameter(param, cur_parameters[param])
+for param in target_parameters:
+    Parameter(param, target_parameters[param])
 
 for plasmid in plasmids:
     process_plasmid(plasmid=plasmid, model=model)
@@ -108,8 +120,8 @@ for monomer in model.monomers:
 # measured_observables_names = observable_names
 
 measured_observables_names = [
-    "obs_Protein_GFP",
-    # "obs_Protein_RFP",
+    # "obs_Protein_GFP",
+    "obs_Protein_RFP",
     # "obs_RNA_Star1"
 ]
 
@@ -123,7 +135,7 @@ n_replicates = 3
 # Initialize PySB solver object for running simulations.  Simulation timespan should match experimental data.
 tspan = np.linspace(0, 10, 50)
 solver = Solver(model, tspan)
-solver.run(cur_parameters)
+solver.run(target_parameters)
 
 measurements = solver.result.dataframe[measured_observables_names]
 cols = list(measurements.columns)
@@ -152,24 +164,30 @@ for observable in measured_observables_names:
     var = np.var(y_meas, axis=1)
     var[var < 0.01] = 0.01
     likelihoods[observable] = norm(loc=mean, scale=np.sqrt(var))
-
+    print(f"{observable}: {mean} ({hex(id(likelihoods[observable]))})")
+    my_likelihood = norm(loc=mean, scale=np.sqrt(var))
 parameter_names = list(parameters.keys())
 
 
 def log_likelihood(parameters):
+    global likelihoods
     cur_parameters = {p_name: 10 ** parameters[p_name] for p_name in parameters}
 
     solver.run(cur_parameters)
-
+    print(f"Parameters: {parameters}")
     # ToDo For adequate likelihood treatment see:
     # https://github.com/LoLab-MSM/PyDREAM/blob/master/pydream/examples/robertson/example_sample_robertson_with_dream.py#L38
     ll = np.zeros(len(measured_observables_names))
     for iL, observable in enumerate(measured_observables_names):
         cur_vals = solver.yobs[observable]
         cur_ll = likelihoods[observable].logpdf(cur_vals)
+        cur_ll = my_likelihood.logpdf(cur_vals)
         ll[iL] = np.sum(cur_ll)
+        print(f"Loc={likelihoods[observable].kwds['loc'][-1]}, Scale={likelihoods[observable].kwds['scale'][-1]} ({hex(id(likelihoods[observable]))})")
+
 
     output_ll = np.sum(ll)
+    print(f"Log Likelihood: {parameters} -> {output_ll}")
     return output_ll
 
 
@@ -197,18 +215,18 @@ original_params = np.log10([param.value for param in model.parameters_rules()])
 # Set upper and lower limits for uniform prior to be 3 orders of magnitude above and below original parameter values.
 lower_limits = original_params - 3
 
-parameters_to_sample = SampledParam(uniform, loc=lower_limits, scale=6)
+# parameters_to_sample = SampledParam(uniform, loc=lower_limits, scale=6)
 
 prior_range = 6
 prior_offset = prior_range / 2
 log_priors = {}
-for id in log_parameters:
-    act_val = log_parameters[id]
+for p_id in log_parameters:
+    act_val = log_parameters[p_id]
     a = act_val - prior_offset
     b = act_val + prior_offset
-    log_priors[id] = scipy.stats.uniform(loc=a, scale=b - a)
+    log_priors[p_id] = scipy.stats.uniform(loc=a, scale=b - a)
 
-sampled_parameter_names = [parameters_to_sample]
+# sampled_parameter_names = [parameters_to_sample]
 
 niterations = 10000
 converged = False
@@ -216,13 +234,20 @@ total_iterations = niterations
 nchains = 5
 
 if __name__ == '__main__':
+
+    log_likelihood_val = log_likelihood(parameters=log_parameters)
+    log_prob = np.sum([log_priors[id].logpdf(log_parameters[id]) for id in log_parameters])
+    target_posterior = log_likelihood_val + log_prob
+
+    print("Original Posterior:", target_posterior)
+
     opt = ParallelTempering()
 
-    n_chains = 50
-    minimal_inverse_temp = 10 ** (-10)  # 10 ** (-10)
+    n_chains = 1
+    minimal_inverse_temp = 10 ** (-8)  # 10 ** (-10)
     var_ref = 0.01
     n_samples = 1 * 10 ** 3
-    n_swaps = 2
+    n_swaps = 0
 
     sample_history, posterior_history, tempered_posterior_history, map_params = opt.run(log_likelihood=log_likelihood,
                                                                                         priors=log_priors,
@@ -232,6 +257,8 @@ if __name__ == '__main__':
                                                                                         n_samples=n_samples,
                                                                                         n_swaps=n_swaps)
 
+    print(f"Minimum Posterior: {np.min(posterior_history)}")
+
     COLORS = plt.rcParams['axes.prop_cycle'].by_key()['color']
     labels = ["Ref.", "Pred."]
     linestyles = ["-", "--"]
@@ -240,13 +267,20 @@ if __name__ == '__main__':
     best_fit = {p_name: 10 ** best_fit[p_name] for p_name in best_fit}
     best_fit.update(fixed_parameters)
 
+    sample_cutoff = int(len(sample_history) / 2)
+    posterior_samples = [elem[0] for elem in sample_history[sample_cutoff:]]
+    posterior_samples = {p_name: [elem[p_name] for elem in posterior_samples] for p_name in log_priors}
+
+
     print("Original Params:", parameters)
     print("Best Fit Params:", best_fit)
+    print("Original Posterior:", target_posterior)
+    print("Best Fit Posterior:", np.max(posterior_history))
 
     fig, ax = plt.subplots()
     T = tspan
 
-    for label, linestyle, param_dict in zip(labels, linestyles, [cur_parameters, best_fit]):
+    for label, linestyle, param_dict in zip(labels, linestyles, [target_parameters, best_fit]):
         solver.run(param_dict)
         for iC, obs_name in enumerate(measured_observables_names):
             color = COLORS[iC]
@@ -264,73 +298,100 @@ if __name__ == '__main__':
     ax.set_title("Prediction vs. Measurement")
     plt.show()
 
+    param_names = list(log_priors.keys())
+    n_params = len(log_priors)
+    fig, axes = plt.subplots(ncols=n_params, nrows=n_params, sharex=False, sharey=False)
+    for iR in range(n_params):
+        id_r = param_names[iR]
+        data_Y = posterior_samples[id_r]
+        for iC in range(n_params):
+            ax = axes[iR, iC]
+            id_c = param_names[iC]
+
+            if iR == iC:
+                data = posterior_samples[id_r]
+                ax.hist(data, density=True)
+            else:
+                data_X = posterior_samples[id_c]
+
+                ax.scatter(data_X, data_Y, alpha=0.1)
+                # data = list(zip(data_X, data_Y))
+
+            if iR == n_params - 1:
+                ax.set_xlabel(id_c)
+            if iC == 0:
+                ax.set_ylabel(id_r)
+
+    plt.tight_layout()
+    plt.show()
+
     exit()
-    # Run DREAM sampling.  Documentation of DREAM options is in Dream.py.
-    sampled_params, log_ps = run_dream(sampled_parameter_names, likelihood=log_likelihood, niterations=niterations,
-                                       nchains=nchains,
-                                       multitry=False, gamma_levels=4, adapt_gamma=True, history_thin=1,
-                                       model_name='robertson_dreamzs_5chain', verbose=True)
-
-    print("First Run of DREAM completed")
-    # Save sampling output (sampled parameter values and their corresponding logps).
-    for chain in range(len(sampled_params)):
-        np.save('robertson_dreamzs_5chain_sampled_params_chain_' + str(chain) + '_' + str(total_iterations),
-                sampled_params[chain])
-        np.save('robertson_dreamzs_5chain_logps_chain_' + str(chain) + '_' + str(total_iterations), log_ps[chain])
-
-    # Check convergence and continue sampling if not converged
-
-    GR = Gelman_Rubin(sampled_params)
-    print('At iteration: ', total_iterations, ' GR = ', GR)
-    np.savetxt('robertson_dreamzs_5chain_GelmanRubin_iteration_' + str(total_iterations) + '.txt', GR)
-
-    old_samples = sampled_params
-    if np.any(GR > 1.2):
-        starts = [sampled_params[chain][-1, :] for chain in range(nchains)]
-        while not converged:
-            total_iterations += niterations
-
-            sampled_params, log_ps = run_dream(sampled_parameter_names, likelihood=log_likelihood, start=starts,
-                                               niterations=niterations,
-                                               nchains=nchains, multitry=False, gamma_levels=4, adapt_gamma=True,
-                                               history_thin=1, model_name='robertson_dreamzs_5chain', verbose=True,
-                                               restart=True)
-
-            for chain in range(len(sampled_params)):
-                np.save('robertson_dreamzs_5chain_sampled_params_chain_' + str(chain) + '_' + str(total_iterations),
-                        sampled_params[chain])
-                np.save('robertson_dreamzs_5chain_logps_chain_' + str(chain) + '_' + str(total_iterations),
-                        log_ps[chain])
-
-            old_samples = [np.concatenate((old_samples[chain], sampled_params[chain])) for chain in range(nchains)]
-            GR = Gelman_Rubin(old_samples)
-            print('At iteration: ', total_iterations, ' GR = ', GR)
-            np.savetxt('robertson_dreamzs_5chain_GelmanRubin_iteration_' + str(total_iterations) + '.txt', GR)
-
-            if np.all(GR < 1.2):
-                converged = True
-
-    try:
-        # Plot output
-        import seaborn as sns
-        from matplotlib import pyplot as plt
-
-        total_iterations = len(old_samples[0])
-        burnin = total_iterations / 2
-        samples = np.concatenate((old_samples[0][burnin:, :], old_samples[1][burnin:, :], old_samples[2][burnin:, :],
-                                  old_samples[3][burnin:, :], old_samples[4][burnin:, :]))
-
-        ndims = len(old_samples[0][0])
-        colors = sns.color_palette(n_colors=ndims)
-        for dim in range(ndims):
-            fig = plt.figure()
-            sns.distplot(samples[:, dim], color=colors[dim])
-            fig.savefig('PyDREAM_example_Robertson_dimension_' + str(dim))
-
-    except ImportError:
-        pass
-
-else:
-    run_kwargs = {'parameters': sampled_parameter_names, 'likelihood': log_likelihood_vec, 'niterations': 10000,
-                  'nchains': nchains, 'multitry': False, 'gamma_levels': 4, 'adapt_gamma': True, 'history_thin': 1,
-                  'model_name': 'robertson_dreamzs_5chain', 'verbose': True}
+#     # Run DREAM sampling.  Documentation of DREAM options is in Dream.py.
+#     sampled_params, log_ps = run_dream(sampled_parameter_names, likelihood=log_likelihood, niterations=niterations,
+#                                        nchains=nchains,
+#                                        multitry=False, gamma_levels=4, adapt_gamma=True, history_thin=1,
+#                                        model_name='robertson_dreamzs_5chain', verbose=True)
+#
+#     print("First Run of DREAM completed")
+#     # Save sampling output (sampled parameter values and their corresponding logps).
+#     for chain in range(len(sampled_params)):
+#         np.save('robertson_dreamzs_5chain_sampled_params_chain_' + str(chain) + '_' + str(total_iterations),
+#                 sampled_params[chain])
+#         np.save('robertson_dreamzs_5chain_logps_chain_' + str(chain) + '_' + str(total_iterations), log_ps[chain])
+#
+#     # Check convergence and continue sampling if not converged
+#
+#     GR = Gelman_Rubin(sampled_params)
+#     print('At iteration: ', total_iterations, ' GR = ', GR)
+#     np.savetxt('robertson_dreamzs_5chain_GelmanRubin_iteration_' + str(total_iterations) + '.txt', GR)
+#
+#     old_samples = sampled_params
+#     if np.any(GR > 1.2):
+#         starts = [sampled_params[chain][-1, :] for chain in range(nchains)]
+#         while not converged:
+#             total_iterations += niterations
+#
+#             sampled_params, log_ps = run_dream(sampled_parameter_names, likelihood=log_likelihood, start=starts,
+#                                                niterations=niterations,
+#                                                nchains=nchains, multitry=False, gamma_levels=4, adapt_gamma=True,
+#                                                history_thin=1, model_name='robertson_dreamzs_5chain', verbose=True,
+#                                                restart=True)
+#
+#             for chain in range(len(sampled_params)):
+#                 np.save('robertson_dreamzs_5chain_sampled_params_chain_' + str(chain) + '_' + str(total_iterations),
+#                         sampled_params[chain])
+#                 np.save('robertson_dreamzs_5chain_logps_chain_' + str(chain) + '_' + str(total_iterations),
+#                         log_ps[chain])
+#
+#             old_samples = [np.concatenate((old_samples[chain], sampled_params[chain])) for chain in range(nchains)]
+#             GR = Gelman_Rubin(old_samples)
+#             print('At iteration: ', total_iterations, ' GR = ', GR)
+#             np.savetxt('robertson_dreamzs_5chain_GelmanRubin_iteration_' + str(total_iterations) + '.txt', GR)
+#
+#             if np.all(GR < 1.2):
+#                 converged = True
+#
+#     try:
+#         # Plot output
+#         import seaborn as sns
+#         from matplotlib import pyplot as plt
+#
+#         total_iterations = len(old_samples[0])
+#         burnin = total_iterations / 2
+#         samples = np.concatenate((old_samples[0][burnin:, :], old_samples[1][burnin:, :], old_samples[2][burnin:, :],
+#                                   old_samples[3][burnin:, :], old_samples[4][burnin:, :]))
+#
+#         ndims = len(old_samples[0][0])
+#         colors = sns.color_palette(n_colors=ndims)
+#         for dim in range(ndims):
+#             fig = plt.figure()
+#             sns.distplot(samples[:, dim], color=colors[dim])
+#             fig.savefig('PyDREAM_example_Robertson_dimension_' + str(dim))
+#
+#     except ImportError:
+#         pass
+#
+# else:
+#     run_kwargs = {'parameters': sampled_parameter_names, 'likelihood': log_likelihood_vec, 'niterations': 10000,
+#                   'nchains': nchains, 'multitry': False, 'gamma_levels': 4, 'adapt_gamma': True, 'history_thin': 1,
+#                   'model_name': 'robertson_dreamzs_5chain', 'verbose': True}
