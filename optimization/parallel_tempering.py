@@ -12,6 +12,7 @@ from optimization.optimization_algorithm import OptimizationAlgorithm
 
 from minimal_test import memory_location
 
+
 class ParallelTempering(OptimizationAlgorithm):
     def __init__(self):
         self.sample_history = None
@@ -43,8 +44,6 @@ class ParallelTempering(OptimizationAlgorithm):
         samples = np.random.normal(proposal_means, cur_var)
         samples = {id: samples[iI] for iI, id in enumerate(param_ids)}
 
-        samples = {'k_tx': 1, 'k_tl': 0.5, 'k_rna_deg': -0.25}
-
         log_likelihood_val, log_prob = ParallelTempering.evaluate_posterior(priors, log_likelihood, samples)
 
         # ToDo Crosscheck whether log_prob is the right quantitiy here
@@ -52,7 +51,7 @@ class ParallelTempering(OptimizationAlgorithm):
         tempered_posterior = cur_inv_temp * log_likelihood_val + log_prob
         posterior = log_likelihood_val + log_prob
 
-        print(f"Step Chain {chain_id}: {posterior}")
+        # print(f"Step Chain {chain_id}: {posterior}")
         prev_tempered_posterior = cur_inv_temp * prev_log_likelihood + prev_log_prob
 
         # Due to logarithms the reference is zero (e.g. np.log(1)=0 and the fraction is a difference)
@@ -84,7 +83,7 @@ class ParallelTempering(OptimizationAlgorithm):
         return accept, samples_to_append, tempered_posterior_to_append, posterior_to_append, log_likelihood_val_to_append, log_probability_to_append
 
     def run(self, log_likelihood, priors: dict, n_chains: int = 10, n_swaps: int = 2, n_samples: int = 1000,
-            minimal_inverse_temp: float = 10 ** (-3), var_ref: float = 0.01):
+            minimal_inverse_temp: float = 10 ** (-3), var_ref: float = 0.01, use_multiprocessing=False):
         """
 
         :param log_likelihood:
@@ -104,11 +103,15 @@ class ParallelTempering(OptimizationAlgorithm):
             q = np.power(minimal_inverse_temp, 1 / (n_chains - 1))
         inverse_temperatures = np.power(q, np.arange(n_chains))
 
-        num_processes = os.cpu_count()
-        pool_size = num_processes - 1
-        print(f"Creating Multiprocess Pool with {pool_size} processes")
-        pool = multiprocessing.Pool(pool_size)
-        # pool = concurrent.futures.ThreadPoolExecutor(num_processes - 1)
+        map_func = map
+
+        if use_multiprocessing:
+            num_processes = os.cpu_count()
+            pool_size = num_processes - 1
+            print(f"Creating Multiprocess Pool with {pool_size} processes")
+            pool = multiprocessing.Pool(pool_size)
+            # pool = concurrent.futures.ThreadPoolExecutor(num_processes - 1)
+            map_func = pool.map
 
         """
         Sample Initial Parameters from Priors
@@ -125,8 +128,6 @@ class ParallelTempering(OptimizationAlgorithm):
             for id in param_ids:
                 samples[id] = priors[id].rvs()
 
-            samples = {'k_tx': 1, 'k_tl': 0.5, 'k_rna_deg': -0.25}
-
             log_likelihood_val, log_prob = ParallelTempering.evaluate_posterior(priors, log_likelihood, samples)
             # ToDo Crosscheck whether log_prob is the right quantitiy here
             # As we consider logarithmic quantities, the multiplication is an addition
@@ -138,7 +139,7 @@ class ParallelTempering(OptimizationAlgorithm):
             cur_posterior.append(posterior)
             cur_log_likelihood.append(log_likelihood_val)
             cur_log_prob.append(log_prob)
-            cur_accepts.append(1)
+            cur_accepts.append(0)
 
         """
         Perform Parallel Tempering
@@ -161,6 +162,8 @@ class ParallelTempering(OptimizationAlgorithm):
         sample_history = [cur_samples]
         log_likelihood_history = [cur_log_likelihood]
         log_probability_history = [cur_log_prob]
+        swap_acceptance_history = [[0 for _ in range(n_chains - 1)]]
+
 
         chain_ids = np.arange(n_chains)
         prior_references = [priors for _ in range(n_chains)]
@@ -213,18 +216,13 @@ class ParallelTempering(OptimizationAlgorithm):
                             log_probability_history[-1])
             arguments = list(arguments)
             # Alternative is to implement vectorized versions, as ScipyOde employed allows for multiprocessed parallelism in case of multiple parameter sets.
-            # results = pool.map(ParallelTempering.__step__, arguments)
-            results = map(ParallelTempering.__step__, arguments)
+            results = map_func(ParallelTempering.__step__, arguments)
             results = list(results)
             # print(results)
             results = list(map(list, zip(*results)))
             cur_accepts, cur_samples, cur_tempered_posterior, cur_posterior, cur_log_likelihood, cur_log_prob = results
 
-            samples = {'k_tx': 1, 'k_tl': 0.5, 'k_rna_deg': -0.25}
-            res = ParallelTempering.evaluate_posterior(priors, log_likelihood, samples)
-            print(f"After Posterior: {sum(res)}.")
-            exit()
-
+            cur_swap_accepts = np.zeros(n_chains - 1)
             accepted_swaps = []
             for _ in range(n_swaps):
                 iC = np.random.randint(0, n_chains - 1)
@@ -245,12 +243,13 @@ class ParallelTempering(OptimizationAlgorithm):
                     swap_elems(cur_posterior, iC, iC + 1)
                     swap_elems(cur_log_likelihood, iC, iC + 1)
                     swap_elems(cur_log_prob, iC, iC + 1)
-                    swap_acceptance_rates[iC] += 1
+                    cur_swap_accepts[iC] = 1
                     swap_count += 1
 
                     accepted_swaps.append(f"{iC} <-> {iC + 1}")
                     # radii[iC] = radii[iC] / 10
                     # radii[iC + 1]
+
 
             tempered_posterior_history.append(cur_tempered_posterior)
             sample_history.append(cur_samples)
@@ -258,6 +257,7 @@ class ParallelTempering(OptimizationAlgorithm):
             log_likelihood_history.append(cur_log_likelihood)
             log_probability_history.append(cur_log_prob)
             acceptance_history.append(cur_accepts)
+            swap_acceptance_history.append(cur_swap_accepts)
 
             # Adaptive Radius selection to adapt variance to yield beneficial acceptance rates
             cur_acceptance_rates = np.mean(acceptance_history[-100:], axis=0)
@@ -288,11 +288,14 @@ class ParallelTempering(OptimizationAlgorithm):
 
         pass
 
-        pool.close()
-        # pool.terminate()
+        if use_multiprocessing:
+            pool.close()
+            # pool.terminate()
 
         posterior_history = np.array(posterior_history)
         tempered_posterior_history = np.array(tempered_posterior_history)
+        acceptance_history = np.array(acceptance_history)
+        swap_acceptance_history = np.array(swap_acceptance_history)
 
         best_config_id = np.argmax(posterior_history)
         best_config_id = [int(best_config_id / n_chains), int(best_config_id % n_chains)]
@@ -301,9 +304,10 @@ class ParallelTempering(OptimizationAlgorithm):
         self.posterior_history = posterior_history
         self.tempered_posterior_history = tempered_posterior_history
         self.acceptance_history = acceptance_history
+        self.swap_acceptance_rates = swap_acceptance_rates
 
-        acceptance_rates = acceptance_rates / n_samples
-        swap_acceptance_rates = swap_acceptance_rates / n_samples
+        acceptance_rates = np.cumsum(acceptance_history, axis=0) / np.expand_dims(np.arange(n_samples + 1), 1)
+        swap_acceptance_rates = np.cumsum(swap_acceptance_history, axis=0) / np.expand_dims(np.arange(n_samples + 1), 1)
         self.acceptance_rates = acceptance_rates
         self.swap_acceptance_rates = swap_acceptance_rates
 

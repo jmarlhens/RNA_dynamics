@@ -19,12 +19,10 @@ from rna_dynamics_main import process_plasmid
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-# import cython
+import cython
 from minimal_test import memory_location
 
-
 print("RUN py_dream_model_test.py")
-
 
 """
 Setup Parameters
@@ -148,14 +146,10 @@ for col in cols:
     for iR in range(n_replicates):
         measurements[col + f" Replicate {iR}"] = measurements[col].map(
             lambda val: (val + val * 0.1 * np.random.randn()) if val > 0 else val)
-        measurements[col + f" Replicate {iR}"] = measurements[col].map(
-            lambda val: (val + val * 0.1 * 1) if val > 0 else val)
+
 experimental_data = measurements[[col for col in measurements.columns if "Replicate" in col]]
 
 pass
-
-
-
 
 #    return log_likelihood
 
@@ -201,7 +195,7 @@ Define Log Likelihood
 
 # def get_log_likelihood_dream(solver, parameter_names: list, fixed_parameters: dict, observable_names: list,
 #                              experimental_data: pd.DataFrame):
-dist_props = {}
+# dist_props = {}
 likelihoods = {}
 for observable in measured_observables_names:
     y_meas = experimental_data[[col for col in experimental_data.columns if observable in col]].values
@@ -209,11 +203,11 @@ for observable in measured_observables_names:
     var = np.var(y_meas, axis=1)
     var[var < 0.01] = 0.01
     likelihoods[observable] = norm(loc=mean, scale=np.sqrt(var))
-    print(f"{observable}: [{', '.join(map(lambda val: f'{val:0.2}', mean))}] ({hex(id(likelihoods[observable]))})")
+    # print(f"{observable}: [{', '.join(map(lambda val: f'{val:0.2}', mean))}] ({hex(id(likelihoods[observable]))})")
     # my_likelihood = norm(loc=mean, scale=np.sqrt(var))
-    dist_props[observable] = {"loc": mean,
-                               "scale": np.sqrt(var)}
-    print(f"{observable} dist_props location {memory_location(dist_props[observable])} ({memory_location(dist_props)}, loc[-1]={dist_props[observable]['loc'][-1]})")
+    # dist_props[observable] = {"loc": mean,
+    #                            "scale": np.sqrt(var)}
+    # print(f"{observable} dist_props location {memory_location(dist_props[observable])} ({memory_location(dist_props)}, loc[-1]={dist_props[observable]['loc'][-1]})")
 parameter_names = list(parameters.keys())
 
 
@@ -222,7 +216,7 @@ def log_likelihood(parameters):
     cur_parameters = {p_name: 10 ** parameters[p_name] for p_name in parameters}
 
     solver.run(cur_parameters)
-    print(f"Parameters: {parameters}")
+    # print(f"Parameters: {parameters}")
     # ToDo For adequate likelihood treatment see:
     # https://github.com/LoLab-MSM/PyDREAM/blob/master/pydream/examples/robertson/example_sample_robertson_with_dream.py#L38
     ll = np.zeros(len(measured_observables_names))
@@ -231,12 +225,11 @@ def log_likelihood(parameters):
         cur_ll = likelihoods[observable].logpdf(cur_vals)
         # cur_ll = my_likelihood.logpdf(cur_vals)
         ll[iL] = np.sum(cur_ll)
-        print(
-            f"Loc={likelihoods[observable].kwds['loc'][-1]}, Scale={likelihoods[observable].kwds['scale'][-1]} ({hex(id(likelihoods[observable]))})")
-        print(f"{observable} dist_props location {memory_location(dist_props[observable])} ({memory_location(dist_props)}, loc[-1]={dist_props[observable]['loc'][-1]})")
+        # print(f"Loc={likelihoods[observable].kwds['loc'][-1]}, Scale={likelihoods[observable].kwds['scale'][-1]} ({hex(id(likelihoods[observable]))})")
+        # print(f"{observable} dist_props location {memory_location(dist_props[observable])} ({memory_location(dist_props)}, loc[-1]={dist_props[observable]['loc'][-1]})")
 
     output_ll = np.sum(ll)
-    print(f"Log Likelihood: {parameters} -> {output_ll}")
+    # print(f"Log Likelihood: {parameters} -> {output_ll}")
     return output_ll
 
 
@@ -262,11 +255,11 @@ if __name__ == '__main__':
 
     opt = ParallelTempering()
 
-    n_chains = 2
-    minimal_inverse_temp = 10 ** (-8)  # 10 ** (-10)
+    n_chains = 10
+    minimal_inverse_temp = 10 ** (-6)  # 10 ** (-10)
     var_ref = 0.01
-    n_samples = 1 * 10 ** 3
-    n_swaps = 0
+    n_samples = 1 * 10 ** 4
+    n_swaps = 1
 
     sample_history, posterior_history, tempered_posterior_history, map_params = opt.run(log_likelihood=log_likelihood,
                                                                                         priors=log_priors,
@@ -274,7 +267,8 @@ if __name__ == '__main__':
                                                                                         minimal_inverse_temp=minimal_inverse_temp,
                                                                                         var_ref=var_ref,
                                                                                         n_samples=n_samples,
-                                                                                        n_swaps=n_swaps)
+                                                                                        n_swaps=n_swaps,
+                                                                                        use_multiprocessing=False)
 
     print(f"Minimum Posterior: {np.min(posterior_history)}")
 
@@ -283,8 +277,9 @@ if __name__ == '__main__':
     linestyles = ["-", "--"]
     best_fit = dict(map_params)
     print("Best Fit:", best_fit)
+    log_best_fit = dict(best_fit)
     best_fit = {p_name: 10 ** best_fit[p_name] for p_name in best_fit}
-    best_fit.update(fixed_parameters)
+    # best_fit.update(fixed_parameters)
 
     sample_cutoff = int(len(sample_history) / 2)
     posterior_samples = [elem[0] for elem in sample_history[sample_cutoff:]]
@@ -316,23 +311,39 @@ if __name__ == '__main__':
     ax.set_title("Prediction vs. Measurement")
     plt.show()
 
+    color_map = "red"
+    color_ref = "black"
+
     param_names = list(log_priors.keys())
     n_params = len(log_priors)
     fig, axes = plt.subplots(ncols=n_params, nrows=n_params, sharex=False, sharey=False)
     for iR in range(n_params):
         id_r = param_names[iR]
         data_Y = posterior_samples[id_r]
+        map_r = log_best_fit[id_r]
+        ref_r = log_parameters[id_r]
         for iC in range(n_params):
             ax = axes[iR, iC]
             id_c = param_names[iC]
+            map_c = log_best_fit[id_c]
+            ref_c = log_parameters[id_c]
 
             if iR == iC:
                 data = posterior_samples[id_r]
-                ax.hist(data, density=True)
+                hist, bins, patches = ax.hist(data, density=True)
+                cur_max = np.max(hist)
+                ax.plot(map_r * np.ones(2), np.arange(2) * cur_max, "--", color=color_map)
+                ax.plot(ref_r * np.ones(2), np.arange(2) * cur_max, color=color_ref)
             else:
                 data_X = posterior_samples[id_c]
 
                 ax.scatter(data_X, data_Y, alpha=0.1)
+                interval = np.min(data_X), np.max(data_X)
+                ax.plot(interval, map_r * np.ones(2), "--", color=color_map)
+                ax.plot(interval, ref_r * np.ones(2), color=color_ref)
+                interval = np.min(data_Y), np.max(data_Y)
+                ax.plot(map_c * np.ones(2), interval, "--", color=color_map)
+                ax.plot(ref_c * np.ones(2), interval, color=color_ref)
                 # data = list(zip(data_X, data_Y))
 
             if iR == n_params - 1:
@@ -343,6 +354,35 @@ if __name__ == '__main__':
     plt.tight_layout()
     plt.show()
 
+    posterior_history = opt.posterior_history
+    fig, axes = plt.subplots(nrows=2, ncols=2)
+    X = np.arange(1 + n_samples)
+
+    cutoff = 200
+    ax = axes[0, 0]
+    for iC in range(n_chains):
+        Y = posterior_history[:, iC]
+        Y_sign = np.sign(Y)
+        Y_abs = np.abs(Y)
+        Y = Y_sign * np.log(Y_abs)
+        ax.plot(X[cutoff:], Y[cutoff:], label=f"{iC}")
+    ax.set_title("Log Log Posterior History")
+    ax.legend()
+
+    ax = axes[0, 1]
+    for iC in range(n_chains):
+        ax.plot(X, opt.acceptance_rates[:, iC], label=f"{iC}")
+    ax.set_title("Sample Acceptance Rates")
+    ax.legend()
+
+    ax = axes[1, 0]
+    for iC in range(n_chains - 1):
+        ax.plot(X, opt.swap_acceptance_rates[:, iC], label=f"{iC} <-> {iC + 1}")
+    ax.set_title("Swap Acceptance Rates")
+    ax.legend()
+
+    plt.tight_layout()
+    plt.show()
     exit()
 #     # Run DREAM sampling.  Documentation of DREAM options is in Dream.py.
 #     sampled_params, log_ps = run_dream(sampled_parameter_names, likelihood=log_likelihood, niterations=niterations,
