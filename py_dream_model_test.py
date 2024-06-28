@@ -20,6 +20,11 @@ from rna_dynamics_main import process_plasmid
 import matplotlib.pyplot as plt
 import seaborn as sns
 # import cython
+from minimal_test import memory_location
+
+
+print("RUN py_dream_model_test.py")
+
 
 """
 Setup Parameters
@@ -143,60 +148,13 @@ for col in cols:
     for iR in range(n_replicates):
         measurements[col + f" Replicate {iR}"] = measurements[col].map(
             lambda val: (val + val * 0.1 * np.random.randn()) if val > 0 else val)
+        measurements[col + f" Replicate {iR}"] = measurements[col].map(
+            lambda val: (val + val * 0.1 * 1) if val > 0 else val)
 experimental_data = measurements[[col for col in measurements.columns if "Replicate" in col]]
 
 pass
 
-"""
-Define Log Likelihood
-"""
 
-# Define likelihood function to generate simulated data that corresponds to experimental time points.
-# This function should take as input a parameter vector (parameter values are in the order dictated by first argument to run_dream function below).
-# The function returns a log probability value for the parameter vector given the experimental data.
-
-# def get_log_likelihood_dream(solver, parameter_names: list, fixed_parameters: dict, observable_names: list,
-#                              experimental_data: pd.DataFrame):
-likelihoods = {}
-for observable in measured_observables_names:
-    y_meas = experimental_data[[col for col in experimental_data.columns if observable in col]].values
-    mean = np.mean(y_meas, axis=1)
-    var = np.var(y_meas, axis=1)
-    var[var < 0.01] = 0.01
-    likelihoods[observable] = norm(loc=mean, scale=np.sqrt(var))
-    print(f"{observable}: {mean} ({hex(id(likelihoods[observable]))})")
-    my_likelihood = norm(loc=mean, scale=np.sqrt(var))
-parameter_names = list(parameters.keys())
-
-
-def log_likelihood(parameters):
-    global likelihoods
-    cur_parameters = {p_name: 10 ** parameters[p_name] for p_name in parameters}
-
-    solver.run(cur_parameters)
-    print(f"Parameters: {parameters}")
-    # ToDo For adequate likelihood treatment see:
-    # https://github.com/LoLab-MSM/PyDREAM/blob/master/pydream/examples/robertson/example_sample_robertson_with_dream.py#L38
-    ll = np.zeros(len(measured_observables_names))
-    for iL, observable in enumerate(measured_observables_names):
-        cur_vals = solver.yobs[observable]
-        cur_ll = likelihoods[observable].logpdf(cur_vals)
-        cur_ll = my_likelihood.logpdf(cur_vals)
-        ll[iL] = np.sum(cur_ll)
-        print(f"Loc={likelihoods[observable].kwds['loc'][-1]}, Scale={likelihoods[observable].kwds['scale'][-1]} ({hex(id(likelihoods[observable]))})")
-
-
-    output_ll = np.sum(ll)
-    print(f"Log Likelihood: {parameters} -> {output_ll}")
-    return output_ll
-
-
-def log_likelihood_vec(parameter_vector):
-    parameters = {p_name: p_val for p_name, p_val in zip(parameter_names, parameter_vector)}
-    parameters.update(fixed_parameters)
-
-    ll = log_likelihood(parameters)
-    return ll
 
 
 #    return log_likelihood
@@ -233,7 +191,68 @@ converged = False
 total_iterations = niterations
 nchains = 5
 
+"""
+Define Log Likelihood
+"""
+
+# Define likelihood function to generate simulated data that corresponds to experimental time points.
+# This function should take as input a parameter vector (parameter values are in the order dictated by first argument to run_dream function below).
+# The function returns a log probability value for the parameter vector given the experimental data.
+
+# def get_log_likelihood_dream(solver, parameter_names: list, fixed_parameters: dict, observable_names: list,
+#                              experimental_data: pd.DataFrame):
+dist_props = {}
+likelihoods = {}
+for observable in measured_observables_names:
+    y_meas = experimental_data[[col for col in experimental_data.columns if observable in col]].values
+    mean = np.mean(y_meas, axis=1)
+    var = np.var(y_meas, axis=1)
+    var[var < 0.01] = 0.01
+    likelihoods[observable] = norm(loc=mean, scale=np.sqrt(var))
+    print(f"{observable}: [{', '.join(map(lambda val: f'{val:0.2}', mean))}] ({hex(id(likelihoods[observable]))})")
+    # my_likelihood = norm(loc=mean, scale=np.sqrt(var))
+    dist_props[observable] = {"loc": mean,
+                               "scale": np.sqrt(var)}
+    print(f"{observable} dist_props location {memory_location(dist_props[observable])} ({memory_location(dist_props)}, loc[-1]={dist_props[observable]['loc'][-1]})")
+parameter_names = list(parameters.keys())
+
+
+def log_likelihood(parameters):
+    global likelihoods, dist_props
+    cur_parameters = {p_name: 10 ** parameters[p_name] for p_name in parameters}
+
+    solver.run(cur_parameters)
+    print(f"Parameters: {parameters}")
+    # ToDo For adequate likelihood treatment see:
+    # https://github.com/LoLab-MSM/PyDREAM/blob/master/pydream/examples/robertson/example_sample_robertson_with_dream.py#L38
+    ll = np.zeros(len(measured_observables_names))
+    for iL, observable in enumerate(measured_observables_names):
+        cur_vals = solver.yobs[observable]
+        cur_ll = likelihoods[observable].logpdf(cur_vals)
+        # cur_ll = my_likelihood.logpdf(cur_vals)
+        ll[iL] = np.sum(cur_ll)
+        print(
+            f"Loc={likelihoods[observable].kwds['loc'][-1]}, Scale={likelihoods[observable].kwds['scale'][-1]} ({hex(id(likelihoods[observable]))})")
+        print(f"{observable} dist_props location {memory_location(dist_props[observable])} ({memory_location(dist_props)}, loc[-1]={dist_props[observable]['loc'][-1]})")
+
+    output_ll = np.sum(ll)
+    print(f"Log Likelihood: {parameters} -> {output_ll}")
+    return output_ll
+
+
+def log_likelihood_vec(parameter_vector):
+    parameters = {p_name: p_val for p_name, p_val in zip(parameter_names, parameter_vector)}
+    parameters.update(fixed_parameters)
+
+    ll = log_likelihood(parameters)
+    return ll
+
+
 if __name__ == '__main__':
+    print("RUN Main of py_dream_model_test.py")
+    """
+    Model Calibration
+    """
 
     log_likelihood_val = log_likelihood(parameters=log_parameters)
     log_prob = np.sum([log_priors[id].logpdf(log_parameters[id]) for id in log_parameters])
@@ -243,7 +262,7 @@ if __name__ == '__main__':
 
     opt = ParallelTempering()
 
-    n_chains = 1
+    n_chains = 2
     minimal_inverse_temp = 10 ** (-8)  # 10 ** (-10)
     var_ref = 0.01
     n_samples = 1 * 10 ** 3
@@ -270,7 +289,6 @@ if __name__ == '__main__':
     sample_cutoff = int(len(sample_history) / 2)
     posterior_samples = [elem[0] for elem in sample_history[sample_cutoff:]]
     posterior_samples = {p_name: [elem[p_name] for elem in posterior_samples] for p_name in log_priors}
-
 
     print("Original Params:", parameters)
     print("Best Fit Params:", best_fit)

@@ -10,6 +10,7 @@ import scipy.stats
 
 from optimization.optimization_algorithm import OptimizationAlgorithm
 
+from minimal_test import memory_location
 
 class ParallelTempering(OptimizationAlgorithm):
     def __init__(self):
@@ -210,9 +211,10 @@ class ParallelTempering(OptimizationAlgorithm):
                             posterior_history[-1],
                             log_likelihood_history[-1],
                             log_probability_history[-1])
+            arguments = list(arguments)
             # Alternative is to implement vectorized versions, as ScipyOde employed allows for multiprocessed parallelism in case of multiple parameter sets.
-            results = pool.map(ParallelTempering.__step__, arguments)
-            # results = map(ParallelTempering.__step__, arguments)
+            # results = pool.map(ParallelTempering.__step__, arguments)
+            results = map(ParallelTempering.__step__, arguments)
             results = list(results)
             # print(results)
             results = list(map(list, zip(*results)))
