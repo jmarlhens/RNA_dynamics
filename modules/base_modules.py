@@ -1,4 +1,4 @@
-from pysb import Rule, Model
+from pysb import Rule, Model, Expression
 
 from modules.reactioncomplex import ReactionComplex
 from modules.molecules import RNA, Protein
@@ -11,6 +11,8 @@ class Transcription(ReactionComplex):
         super().__init__(substrate=None, product=rna, model=model)
 
         self.k_tx = self.parameters["k_tx"]
+        self.k_concentration = self.parameters["k_" + sequence_name + "_concentration"]
+        Expression('k_tx_plasmid_' + sequence_name, self.k_concentration * self.k_tx)
         self.k_deg = self.parameters["k_rna_deg"]
 
 
@@ -19,7 +21,7 @@ class Transcription(ReactionComplex):
         # Transcription
         rule = Rule(f'transcription_{rna.name}',
                     None >> rna(state="full", sense=None, toehold=None),
-                    self.k_tx)
+                    model.expressions['k_tx_plasmid_' + sequence_name])
         rules.append(rule)
 
         self.rules = rules

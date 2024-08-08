@@ -1,4 +1,4 @@
-from pysb import Rule, Model
+from pysb import Rule, Model, Expression
 from modules.molecules import RNA
 from modules.reactioncomplex import ReactionComplex
 
@@ -22,6 +22,8 @@ class STAR(ReactionComplex):
         regulator = RNA.get_instance(sequence_name=self.regulator_name, model=model)
 
         self.k_init = self.parameters["k_tx_init"]
+        self.k_concentration = self.parameters["k_" + sequence_name + "_concentration"]
+        Expression('k_tx_plasmid_' + sequence_name, self.k_concentration * self.k_init)
         self.k_bind = self.parameters["k_star_bind"]
         self.k_unbind = self.parameters["k_star_unbind"]
         self.k_act = self.parameters["k_star_act"]
@@ -36,7 +38,7 @@ class STAR(ReactionComplex):
         # Define the Rules for the RNA dynamics
         # Initiation of RNA transcription
         rule = Rule('STAR_RNA_transcription_initiation_%s' % (regulated.name),
-                    None >> regulated(state='init', sense=None, toehold=None), self.k_init)
+                    None >> regulated(state='init', sense=None, toehold=None), model.expressions['k_tx_plasmid_' + sequence_name])
         rules.append(rule)
 
         # Binding of RNA regulator to the early transcript
