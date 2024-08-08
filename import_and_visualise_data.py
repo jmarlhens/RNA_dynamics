@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import re
 import seaborn as sns
-
+from scipy.signal import savgol_filter
 
 def convert_time_string(time_str, time_unit_output='min'):
     """
@@ -97,11 +97,89 @@ def plot_replicates(data, title):
     plt.show()
 
 
-# Load and process the CSV file
-file_path = './data/AND-Gate_Se6To3.csv'
-new_data = load_and_process_csv(file_path)
-title = 'AND-Gate'
+# # Load and process the CSV file
+# file_path = './data/AND-Gate_Se6To3.csv'
+# new_data = load_and_process_csv(file_path)
+# title = 'AND-Gate'
+# plot_replicates(new_data, title)
+#
+# file_path = './data/Se1To1 C-FFL.csv'
+# new_data = load_and_process_csv(file_path)
+# title = 'C-FFL'
+# plot_replicates(new_data, title)
+#
+# file_path = './data/To1 cascade .csv'
+# new_data = load_and_process_csv(file_path)
+# title = 'Cascade'
+# plot_replicates(new_data, title)
 
-# Plot the processed data
+
+file_path = 'data/Se1.csv'
+new_data = load_and_process_csv(file_path)
+title = 'Cascade'
 plot_replicates(new_data, title)
+
+
+# compute and plot derivatives for each condition
+
+def compute_derivative(data, condition):
+    """
+    Compute the derivative of the fluorescence values for a specific condition.
+
+    Parameters:
+    - data (pd.DataFrame): DataFrame containing 'time', 'condition', 'replicate', and 'fluorescence' columns.
+    - condition (str): The condition to compute the derivative for.
+
+    Returns:
+    - pd.DataFrame: DataFrame containing 'time', 'condition', 'replicate', and 'derivative' columns.
+    """
+    # Filter the data for the specific condition
+    condition_data = data[data['condition'] == condition]
+
+    # Compute the derivative using Savitzky-Golay filter
+    condition_data['derivative'] = savgol_filter(condition_data['fluorescence'], 8, 2, deriv=1)
+
+
+    # remove first and last time points
+    condition_data = condition_data[(condition_data['time'] > condition_data['time'].min()) & (condition_data['time'] < condition_data['time'].max())]
+
+
+
+    return condition_data
+
+
+def plot_derivative(data, title):
+    """
+    Plot the derivative values for each condition.
+
+    Parameters:
+    - data (pd.DataFrame): DataFrame containing 'time', 'condition', 'replicate', and 'derivative' columns.
+    """
+    plt.figure(figsize=(10, 6))
+    sns.lineplot(data=data, x='time', y='derivative', hue='condition', units='replicate', estimator=None, lw=1)
+
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.xlabel('Time')
+    plt.ylabel('Derivative')
+    plt.title(title)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+# Compute and plot the derivative for each condition
+conditions = new_data['condition'].unique()
+all_derivative_data = []
+for condition in conditions:
+    derivative_data = compute_derivative(new_data, condition)
+    all_derivative_data.append(derivative_data)
+    title = f'{condition} - Derivative'
+
+# cut time at 600, remove all time points after 600
+all_derivative_data = pd.concat(all_derivative_data, ignore_index=True)
+all_derivative_data = all_derivative_data[all_derivative_data['time'] < 250]
+all_derivative_data = all_derivative_data[all_derivative_data['time'] > 18]
+
+plot_derivative(all_derivative_data, 'Derivative')
+
+#
 

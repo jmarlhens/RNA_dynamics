@@ -109,8 +109,7 @@ def process_plasmid(plasmid, model):
         else:
             Translation(rna=rna, prot_name=seq, model=model)
 
-
-def simulate_model(model, t):
+def generate_observables(model):
     observable_names = []
     observables = []
     for monomer in model.monomers:
@@ -120,8 +119,8 @@ def simulate_model(model, t):
         observable_names.append(obs_name)
         observables.append(observable)
 
-    # Observable("Protein_immature", Protein_GFP(state="immature"))
 
+def simulate_model(model, t):
     # List of parameters yield that the same model is evaluated for different parameter instantiations but not for changing parameters.
     # cur_simulator = BngSimulator(model)
     cur_simulator = ScipyOdeSimulator(model)
@@ -174,6 +173,7 @@ def test_cleaved_transcription_and_translation():
         Parameter(param, parameters[param])
 
     process_plasmid(plasmid=plasmid, model=model)
+    generate_observables(model)
 
     n_steps = 100
     t = np.linspace(0, 20, n_steps)
@@ -274,7 +274,7 @@ def test_star():
 
     for plasmid in plasmids:
         process_plasmid(plasmid=plasmid, model=model)
-
+    generate_observables(model)
     # Observable("Free_Trigger", RNA_Trigger1(state="full", toehold=None))
     # Observable("Bound_Toehold",
     #            RNA_Trigger1(state="full", toehold=1) % RNA_Toehold1_GFP(state="full", toehold=1))
@@ -318,7 +318,7 @@ def test_AND_gate():
 
     for plasmid in plasmids:
         process_plasmid(plasmid=plasmid, model=model)
-
+    generate_observables(model)
     # Observe the gfp protein
     # Observable("Protein_GFP", Protein_GFP(state="mature"))
 
@@ -352,6 +352,8 @@ def get_wrapped_model(t, plasmids, observable_names, fixed_parameters=None):
 
         for plasmid in plasmids:
             process_plasmid(plasmid=plasmid, model=model)
+
+        generate_observables(model)
 
         y_res = simulate_model(model, t)
         species_to_plot = list(model.observables.keys())
