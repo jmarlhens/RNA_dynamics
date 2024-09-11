@@ -10,7 +10,7 @@ import scipy.stats
 
 from optimization.optimization_algorithm import OptimizationAlgorithm
 
-from minimal_test import memory_location
+# from minimal_test import memory_location
 
 
 class ParallelTempering(OptimizationAlgorithm):

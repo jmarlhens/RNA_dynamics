@@ -1,4 +1,4 @@
-from ffl.STAR_rules import RNA_regulatory_base_module, RNA_regulatory_base_parameters
+from obsolete.ffl.STAR_rules import RNA_regulatory_base_module, RNA_regulatory_base_parameters
 from pysb import Model, Monomer, Parameter
 from pysb import Observable
 from pysb.simulator import ScipyOdeSimulator

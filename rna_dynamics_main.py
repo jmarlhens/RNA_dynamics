@@ -204,7 +204,10 @@ def test_toehold():
                   "k_csy4": 1,
                   "k_tl_bound_toehold": 0.1,
                   "k_trigger_binding": 5,
-                  "k_trigger_unbinding": 0.5}
+                  "k_trigger_unbinding": 0.5,
+                  "k_Toehold1_GFP_concentration": 1,
+                  "k_Trigger1_concentration": 1,
+                  }
 
     """
     Model Setup
@@ -307,7 +310,11 @@ def test_AND_gate():
                   "k_star_act": 2,
                   "k_star_act_reg": 0.01,
                   "k_star_stop": 1,
-                  "k_star_stop_reg": 0.01}
+                  "k_star_stop_reg": 0.01,
+                  "k_Sense_6_Toehold_3_GFP_concentration": 1,
+                  "k_STAR_6_concentration": 1,
+                  "k_Trigger_3_concentration": 1,
+                  }
 
     omega_val = 1000000
     model = Model()
