@@ -2,6 +2,7 @@ from pysb import Rule, Model, Expression
 from modules.reactioncomplex import ReactionComplex
 from modules.molecules import RNA, Protein
 
+
 class Transcription(ReactionComplex):
     def __init__(self, sequence_name: str = None, model: Model = None):
         rna = RNA.get_instance(sequence_name=sequence_name, model=model)
@@ -14,10 +15,10 @@ class Transcription(ReactionComplex):
         self.k_deg = self.parameters["k_rna_deg"]
 
         rules = []
-        # Transcription rule: RNA is produced in the "free" sequestration state
+        # Transcription rule: RNA is produced in the unbound state (`binding=None`)
         rule = Rule(
             f'transcription_{rna.name}',
-            None >> rna(state="full", sense=None, toehold=None, sequestration="free"),
+            None >> rna(state="full", binding=None),
             model.expressions['k_tx_plasmid_' + sequence_name]
         )
         rules.append(rule)
@@ -25,11 +26,8 @@ class Transcription(ReactionComplex):
         self.rules = rules
 
 
-
-
-
 class Translation(ReactionComplex):
-    def __init__(self, rna: RNA = None, prot_name:str=None, model:Model=None):
+    def __init__(self, rna: RNA = None, prot_name: str = None, model: Model = None):
         sequence_name = rna.sequence_name if prot_name is None else prot_name
         protein = Protein.get_instance(sequence_name=sequence_name, model=model)
 
@@ -39,12 +37,13 @@ class Translation(ReactionComplex):
         self.k_mat = self.parameters["k_mat"]
         self.k_deg = self.parameters["k_prot_deg"]
 
-
-
         rules = []
-        rule = Rule(f'translation_of_{rna.name}_to_{protein.name}',
-                    rna(state="full") >> rna(state="full") + protein(state="immature"), self.k_tl)
+        # Translation rule: RNA must be unbound (`binding=None`) to translate into protein
+        rule = Rule(
+            f'translation_of_{rna.name}_to_{protein.name}',
+            rna(state="full", binding=None) >>
+            rna(state="full", binding=None) + protein(state="immature"),
+            self.k_tl
+        )
         rules.append(rule)
         self.rules = rules
-
-        pass

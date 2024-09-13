@@ -1,6 +1,5 @@
 from pysb import Monomer, Rule, Model
 
-
 class MyMonomer(Monomer):
     prefix = "MyMonomer_"
 
@@ -22,18 +21,15 @@ class MyMonomer(Monomer):
 
         return monomer
 
-
-
 class RNA(MyMonomer):
     prefix = "RNA_"
 
     def __init__(self, sequence_name: str, model: Model):
         name = RNA.sequence_name_to_name(sequence_name)
-        # Adding a "sequestration" site to indicate if the RNA is bound in a sequestration complex
-        super().__init__(name=name, sites=["sense", "toehold", "state", "sequestration"],
+        # Adding a "binding" site to handle all interactions (sense, toehold, sequestration)
+        super().__init__(name=name, sites=["binding", "state"],
                          site_states={
                              "state": {"full", "partial", "init"},
-                             "sequestration": {"free", "bound"}  # Sequestration state: "free" or "bound"
                          })
 
         self.sequence_name = sequence_name
@@ -46,7 +42,6 @@ class RNA(MyMonomer):
 
         # Add the degradation rule to the model
         model.add_component(rule)
-
 
 class Protein(MyMonomer):
     prefix = "Protein_"
@@ -64,5 +59,10 @@ class Protein(MyMonomer):
         rule_name_maturation = f'maturation_{self.name}'
         rule_name_degradation = f'Protein_degradation_{self.name}'
 
-        rule = Rule(rule_name_maturation, self(state="immature") >> self(state="mature"), self.k_mat)
-        rule = Rule(rule_name_degradation, self() >> None, self.k_prot_deg)
+        # Define maturation and degradation rules for the protein
+        maturation_rule = Rule(rule_name_maturation, self(state="immature") >> self(state="mature"), self.k_mat)
+        degradation_rule = Rule(rule_name_degradation, self() >> None, self.k_prot_deg)
+
+        # Add rules to the model
+        model.add_component(maturation_rule)
+        model.add_component(degradation_rule)

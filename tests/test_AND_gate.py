@@ -1,5 +1,6 @@
 import numpy as np
-from simulation.simulate import setup_model, simulate_model, visualize_simulation
+from build_and_simulate.build_model import setup_model, simulate_model, visualize_simulation
+import pandas as pd
 
 def test_AND_gate():
     # Plasmid design
@@ -10,36 +11,25 @@ def test_AND_gate():
     ]
 
     # Define model parameters
-    parameters = {
-        "k_tx": 2,
-        "k_rna_deg": 0.5,
-        "k_tl": 2,
-        "k_prot_deg": 0.5,
-        "k_mat": 1,
-        "k_csy4": 1,
-        "k_tl_bound_toehold": 0.1,
-        "k_trigger_binding": 5,
-        "k_trigger_unbinding": 0.5,
-        "k_tx_init": 1,
-        "k_star_bind": 5,
-        "k_star_unbind": 0.1,
-        "k_star_act": 2,
-        "k_star_act_reg": 0.01,
-        "k_star_stop": 1,
-        "k_star_stop_reg": 0.01,
+    parameters_plasmids = {
         "k_Sense_6_Toehold_3_GFP_concentration": 1,
         "k_STAR_6_concentration": 1,
         "k_Trigger_3_concentration": 1,
     }
 
+    # load and add parameters_plasmids
+    parameters_df = pd.read_csv('../data/model_parameters.csv')
+    parameters = dict(zip(parameters_df['Parameter'], parameters_df['Value']))
+    parameters.update(parameters_plasmids)
+
     # Setup the model
     model = setup_model(plasmids, parameters)
 
-    # Time span for simulation
+    # Time span for build_and_simulate
     n_steps = 100
     t = np.linspace(0, 20, n_steps)
 
-    # Run the simulation
+    # Run the build_and_simulate
     y_res = simulate_model(model, t)
 
     # Visualize results

@@ -72,7 +72,7 @@ if __name__ == '__main__':
     plt.legend(loc=0)
     plt.show()
 
-    # Stochastic simulation
+    # Stochastic build_and_simulate
     from pysb.simulator import BngSimulator
 
     t = np.linspace(0, 100, 1000)

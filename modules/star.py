@@ -2,7 +2,6 @@ from pysb import Rule, Model, Expression
 from modules.molecules import RNA
 from modules.reactioncomplex import ReactionComplex
 
-
 class STAR(ReactionComplex):
     def __init__(self, sequence_name: str = None, transcriptional_control: tuple = None, model: Model = None):
         assert sequence_name is not None
@@ -34,68 +33,66 @@ class STAR(ReactionComplex):
 
         rules = []
 
-        # RNA transcription initiation
-        rule = Rule(
+        # RNA transcription initiation: RNA starts in unbound state (binding=None)
+        transcription_initiation_rule = Rule(
             f'STAR_RNA_transcription_initiation_{regulated.name}',
-            None >> regulated(state='init', sense=None, toehold=None, sequestration="free"),
+            None >> regulated(state='init', binding=None),
             model.expressions['k_tx_plasmid_' + sequence_name]
         )
-        rules.append(rule)
+        rules.append(transcription_initiation_rule)
 
-        # Binding of RNA regulator to the early transcript
-        rule = Rule(
+        # Binding of RNA regulator to the early transcript: Uses unified `binding` site
+        binding_rule = Rule(
             f'STAR_RNA_regulator_binding_{regulated.name}_{regulator.name}',
-            regulated(sense=None, sequestration="free") + regulator(state='full', sense=None, sequestration="free") >>
-            regulated(sense=1, sequestration="bound") % regulator(state='full', sense=1, sequestration="bound"),
+            regulated(binding=None) + regulator(state='full', binding=None) >>
+            regulated(binding=1) % regulator(state='full', binding=1),
             self.k_bind
         )
-        rules.append(rule)
+        rules.append(binding_rule)
 
         # Unbinding of full and early RNA transcript and RNA regulator
-        rule = Rule(
+        unbinding_rule = Rule(
             f'STAR_RNA_regulator_unbinding_full_{regulated.name}_{regulator.name}',
-            regulated(sense=1, sequestration="bound") % regulator(state='full', sense=1, sequestration="bound") >>
-            regulated(sense=None, sequestration="free") + regulator(state='full', sense=None, sequestration="free"),
+            regulated(binding=1) % regulator(state='full', binding=1) >>
+            regulated(binding=None) + regulator(state='full', binding=None),
             self.k_unbind
         )
-        rules.append(rule)
+        rules.append(unbinding_rule)
 
         # Activation of transcription with the RNA regulator
-        rule = Rule(
+        full_transcription_with_regulator_rule = Rule(
             f'STAR_RNA_full_transcription_reg_{regulated.name}_{regulator.name}',
-            regulated(state='init', sense=1, sequestration="bound") % regulator(state='full', sense=1,
-                                                                                sequestration="bound") >>
-            regulated(state='full', sense=1, sequestration="bound") % regulator(state='full', sense=1,
-                                                                                sequestration="bound"),
+            regulated(state='init', binding=1) % regulator(state='full', binding=1) >>
+            regulated(state='full', binding=1) % regulator(state='full', binding=1),
             self.k_act_reg
         )
-        rules.append(rule)
+        rules.append(full_transcription_with_regulator_rule)
 
-        rule = Rule(
+        # Full transcription without the RNA regulator
+        full_transcription_rule = Rule(
             f'STAR_RNA_full_transcription_{regulated.name}',
-            regulated(state='init', sense=None, sequestration="free") >>
-            regulated(state='full', sense=None, sequestration="free"),
+            regulated(state='init', binding=None) >>
+            regulated(state='full', binding=None),
             self.k_act
         )
-        rules.append(rule)
+        rules.append(full_transcription_rule)
 
         # Stop of transcription with RNA inhibitor
-        rule = Rule(
+        partial_transcription_with_regulator_rule = Rule(
             f'STAR_RNA_partial_transcription_reg_{regulated.name}_{regulator.name}',
-            regulated(state='init', sense=1, sequestration="bound") % regulator(state='full', sense=1,
-                                                                                sequestration="bound") >>
-            regulated(state='partial', sense=1, sequestration="bound") % regulator(state='full', sense=1,
-                                                                                   sequestration="bound"),
+            regulated(state='init', binding=1) % regulator(state='full', binding=1) >>
+            regulated(state='partial', binding=1) % regulator(state='full', binding=1),
             self.k_stop_reg
         )
-        rules.append(rule)
+        rules.append(partial_transcription_with_regulator_rule)
 
-        rule = Rule(
+        # Partial transcription without the RNA regulator
+        partial_transcription_rule = Rule(
             f'STAR_RNA_partial_transcription_{regulated.name}',
-            regulated(state='init', sense=None, sequestration="free") >>
-            regulated(state='partial', sense=None, sequestration="free"),
+            regulated(state='init', binding=None) >>
+            regulated(state='partial', binding=None),
             self.k_stop
         )
-        rules.append(rule)
+        rules.append(partial_transcription_rule)
 
         self.rules = rules

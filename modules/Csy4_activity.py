@@ -12,10 +12,11 @@ class Csy4Activity(ReactionComplex):
         self.k_csy4 = self.parameters["k_csy4"]
 
         rules = []
+        # Cleavage rule: RNA is cleaved into products, with all RNAs having `binding=None`
         rule = Rule(
             f'RNA_Cleavage_{rna.name}_to_{"_and_".join([prod_rna.name for prod_rna in products])}',
-            rna(state="full", sequestration="free") >> sum(
-                [prod_rna(state="full", sense=None, toehold=None, sequestration="free") for prod_rna in products], None),
+            rna(state="full", binding=None) >> sum(
+                [prod_rna(state="full", binding=None) for prod_rna in products], None),
             self.k_csy4
         )
         rules.append(rule)

@@ -15,7 +15,7 @@ def substitute_expressions(ode_string, expression_dict):
 def find_ODEs_from_Pysb_model(model):
     odes = model._odes
     if len(odes) == 0:
-        raise Exception("Model has no odes. Please run ODE simulation before to instantiate odes.")
+        raise Exception("Model has no odes. Please run ODE build_and_simulate before to instantiate odes.")
     #
     equations = []
     for i, eq in enumerate(odes):

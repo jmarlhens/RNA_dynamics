@@ -29,17 +29,15 @@ def setup_model(plasmids, parameters, bindings=None):
     for plasmid in plasmids:
         process_plasmid(plasmid, model)
 
-    # Generate observables for the model
-    generate_observables(model)
-
     # Process sequestration (binding and unbinding) reactions if specified
     if bindings:
         for species1_name, species2_name in bindings:
-            # Retrieve or create instances of the species (RNA or Protein based on prefix)
-            species1 = RNA.get_instance(sequence_name=species1_name, model=model)
-            species2 = RNA.get_instance(sequence_name=species2_name, model=model)
-            # Create the sequestration reaction
-            Sequestration(species1, species2, model)
+
+            Sequestration(species1_name, species2_name, model)
+
+
+    # Generate observables for the model
+    generate_observables(model)
 
     return model
 
@@ -105,6 +103,7 @@ def generate_observables(model):
         Observable(obs_name, monomer(state=desired_state))
 
 
+
 def simulate_model(model, t):
     """
     Simulates the model using the specified time points.
@@ -116,7 +115,7 @@ def simulate_model(model, t):
 
 def visualize_simulation(t, y_res, species_to_plot):
     """
-    Visualizes the simulation results.
+    Visualizes the build_and_simulate results.
     """
     fig, ax = plt.subplots()
     species = y_res.dataframe.columns
