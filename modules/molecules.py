@@ -23,20 +23,29 @@ class MyMonomer(Monomer):
         return monomer
 
 
+
 class RNA(MyMonomer):
     prefix = "RNA_"
 
     def __init__(self, sequence_name: str, model: Model):
         name = RNA.sequence_name_to_name(sequence_name)
-        super().__init__(name=name, sites=["sense", "toehold", "state"],
-                         site_states={"state": {"full", "partial", "init"}})
+        # Adding a "sequestration" site to indicate if the RNA is bound in a sequestration complex
+        super().__init__(name=name, sites=["sense", "toehold", "state", "sequestration"],
+                         site_states={
+                             "state": {"full", "partial", "init"},
+                             "sequestration": {"free", "bound"}  # Sequestration state: "free" or "bound"
+                         })
 
         self.sequence_name = sequence_name
 
         k_rna_deg = model.parameters["k_rna_deg"]
 
+        # Add degradation rule for the RNA
         rule_name_degradation = f'RNA_degradation_{self.name}'
         rule = Rule(rule_name_degradation, self() >> None, k_rna_deg)
+
+        # Add the degradation rule to the model
+        model.add_component(rule)
 
 
 class Protein(MyMonomer):

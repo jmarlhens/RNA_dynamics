@@ -34,21 +34,11 @@ def STAR_model(parameters):
     for plasmid in plasmids:
         process_plasmid(plasmid=plasmid, model=model)
 
-
-
     return model
 
+
+
 def test_star(model):
-    # Plasmid design:   First position is transcriptional control (not added to the compartment)
-    #                   Second position is translational control (added to the compartment as complex with the following)
-    #                   Third position is a list of tuples containing a boolean (True for translation) and a sequence to express (added to the compartment and can be RNA, cleaved RNA (indicated by "cleavage-") and protein)
-    # None encodes no control and no sequence
-
-
-
-    # Observable("Free_Trigger", RNA_Trigger1(state="full", toehold=None))
-    # Observable("Bound_Toehold",
-    #            RNA_Trigger1(state="full", toehold=1) % RNA_Toehold1_GFP(state="full", toehold=1))
 
     n_steps = 100
     t = np.linspace(0, 20, n_steps)

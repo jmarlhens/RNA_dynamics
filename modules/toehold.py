@@ -1,8 +1,6 @@
 from pysb import Rule, Model
-
 from modules.molecules import RNA, Protein
 from modules.reactioncomplex import ReactionComplex
-
 
 class Toehold(ReactionComplex):
     def __init__(self, rna: RNA = None, translational_control: tuple = None, prot_name: str = None, model: Model = None):
@@ -24,32 +22,49 @@ class Toehold(ReactionComplex):
         self.k_tl_bound = self.parameters["k_tl_bound_toehold"]
         self.k_toehold_binding = self.parameters["k_trigger_binding"]
         self.k_toehold_unbinding = self.parameters["k_trigger_unbinding"]
-        # self.k_tl_unbound = self.parameters["k_tl_unbound_toehold"]
 
         rules = []
 
-        rule = Rule(f'TOEHOLD_{trigger.name}_binding_to_{rna.name}',
-                    trigger(state="full", toehold=None) + rna(state="full", toehold=None) >>
-                    trigger(state="full", toehold=1) % rna(state="full", toehold=1),
-                    self.k_toehold_binding)
-        rules.append(rule)
-        rule = Rule(f'TOEHOLD_{trigger.name}_unbinding_from_{rna.name}',
-                    trigger(state="full", toehold=1) % rna(state="full", toehold=1) >>
-                    trigger(state="full", toehold=None) + rna(state="full", toehold=None),
-                    self.k_toehold_unbinding)
-        rules.append(rule)
-
-        rule = Rule(f'TOEHOLD_unbound_translation_of_{rna.name}_to_{protein.name}',
-                    rna(state="full", toehold=None) >> rna(state="full", toehold=None) + protein(state="immature"),
-                    self.k_tl)
+        # Binding rule: both RNA and trigger must be free to bind
+        rule = Rule(
+            f'TOEHOLD_{trigger.name}_binding_to_{rna.name}',
+            trigger(state="full", toehold=None, sequestration="free") +
+            rna(state="full", toehold=None, sequestration="free") >>
+            trigger(state="full", toehold=1, sequestration="bound") %
+            rna(state="full", toehold=1, sequestration="bound"),
+            self.k_toehold_binding
+        )
         rules.append(rule)
 
-        rule = Rule(f'TOEHOLD_bound_translation_of_{rna.name}_to_{protein.name}',
-                    trigger(state="full", toehold=1) % rna(state="full", toehold=1) >>
-                    trigger(state="full", toehold=1) % rna(state="full", toehold=1) + protein(state="immature"),
-                    self.k_tl_bound)
+        # Unbinding rule: both RNA and trigger revert to free state upon unbinding
+        rule = Rule(
+            f'TOEHOLD_{trigger.name}_unbinding_from_{rna.name}',
+            trigger(state="full", toehold=1, sequestration="bound") %
+            rna(state="full", toehold=1, sequestration="bound") >>
+            trigger(state="full", toehold=None, sequestration="free") +
+            rna(state="full", toehold=None, sequestration="free"),
+            self.k_toehold_unbinding
+        )
+        rules.append(rule)
+
+        # Translation when RNA is unbound (free state)
+        rule = Rule(
+            f'TOEHOLD_unbound_translation_of_{rna.name}_to_{protein.name}',
+            rna(state="full", toehold=None, sequestration="free") >>
+            rna(state="full", toehold=None, sequestration="free") + protein(state="immature"),
+            self.k_tl
+        )
+        rules.append(rule)
+
+        # Translation when RNA is bound to the trigger
+        rule = Rule(
+            f'TOEHOLD_bound_translation_of_{rna.name}_to_{protein.name}',
+            trigger(state="full", toehold=1, sequestration="bound") %
+            rna(state="full", toehold=1, sequestration="bound") >>
+            trigger(state="full", toehold=1, sequestration="bound") %
+            rna(state="full", toehold=1, sequestration="bound") + protein(state="immature"),
+            self.k_tl_bound
+        )
         rules.append(rule)
 
         self.rules = rules
-
-        pass

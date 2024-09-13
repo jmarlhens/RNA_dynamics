@@ -7,11 +7,17 @@ from modules.base_modules import Transcription, Translation
 from modules.molecules import RNA
 from modules.Csy4_activity import Csy4Activity
 from modules.toehold import Toehold
+from modules.sequestration import Sequestration
 
 
-def setup_model(plasmids, parameters):
+def setup_model(plasmids, parameters, bindings=None):
     """
-    Set up the PySB model with the given plasmids and parameters.
+    Set up the PySB model with the given plasmids, parameters, and optional sequestration reactions.
+
+    :param plasmids: List of plasmids to be processed.
+    :param parameters: Dictionary of model parameters.
+    :param bindings: Optional list of tuples specifying sequestration reactions between species.
+    :return: PySB Model object.
     """
     model = Model()
 
@@ -26,12 +32,24 @@ def setup_model(plasmids, parameters):
     # Generate observables for the model
     generate_observables(model)
 
+    # Process sequestration (binding and unbinding) reactions if specified
+    if bindings:
+        for species1_name, species2_name in bindings:
+            # Retrieve or create instances of the species (RNA or Protein based on prefix)
+            species1 = RNA.get_instance(sequence_name=species1_name, model=model)
+            species2 = RNA.get_instance(sequence_name=species2_name, model=model)
+            # Create the sequestration reaction
+            Sequestration(species1, species2, model)
+
     return model
 
 
 def process_plasmid(plasmid, model):
     """
     Processes the given plasmid by adding it to the model with appropriate controls.
+
+    :param plasmid: Tuple containing transcriptional control, translational control, and CDS list.
+    :param model: The PySB model to which components are added.
     """
     transcriptional_control = plasmid[0]
     translational_control = plasmid[1]
@@ -74,6 +92,7 @@ def process_plasmid(plasmid, model):
             Toehold(rna=rna, translational_control=translational_control, prot_name=seq, model=model)
         else:
             Translation(rna=rna, prot_name=seq, model=model)
+
 
 
 def generate_observables(model):

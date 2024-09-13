@@ -5,7 +5,6 @@ def test_star():
     # Plasmid design
     plasmids = [
         (("Sense1", "Star1"), None, [(True, "GFP")]),
-        (None, None, [(True, "RFP")]),
         (None, None, [(False, "Star1")]),
     ]
 
@@ -29,7 +28,6 @@ def test_star():
         "k_star_stop_reg": 0.01,
         "k_Sense1_GFP_concentration": 1,
         "k_Star1_concentration": 1,
-        "k_RFP_concentration": 1,
     }
 
     # Setup the model

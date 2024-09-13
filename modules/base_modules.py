@@ -1,11 +1,9 @@
 from pysb import Rule, Model, Expression
-
 from modules.reactioncomplex import ReactionComplex
 from modules.molecules import RNA, Protein
 
-
 class Transcription(ReactionComplex):
-    def __init__(self, sequence_name: str = None, model:Model=None):
+    def __init__(self, sequence_name: str = None, model: Model = None):
         rna = RNA.get_instance(sequence_name=sequence_name, model=model)
 
         super().__init__(substrate=None, product=rna, model=model)
@@ -15,16 +13,17 @@ class Transcription(ReactionComplex):
         Expression('k_tx_plasmid_' + sequence_name, self.k_concentration * self.k_tx)
         self.k_deg = self.parameters["k_rna_deg"]
 
-
-
         rules = []
-        # Transcription
-        rule = Rule(f'transcription_{rna.name}',
-                    None >> rna(state="full", sense=None, toehold=None),
-                    model.expressions['k_tx_plasmid_' + sequence_name])
+        # Transcription rule: RNA is produced in the "free" sequestration state
+        rule = Rule(
+            f'transcription_{rna.name}',
+            None >> rna(state="full", sense=None, toehold=None, sequestration="free"),
+            model.expressions['k_tx_plasmid_' + sequence_name]
+        )
         rules.append(rule)
 
         self.rules = rules
+
 
 
 
