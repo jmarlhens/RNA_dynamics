@@ -591,7 +591,7 @@ def likelihood(params):
 
 
 """
-One can include time dependency into the build_and_simulate by separating the intervals of different inducer concentrations and apply multiple build_and_simulate runs.
+One can include time dependency into the build_simulate_analyse by separating the intervals of different inducer concentrations and apply multiple build_simulate_analyse runs.
 Results need to be joined afterwards
 """
 

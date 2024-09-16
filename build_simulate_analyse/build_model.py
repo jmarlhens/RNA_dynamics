@@ -115,7 +115,7 @@ def simulate_model(model, t):
 
 def visualize_simulation(t, y_res, species_to_plot):
     """
-    Visualizes the build_and_simulate results.
+    Visualizes the build_simulate_analyse results.
     """
     fig, ax = plt.subplots()
     species = y_res.dataframe.columns

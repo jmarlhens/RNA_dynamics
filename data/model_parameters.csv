@@ -12,9 +12,9 @@ k_trigger_unbinding,0.5
 k_tx_init,1.0
 k_star_bind,5.0
 k_star_unbind,0.1
-k_star_act,2.0
-k_star_act_reg,0.01
-k_star_stop,1.0
+k_star_act,0.01
+k_star_act_reg,4.0
+k_star_stop,4.0
 k_star_stop_reg,0.01
 k_sequestration_bind,2.0
 k_sequestration_unbind,0.1

@@ -9,16 +9,20 @@ def test_iffl_1():
     # 2. Second plasmid produces aTrigger3 controlled by Sense6.
     # 3. Third plasmid uses Toehold3 to control GFP translation.
     plasmids = [
-        (None, None, [(False, "Star6"), (False, "Trigger3")]),  # Step 1: Express Star6 and Trigger3, cleaved by Csy4
-        (("Sense6", "Star6"), None, [(False, "aTrigger3")]),  # Step 2: Express aTrigger3 under control of Sense6
-        (None, ("Toehold3", "Trigger3"), [(True, "GFP")]),  # Step 3: Use Toehold3 to control GFP translation
+        (None, None, [(False, "Star1")]),
+        (None, None, [(False, "Star6")]),
+        (("Sense1", "Star1"), None, [(False, "aSTAR6")]),
+        (("Sense6", "Star6"), None, [(False, "Trigger3")]),
+        (("Sense6", "Star6"), ("Toehold3", "Trigger3"), [(True, "GFP")]),
     ]
 
     # Define model parameters
     parameters_plasmids = {
-        "k_Star6_Trigger3_concentration": 1,  # Concentration factor for Trigger3 production
-        "k_Sense6_aTrigger3_concentration": 1,  # Concentration factor for aTrigger3 production
-        "k_Toehold3_GFP_concentration": 1,  # Concentration factor for GFP translation
+        "k_Star1_concentration": 1,
+        "k_Star6_concentration": 1,
+        "k_Sense1_aSTAR6_concentration": 1,
+        "k_Sense6_Trigger3_concentration": 1,
+        "k_Sense6_Toehold3_GFP_concentration": 1,
     }
 
     # load and add parameters_plasmids
@@ -26,9 +30,8 @@ def test_iffl_1():
     parameters = dict(zip(parameters_df['Parameter'], parameters_df['Value']))
     parameters.update(parameters_plasmids)
 
-    # Define sequestration reactions: [(species1, species2)]
     bindings = [
-        ("Trigger3", "Sense6_aTrigger3"),  # Sequestration between Trigger3 and aTrigger3
+        ("Star6", "Sense1_aSTAR6"),
     ]
 
     # Setup the model with the plasmids, parameters, and bindings

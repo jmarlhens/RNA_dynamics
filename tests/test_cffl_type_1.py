@@ -1,5 +1,5 @@
 import numpy as np
-from build_and_simulate.build_model import setup_model, simulate_model, visualize_simulation
+from build_simulate_analyse.build_model import setup_model, simulate_model, visualize_simulation
 import pandas as pd
 
 def test_coherent_feed_forward_loop():
@@ -29,11 +29,11 @@ def test_coherent_feed_forward_loop():
     # Setup the model with the plasmids and parameters
     model = setup_model(plasmids, parameters)
 
-    # Time span for build_and_simulate
+    # Time span for build_simulate_analyse
     n_steps = 100
     t = np.linspace(0, 20, n_steps)
 
-    # Run the build_and_simulate
+    # Run the build_simulate_analyse
     y_res = simulate_model(model, t)
 
     y_res.dataframe["obs_Protein_GFP"]

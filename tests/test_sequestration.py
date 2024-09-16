@@ -1,5 +1,5 @@
 import numpy as np
-from build_and_simulate.build_model import setup_model, simulate_model, visualize_simulation
+from build_simulate_analyse.build_model import setup_model, simulate_model, visualize_simulation
 from pysb import Observable
 import pandas as pd
 
@@ -35,11 +35,11 @@ def test_sequestration():
     Observable("free_star", model.monomers['RNA_Star6'](state="full", binding=None))
     Observable("free_antistar", model.monomers['RNA_aStar6'](state="full", binding=None))
 
-    # Time span for build_and_simulate
+    # Time span for build_simulate_analyse
     n_steps = 100
     t = np.linspace(0, 20, n_steps)
 
-    # Run the build_and_simulate
+    # Run the build_simulate_analyse
     y_res = simulate_model(model, t)
 
     # Define species to plot including the new observables

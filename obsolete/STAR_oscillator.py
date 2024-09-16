@@ -59,11 +59,11 @@ Parameter('RNA_2_0', 1e-4 * model.parameters['omega'].value) # Initial concentra
 model.initial(RNA_1(state='init', r=None, terminator=None), RNA_1_0)
 model.initial(RNA_2(state='init', r=None, terminator=None), RNA_2_0)
 
-# Define the build_and_simulate conditions
+# Define the build_simulate_analyse conditions
 t = np.linspace(0, 10, 10)
 # y = ScipyOdeSimulator(model, verbose=True).run(tspan=t).all
 
-# stochastic build_and_simulate
+# stochastic build_simulate_analyse
 t = np.linspace(0, 10000, 10000)
 y = BngSimulator(model, tspan=t, verbose=False).run(method = "nf").all
 
@@ -180,11 +180,11 @@ model.initial(RNA_1(state='init', r=None, terminator=None), RNA_1_0)
 model.initial(RNA_2(state='init', r=None, terminator=None), RNA_2_0)
 model.initial(RNA_3(state='init', r=None, terminator=None), RNA_3_0)
 
-# Define the build_and_simulate conditions
+# Define the build_simulate_analyse conditions
 t = np.linspace(0, 10, 10)
 # y = ScipyOdeSimulator(model, verbose=True).run(tspan=t).all
 
-# stochastic build_and_simulate
+# stochastic build_simulate_analyse
 t = np.linspace(0, 20000, 10000)
 y = BngSimulator(model, tspan=t, verbose=False).run(method = "nf").all
 

@@ -41,9 +41,10 @@ class Translation(ReactionComplex):
         # Translation rule: RNA must be unbound (`binding=None`) to translate into protein
         rule = Rule(
             f'translation_of_{rna.name}_to_{protein.name}',
-            rna(state="full", binding=None) >>
-            rna(state="full", binding=None) + protein(state="immature"),
+            rna(state="full") >>
+            rna(state="full") + protein(state="immature"),
             self.k_tl
         )
+        #  it's actually a problem we use same binding site definition for both star and toehold. cause then for translation, the biding site should be  ?
         rules.append(rule)
         self.rules = rules

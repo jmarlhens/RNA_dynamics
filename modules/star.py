@@ -77,7 +77,7 @@ class STAR(ReactionComplex):
         )
         rules.append(full_transcription_rule)
 
-        # Stop of transcription with RNA inhibitor
+        # Stop of transcription with the STAR RNA regulator
         partial_transcription_with_regulator_rule = Rule(
             f'STAR_RNA_partial_transcription_reg_{regulated.name}_{regulator.name}',
             regulated(state='init', binding=1) % regulator(state='full', binding=1) >>

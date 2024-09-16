@@ -1,12 +1,12 @@
 import numpy as np
-from build_and_simulate.build_model import setup_model, simulate_model, visualize_simulation
+from build_simulate_analyse.build_model import setup_model, simulate_model, visualize_simulation
 import pandas as pd
 
 def main():
-    # Define plasmid design for the build_and_simulate
+    # Define plasmid design for the build_simulate_analyse
     plasmids = [(None, None, [(True, "GFP")])]  # Example plasmid configuration
 
-    # Time span for build_and_simulate
+    # Time span for build_simulate_analyse
     t = np.linspace(0, 20, 100)
 
     # Define model parameters
@@ -22,7 +22,7 @@ def main():
     # Initialize model and add plasmids
     model = setup_model(plasmids, parameters)
 
-    # Run the build_and_simulate
+    # Run the build_simulate_analyse
     y_res = simulate_model(model, t)
 
     # Visualize results
