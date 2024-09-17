@@ -15,7 +15,7 @@ class Toehold(ReactionComplex):
         self.toehold_name = translational_control[0]
         self.trigger_name = translational_control[1]
 
-        # RNA.get_instance returns either the already existing instance or creates it
+        # Retrieve or create the trigger RNA instance
         trigger = RNA.get_instance(sequence_name=self.trigger_name, model=model)
 
         # Parameters
@@ -26,40 +26,41 @@ class Toehold(ReactionComplex):
 
         rules = []
 
-        # Binding rule: RNA and trigger bind if both are unbound (binding=None)
+        # Binding rule: Trigger RNA binds to Toehold RNA at the `toehold` site when both are unbound (toehold=None)
         binding_rule = Rule(
             f'TOEHOLD_{trigger.name}_binding_to_{rna.name}',
-            trigger(state="full", binding=None) + rna(state="full", binding=None) >>
-            trigger(state="full", binding=1) % rna(state="full", binding=1),
+            trigger(state="full", toehold=None) + rna(state="full", toehold=None) >>
+            trigger(state="full", toehold=1) % rna(state="full", toehold=1),
             self.k_toehold_binding
         )
         rules.append(binding_rule)
 
-        # Unbinding rule: RNA and trigger unbind to return to unbound state (binding=None)
+        # Unbinding rule: Trigger RNA unbinds from Toehold RNA at the `toehold` site
         unbinding_rule = Rule(
             f'TOEHOLD_{trigger.name}_unbinding_from_{rna.name}',
-            trigger(state="full", binding=1) % rna(state="full", binding=1) >>
-            trigger(state="full", binding=None) + rna(state="full", binding=None),
+            trigger(state="full", toehold=1) % rna(state="full", toehold=1) >>
+            trigger(state="full", toehold=None) + rna(state="full", toehold=None),
             self.k_toehold_unbinding
         )
         rules.append(unbinding_rule)
 
-        # Translation when RNA is unbound (binding=None)
+        # Translation when Toehold RNA is unbound (toehold=None)
         unbound_translation_rule = Rule(
             f'TOEHOLD_unbound_translation_of_{rna.name}_to_{protein.name}',
-            rna(state="full", binding=None) >>
-            rna(state="full", binding=None) + protein(state="immature"),
+            rna(state="full", toehold=None) >>
+            rna(state="full", toehold=None) + protein(state="immature"),
             self.k_tl_unbound
         )
         rules.append(unbound_translation_rule)
 
-        # Translation when RNA is bound to the trigger (binding=1)
+        # Translation when Toehold RNA is bound to the Trigger (toehold=1)
         bound_translation_rule = Rule(
             f'TOEHOLD_bound_translation_of_{rna.name}_to_{protein.name}',
-            trigger(state="full", binding=1) % rna(state="full", binding=1) >>
-            trigger(state="full", binding=1) % rna(state="full", binding=1) + protein(state="immature"),
+            trigger(state="full", toehold=1) % rna(state="full", toehold=1) >>
+            trigger(state="full", toehold=1) % rna(state="full", toehold=1) + protein(state="immature"),
             self.k_tl_bound
         )
         rules.append(bound_translation_rule)
 
+        # Assign all rules to the instance
         self.rules = rules

@@ -1,6 +1,7 @@
 import numpy as np
 from build_simulate_analyse.build_model import setup_model, simulate_model, visualize_simulation
 import pandas as pd
+from utils.print_odes import find_ODEs_from_Pysb_model, convert_to_latex, write_to_file
 
 def test_star(plot=True, parameters_plasmids={"k_Sense1_GFP_concentration": 1, "k_Star1_concentration": 1}):
     # Plasmid design
@@ -9,11 +10,6 @@ def test_star(plot=True, parameters_plasmids={"k_Sense1_GFP_concentration": 1, "
         (None, None, [(False, "Star1")]),
     ]
 
-    # # Define model parameters
-    # parameters_plasmids = {
-    #     "k_Sense1_GFP_concentration": 1,
-    #     "k_Star1_concentration": 1,
-    # }
 
     # load and add parameters_plasmids
     parameters_df = pd.read_csv('../data/model_parameters.csv')
@@ -41,3 +37,10 @@ def test_star(plot=True, parameters_plasmids={"k_Sense1_GFP_concentration": 1, "
 
 if __name__ == "__main__":
     model = test_star()
+
+    equations = find_ODEs_from_Pysb_model(model)
+    print(equations)
+
+    # Convert and write to file
+    latex_equations = convert_to_latex(equations)
+    write_to_file(latex_equations)

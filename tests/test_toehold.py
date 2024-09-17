@@ -18,11 +18,6 @@ def test_toehold(plot=True, parameters_plasmids = {"k_Toehold1_GFP_concentration
     # Setup the model
     model = setup_model(plasmids, parameters)
 
-    # Add observables for visualization
-    Observable("Free_Trigger", model.monomers['RNA_Trigger1'](state="full", binding=None))
-    Observable("Bound_Toehold", model.monomers['RNA_Trigger1'](state="full", binding=1) %
-               model.monomers['RNA_Toehold1_GFP'](state="full", binding=1))
-
     # Time span for build_simulate_analyse
     n_steps = 1000
     t = np.linspace(0, 20, n_steps)

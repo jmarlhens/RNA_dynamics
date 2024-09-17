@@ -56,10 +56,9 @@ def process_plasmid(plasmid, model):
     if len(cds) == 0:
         return
 
-    cleave_rna = len(cds) > 1
     sequence_names = [elem[1] for elem in cds]
 
-    # Construct the RNA name by only including non-None control elements
+    # Construct the RNA name by including transcriptional and translational controls
     rna_name_parts = []
     if transcriptional_control:
         rna_name_parts.append(transcriptional_control[0])
@@ -70,26 +69,47 @@ def process_plasmid(plasmid, model):
     # Join the parts with an underscore, but only if there are parts to join
     rna_name = "_".join(rna_name_parts)
 
+    # Step 1: Handle transcription with or without STAR regulation
     if transcriptional_control:
+        # Create STAR-regulated transcription
         star = STAR(sequence_name=rna_name, transcriptional_control=transcriptional_control, model=model)
         rna = star.product
         products = [rna]
     else:
+        # Regular transcription
         transcription = Transcription(sequence_name=rna_name, model=model)
         rna = transcription.product
         products = [rna]
 
-    if cleave_rna:
-        csy4 = Csy4Activity(rna=rna, product_rna_names=sequence_names, model=model)
+    # Step 2: Determine if Csy4 cleavage is needed
+    cleavage_points = []
+
+    # Case 1: Cleavage between sense RNA (from transcriptional control) and subsequent non-translated CDS
+    if transcriptional_control and len(cds) > 0:
+        # Add both the sense RNA name and the CDS sequence names for cleavage
+        cleavage_set = [transcriptional_control[0]] + sequence_names
+        cleavage_points.append(cleavage_set)
+
+    # Case 2: Cleavage between multiple CDSs and no transcriptional control
+    if len(cds) > 1:
+        cleavage_points.append(sequence_names)
+
+    # Apply Csy4 cleavage where needed
+    for cleavage_set in cleavage_points:
+        csy4 = Csy4Activity(rna=rna, product_rna_names=cleavage_set, model=model)
         products = csy4.product
 
+    # Step 3: Handle translation of each CDS product
     for (translate, seq), rna in zip(cds, products):
         if not translate:
-            continue
+            continue  # Skip non-translated RNAs
         if translational_control:
+            # Apply toehold regulation if translational control is present
             Toehold(rna=rna, translational_control=translational_control, prot_name=seq, model=model)
         else:
+            # Standard translation
             Translation(rna=rna, prot_name=seq, model=model)
+
 
 
 

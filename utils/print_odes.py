@@ -3,6 +3,47 @@ import sympy as sp
 import numpy as np
 
 
+def format_species_name(species):
+    """
+    Format species names according to the specified formatting rules.
+
+    :param species: A PySB species object.
+    :return: Formatted species name as a string.
+    """
+    species_str = str(species)
+
+    # Handle RNA species formatting
+    if species_str.startswith('RNA_'):
+        name_parts = species_str.split('(')[0].replace('RNA_', '')
+        state = species_str.split("state=")[1].split("'")[1]
+
+        # Check for complexes
+        if '%' in species_str:
+            complexes = species_str.split('%')
+            formatted_complexes = []
+            for complex in complexes:
+                complex_name = complex.split('(')[0].replace('RNA_', '')
+                complex_state = complex.split("state=")[1].split("'")[1]
+                # Manually construct the LaTeX-like formatted string
+                formatted_complex = "RNA^{" + complex_name.replace('_', r'cdot ') + "}_{" + complex_state + "}"
+                formatted_complexes.append(formatted_complex)
+            return " : ".join(formatted_complexes)
+
+        # Format single RNA species
+        formatted_name = "RNA^{" + name_parts.replace('_', r'cdot ') + "}_{" + state + "}"
+        return formatted_name
+
+    # Handle Protein species formatting
+    elif species_str.startswith('Protein_'):
+        protein_name = species_str.split('(')[0].replace('Protein_', '')
+        state = species_str.split("state=")[1].split("'")[1]
+        formatted_name = f"{protein_name}_{{{state}}}"
+        return formatted_name
+
+    # Fallback for other cases
+    return species_str
+
+
 # Function to substitute expressions in an ODE string
 def substitute_expressions(ode_string, expression_dict):
     for expr_name, expr_definition in expression_dict.items():
@@ -12,19 +53,21 @@ def substitute_expressions(ode_string, expression_dict):
         ode_string = re.sub(pattern, f'({expr_definition})', ode_string)
     return ode_string
 
+
 def find_ODEs_from_Pysb_model(model):
     odes = model._odes
     if len(odes) == 0:
         raise Exception("Model has no odes. Please run ODE build_simulate_analyse before to instantiate odes.")
     #
+
+    species_names = [format_species_name(species) for species in model.species]
     equations = []
     for i, eq in enumerate(odes):
-        equations += ["d" + model.observables[i].name + f"/dt = {eq}"]
+        equations += ["d" + species_names[i].name + f"/dt = {eq}"]
 
-    #
     name_mapping = {}
-    for i, species in enumerate(model.species):
-        name_mapping[f'__s{i}'] = model.observables[i].name
+    for i, species in enumerate(species_names):
+        name_mapping[species.name] = f"x_{i}"
     expression_dict = {expr.name: str(expr.expand_expr()) for expr in model.expressions}
 
     # Substitute expressions in the ODEs

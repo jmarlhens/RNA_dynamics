@@ -33,19 +33,19 @@ class STAR(ReactionComplex):
 
         rules = []
 
-        # RNA transcription initiation: RNA starts in unbound state (binding=None)
+        # RNA transcription initiation: RNA starts in unbound state (sense=None)
         transcription_initiation_rule = Rule(
             f'STAR_RNA_transcription_initiation_{regulated.name}',
-            None >> regulated(state='init', binding=None),
+            None >> regulated(state='init', sense=None, toehold=None),
             model.expressions['k_tx_plasmid_' + sequence_name]
         )
         rules.append(transcription_initiation_rule)
 
-        # Binding of RNA regulator to the early transcript: Uses unified `binding` site
+        # Binding of RNA regulator to the early transcript: Uses the `sense` site
         binding_rule = Rule(
             f'STAR_RNA_regulator_binding_{regulated.name}_{regulator.name}',
-            regulated(binding=None) + regulator(state='full', binding=None) >>
-            regulated(binding=1) % regulator(state='full', binding=1),
+            regulated(sense=None) + regulator(state='full', sense=None) >>
+            regulated(sense=1) % regulator(state='full', sense=1),
             self.k_bind
         )
         rules.append(binding_rule)
@@ -53,8 +53,8 @@ class STAR(ReactionComplex):
         # Unbinding of full and early RNA transcript and RNA regulator
         unbinding_rule = Rule(
             f'STAR_RNA_regulator_unbinding_full_{regulated.name}_{regulator.name}',
-            regulated(binding=1) % regulator(state='full', binding=1) >>
-            regulated(binding=None) + regulator(state='full', binding=None),
+            regulated(sense=1) % regulator(state='full', sense=1) >>
+            regulated(sense=None) + regulator(state='full', sense=None),
             self.k_unbind
         )
         rules.append(unbinding_rule)
@@ -62,8 +62,8 @@ class STAR(ReactionComplex):
         # Activation of transcription with the RNA regulator
         full_transcription_with_regulator_rule = Rule(
             f'STAR_RNA_full_transcription_reg_{regulated.name}_{regulator.name}',
-            regulated(state='init', binding=1) % regulator(state='full', binding=1) >>
-            regulated(state='full', binding=1) % regulator(state='full', binding=1),
+            regulated(state='init', sense=1) % regulator(state='full', sense=1) >>
+            regulated(state='full', sense=1) % regulator(state='full', sense=1),
             self.k_act_reg
         )
         rules.append(full_transcription_with_regulator_rule)
@@ -71,8 +71,8 @@ class STAR(ReactionComplex):
         # Full transcription without the RNA regulator
         full_transcription_rule = Rule(
             f'STAR_RNA_full_transcription_{regulated.name}',
-            regulated(state='init', binding=None) >>
-            regulated(state='full', binding=None),
+            regulated(state='init', sense=None) >>
+            regulated(state='full', sense=None),
             self.k_act
         )
         rules.append(full_transcription_rule)
@@ -80,8 +80,8 @@ class STAR(ReactionComplex):
         # Stop of transcription with the STAR RNA regulator
         partial_transcription_with_regulator_rule = Rule(
             f'STAR_RNA_partial_transcription_reg_{regulated.name}_{regulator.name}',
-            regulated(state='init', binding=1) % regulator(state='full', binding=1) >>
-            regulated(state='partial', binding=1) % regulator(state='full', binding=1),
+            regulated(state='init', sense=1) % regulator(state='full', sense=1) >>
+            regulated(state='partial', sense=1) % regulator(state='full', sense=1),
             self.k_stop_reg
         )
         rules.append(partial_transcription_with_regulator_rule)
@@ -89,8 +89,8 @@ class STAR(ReactionComplex):
         # Partial transcription without the RNA regulator
         partial_transcription_rule = Rule(
             f'STAR_RNA_partial_transcription_{regulated.name}',
-            regulated(state='init', binding=None) >>
-            regulated(state='partial', binding=None),
+            regulated(state='init', sense=None) >>
+            regulated(state='partial', sense=None),
             self.k_stop
         )
         rules.append(partial_transcription_rule)

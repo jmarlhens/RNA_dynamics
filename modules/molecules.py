@@ -26,8 +26,8 @@ class RNA(MyMonomer):
 
     def __init__(self, sequence_name: str, model: Model):
         name = RNA.sequence_name_to_name(sequence_name)
-        # Adding a "binding" site to handle all interactions (sense, toehold, sequestration)
-        super().__init__(name=name, sites=["binding", "state"],
+        # Separate binding sites for sense (STAR regulation) and toehold (Toehold regulation)
+        super().__init__(name=name, sites=["sense", "toehold", "state"],
                          site_states={
                              "state": {"full", "partial", "init"},
                          })
@@ -38,10 +38,10 @@ class RNA(MyMonomer):
 
         # Add degradation rule for the RNA
         rule_name_degradation = f'RNA_degradation_{self.name}'
-        rule = Rule(rule_name_degradation, self() >> None, k_rna_deg)
+        degradation_rule = Rule(rule_name_degradation, self() >> None, k_rna_deg)
 
         # Add the degradation rule to the model
-        model.add_component(rule)
+        model.add_component(degradation_rule)
 
 class Protein(MyMonomer):
     prefix = "Protein_"
