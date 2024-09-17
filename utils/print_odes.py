@@ -25,12 +25,12 @@ def format_species_name(species):
                 complex_name = complex.split('(')[0].replace('RNA_', '')
                 complex_state = complex.split("state=")[1].split("'")[1]
                 # Manually construct the LaTeX-like formatted string
-                formatted_complex = "RNA^{" + complex_name.replace('_', r'cdot ') + "}_{" + complex_state + "}"
+                formatted_complex = "RNA^{" + complex_name.replace('_', r' cdot ') + "}_{" + complex_state + "}"
                 formatted_complexes.append(formatted_complex)
             return " : ".join(formatted_complexes)
 
         # Format single RNA species
-        formatted_name = "RNA^{" + name_parts.replace('_', r'cdot ') + "}_{" + state + "}"
+        formatted_name = "RNA^{" + name_parts.replace('_', r' cdot ') + "}_{" + state + "}"
         return formatted_name
 
     # Handle Protein species formatting
@@ -63,15 +63,34 @@ def find_ODEs_from_Pysb_model(model):
     species_names = [format_species_name(species) for species in model.species]
     equations = []
     for i, eq in enumerate(odes):
-        equations += ["d" + species_names[i].name + f"/dt = {eq}"]
+        equations += ["d" + species_names[i] + f"/dt = {eq}"]
 
     name_mapping = {}
     for i, species in enumerate(species_names):
-        name_mapping[species.name] = f"x_{i}"
-    expression_dict = {expr.name: str(expr.expand_expr()) for expr in model.expressions}
+        name_mapping[f"__s{i}"] = species
+    space = ", "
+
+    expression_mapping = {}
+    for i, expression in enumerate(model.expressions):
+        expression_str = str(expression.expand_expr())
+        components = expression_str.split('*')
+        formatted_components = [fr"k_{{{space.join(part[2:].split('_'))}}}" for part in components]
+
+        expression_str = r" ".join(formatted_components)
+        expression_mapping[expression.name] = expression_str
+
+
+
+    parameter_mapping = {}
+    for i, param in enumerate(model.parameters):
+        # "k_rna_deg" to k_{rna \ deg}
+        # k_trigger_binding to k_{trigger \ binding}
+        # k_Sense1_GFP_concentration to k_{Sense1 \ GFP \ concentration}
+        parameter_mapping[param.name] = fr"k_{{{space.join(param.name[2:].split('_'))}}}"
 
     # Substitute expressions in the ODEs
-    equations = [substitute_expressions(eq, expression_dict) for eq in equations]
+    equations = [substitute_expressions(eq, parameter_mapping) for eq in equations]
+    equations = [substitute_expressions(eq, expression_mapping) for eq in equations]
     equations = [substitute_expressions(eq, name_mapping) for eq in equations]
 
     return equations
@@ -111,6 +130,36 @@ def simpy_equations_from_Pysb_model(model):
     equations_sym, variables = simpy_equations_from_string(equations)
     return equations_sym, variables
 
+
+import re
+
+
+def format_expression(expression):
+    # Replace ((...)*(...))*(-1) with -(...)*(...)
+    expression = re.sub(r'\(\(([^()]+)\)\*\(([^()]+)\)\)\*\(-1\)', r'-(\1)*(\2)', expression)
+
+    # Replace ((...)*(...)) with (...)*(...)
+    expression = re.sub(r'\(\(([^()]+)\)\*\(([^()]+)\)\)', r'(\1)*(\2)', expression)
+
+    # Handle complex terms ending with *(-1)
+    expression = re.sub(r'\((([^()]+\*)+[^()]+)\)\*\(-1\)', r'-(\1)', expression)
+
+    # Remove unnecessary outer parentheses around single terms
+    expression = re.sub(r'\((\w+(?:\^{[^{}]+})?(?:_{[^{}]+})?)\)', r'\1', expression)
+
+    # Remove *-1 at the end of terms
+    expression = re.sub(r'\*-1', r'', expression)
+
+    # Handle remaining (...)*(-1) cases
+    expression = re.sub(r'\(([^()]+)\)\*\(-1\)', r'-(\1)', expression)
+
+    # Simplify addition of negative terms
+    expression = re.sub(r'\+\s*-', r'- ', expression)
+
+    return expression
+
+
+
 def convert_to_latex(equations):
     # Convert the ODEs into LaTeX format with specified modifications
     formatted_equations = []
@@ -124,15 +173,12 @@ def convert_to_latex(equations):
         # remove "*1"
         eq = re.sub(r'\*(1)', '', eq)
 
-        # Simplify multiplication by -1 by targeting the entire expression preceding it
-        # Look for expressions enclosed in parentheses followed by *(-1) and prepend a negative sign
-        eq = re.sub(r'\(([^)]+)\)\*\(\-1\)', r'-\(\1\)', eq)
-        # Address any instances not enclosed by parentheses, though this case should be rare
-        eq = re.sub(r'(\w+)\*\(\-1\)', r'-\1', eq)
+        # Case 1: Match patterns like ((k_{star, act})*(RNA^{Sense1 \cdot GFP}_{init}))*(-1)
+        eq = format_expression(eq)
 
         # Convert derivatives and general fractions to LaTeX fraction format
         # Handle derivatives first
-        eq = re.sub(r'(d\w+_{\w+})/(d\w+)', r'\\frac{\1}{\2}', eq)
+        eq = re.sub(r'(d\w+\^\{[\w\\\s\.\-]+\}_\{\w+\})/(d\w+)', r'\\frac{\1}{\2}', eq)
         # Handle more complex expressions
         eq = re.sub(r'(\([^)]+\))\/(\([^)]+\))', r'\\frac{\1}{\2}', eq)
         # Handle simple variable or constant fractions
@@ -141,18 +187,37 @@ def convert_to_latex(equations):
         # Align the equation using &=
         eq = eq.replace('=', '&=')
 
+        # Change cdot to \cdot
+        eq = eq.replace(r'cdot', r'\cdot ')
+
         formatted_equations.append(eq)
 
     # Combine all equations into one, separated by \\
     combined_equations = ' \\\\\n'.join(formatted_equations)
     return f'\\begin{{align*}}\n{combined_equations}\n\\end{{align*}}'
 
+
 def write_to_file(latex_code, filename="odes.tex"):
-    # Write the LaTeX-formatted equations to a file
+    """
+    Write the LaTeX-formatted equations to a file with automatic line breaking for long equations.
+
+    :param latex_code: The LaTeX code containing the equations.
+    :param filename: The name of the file to save the LaTeX code.
+    """
     with open(filename, 'w') as file:
-        file.write('\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\n')
-        file.write(latex_code + '\n')
-        file.write('\\end{document}')
+        # Write the preamble including the breqn package for automatic line breaking
+        file.write('\\documentclass{article}\n')
+        file.write('\\usepackage{amsmath}\n')
+        file.write('\\usepackage{breqn}\n')  # Include breqn for line breaking
+        file.write('\\begin{document}\n')
+
+        # Use the dmath environment from breqn for each equation
+        equations = latex_code.split('\n')  # Split the LaTeX code into lines
+        for eq in equations:
+            if eq.strip():  # Only process non-empty lines
+                file.write(f'\\begin{{dmath}}\n{eq}\n\\end{{dmath}}\n')
+
+        file.write('\\end{document}\n')
 
 
 if __name__ == '__main__':
