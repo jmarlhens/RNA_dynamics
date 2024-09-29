@@ -27,7 +27,7 @@ def format_species_name(species):
                 # Manually construct the LaTeX-like formatted string
                 formatted_complex = "RNA^{" + complex_name.replace('_', r' cdot ') + "}_{" + complex_state + "}"
                 formatted_complexes.append(formatted_complex)
-            return " : ".join(formatted_complexes)
+            return ":".join(formatted_complexes)
 
         # Format single RNA species
         formatted_name = "RNA^{" + name_parts.replace('_', r' cdot ') + "}_{" + state + "}"
@@ -133,6 +133,26 @@ def simpy_equations_from_Pysb_model(model):
 
 import re
 
+import re
+
+
+def convert_to_latex_fractions(eq):
+    # Step 1: Handle full fraction expressions (numerator:denominator/variable)
+    eq = re.sub(r'(\b\w+\^\{[^}]+\}_\{\w+\}\s*:\s*\b\w+\^\{[^}]+\}_\{\w+\})\/(\b\w+)', r'\\frac{\1}{\2}', eq)
+
+    # Step 2: Handle derivatives in the numerator or denominator
+    eq = re.sub(r'(d\w+\^\{[\w\\\s\.\-]+\}_\{\w+\})\/(\b\w+)', r'\\frac{\1}{\2}', eq)
+
+    # Step 3: Handle more complex fractions (numerators/denominators that are enclosed in parentheses)
+    eq = re.sub(r'(\([^)]+\))\/(\([^)]+\))', r'\\frac{\1}{\2}', eq)
+
+    # Step 4: Handle simple fractions involving variables or constants (not involving colon ':')
+    eq = re.sub(r'(\b\w+|\b\w+_{\w+})\/(\b\w+|\b\w+_{\w+})', r'\\frac{\1}{\2}', eq)
+
+    # Step 5: Ensure complexes with colons (e.g., RNA_{...} : RNA_{...}) are not treated as fractions
+    eq = re.sub(r'(\w+\^{[^}]+})\s*:\s*(\w+\^{[^}]+})', r'\1 : \2', eq)  # Keep complexes intact
+
+    return eq
 
 def format_expression(expression):
     # Replace ((...)*(...))*(-1) with -(...)*(...)
@@ -177,12 +197,8 @@ def convert_to_latex(equations):
         eq = format_expression(eq)
 
         # Convert derivatives and general fractions to LaTeX fraction format
-        # Handle derivatives first
-        eq = re.sub(r'(d\w+\^\{[\w\\\s\.\-]+\}_\{\w+\})/(d\w+)', r'\\frac{\1}{\2}', eq)
-        # Handle more complex expressions
-        eq = re.sub(r'(\([^)]+\))\/(\([^)]+\))', r'\\frac{\1}{\2}', eq)
-        # Handle simple variable or constant fractions
-        eq = re.sub(r'(\b\w+|\b\w+_{\w+})\/(\b\w+|\b\w+_{\w+})', r'\\frac{\1}{\2}', eq)
+        eq = convert_to_latex_fractions(eq)
+
 
         # Align the equation using &=
         eq = eq.replace('=', '&=')
@@ -194,7 +210,7 @@ def convert_to_latex(equations):
 
     # Combine all equations into one, separated by \\
     combined_equations = ' \\\\\n'.join(formatted_equations)
-    return f'\\begin{{align*}}\n{combined_equations}\n\\end{{align*}}'
+    return f'\n{combined_equations}\n'
 
 
 def write_to_file(latex_code, filename="odes.tex"):
