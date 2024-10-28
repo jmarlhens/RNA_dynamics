@@ -1,5 +1,3 @@
-from typing import override
-
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,7 +20,7 @@ class ParallelTempering(OptimizationAlgorithm):
         self.swap_mask = swap_mask
         pass
 
-    @override
+
     def run(self, initial_parameters, n_samples=100, n_swaps=2):
         # ToDo Reset all run dependent values
         # Variance -> Will be adapted per chain, how to adapt per parameter (e.g. one could use gradient evaluation once in a while to choose variance in dependence to current gradient
@@ -144,9 +142,9 @@ def log_smile_adapt(params):
 """
 
 if __name__ == '__main__':
-    n_walkers = 100
+    n_walkers = 10
     n_chains = 2
-    n_samples = 10 ** 5
+    n_samples = 10 ** 3
     log_likelihood = log_smile_adapt
 
     log_prior = lambda params: np.log(np.all(np.logical_and(params <= 2, params >= -2), axis=-1) * 1)
