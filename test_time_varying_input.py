@@ -26,7 +26,7 @@ Observable('obs_Time', Time())
 Observable('obs_Protein', Protein())
 
 # Define the piecewise expression for k_syn
-Expression('k_syn', Piecewise((0, sp.Lt(obs_Time, 4)), (0, sp.Gt(obs_Time, 10)), (5, True)))
+Expression('k_syn', Piecewise((0, sp.Lt(obs_Time, 4)), (0, sp.Gt(obs_Time, 15)), (5, True)))
 
 # Define reactions
 Rule('Protein_synthesis', None >> Protein(), model.expressions['k_syn'])
@@ -37,7 +37,7 @@ Rule('Protein_degradation', Protein() >> None, k_deg)
 
 
 # Step 2: Simulate the model
-t_span = np.linspace(0, 20, 2001)
+t_span = np.linspace(0, 30, 3001)
 sim = ScipyOdeSimulator(model, tspan=t_span)
 result = sim.run()
 

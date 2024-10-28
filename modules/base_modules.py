@@ -1,4 +1,4 @@
-from pysb import Rule, Model, Expression
+from pysb import Rule, Model, Expression, Observable
 from modules.reactioncomplex import ReactionComplex
 from modules.molecules import RNA, Protein
 
@@ -9,8 +9,9 @@ class Transcription(ReactionComplex):
         super().__init__(substrate=None, product=rna, model=model)
 
         self.k_tx = self.parameters["k_tx"]
+        self.K_tx = self.parameters["K_tx"]
         self.k_concentration = self.parameters["k_" + sequence_name + "_concentration"]
-        Expression('k_tx_plasmid_' + sequence_name, self.k_concentration * self.k_tx)
+        Expression('k_tx_plasmid_' + sequence_name, (self.k_concentration * self.k_tx)/(self.K_tx + self.k_concentration))
         self.k_deg = self.parameters["k_rna_deg"]
 
         rules = []
@@ -32,8 +33,11 @@ class Translation(ReactionComplex):
         super().__init__(substrate=rna, product=protein, model=model)
 
         self.k_tl = self.parameters["k_tl"]
+        self.K_tl = self.parameters["K_tl"]
         self.k_mat = self.parameters["k_mat"]
         self.k_deg = self.parameters["k_prot_deg"]
+        Observable('obs_RNA_' + sequence_name, model.monomers['RNA_' + sequence_name](state='full'))
+        Expression('k_tl_eff_' + sequence_name, self.k_tl / self.K_tl + model.observables['obs_RNA_' + sequence_name])
 
         rules = []
 
@@ -42,7 +46,7 @@ class Translation(ReactionComplex):
             f'translation_of_{rna.name}_to_{protein.name}',
             rna(state="full") >>
             rna(state="full") + protein(state="immature"),
-            self.k_tl
+            model.expressions['k_tl_eff_' + sequence_name]
         )
         rules.append(rule)
 

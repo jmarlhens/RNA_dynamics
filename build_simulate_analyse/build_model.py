@@ -118,9 +118,14 @@ def generate_observables(model):
     Generate observables for the model based on monomers.
     """
     for monomer in model.monomers:
-        desired_state = "full" if "RNA" in monomer.name else "mature"
-        obs_name = "obs_" + monomer.name
-        Observable(obs_name, monomer(state=desired_state))
+        if "RNA" in monomer.name:
+            desired_state = "full"
+            obs_name = "obs_" + monomer.name
+            # Observable(obs_name, monomer(state=desired_state))
+        else:
+            desired_state = "mature"
+            obs_name = "obs_" + monomer.name
+            Observable(obs_name, monomer(state=desired_state))
 
 
 
