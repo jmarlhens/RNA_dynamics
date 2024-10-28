@@ -11,7 +11,7 @@ from modules.base_modules import Transcription, Translation
 from modules.molecules import RNA
 from modules.star import STAR
 from modules.toehold import Toehold
-from optimization.parallel_tempering import ParallelTempering
+from optimization.parallel_tempering_old import ParallelTempering
 from utils import print_odes
 
 from pydream.core import run_dream

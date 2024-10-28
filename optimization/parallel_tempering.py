@@ -1,449 +1,178 @@
-import multiprocessing
-import concurrent.futures
+from typing import override
 
-import os
-import sys
-import time
+import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy.stats
 
 from optimization.optimization_algorithm import OptimizationAlgorithm
 
-# from minimal_test import memory_location
-
 
 class ParallelTempering(OptimizationAlgorithm):
-    def __init__(self):
-        self.sample_history = None
-        self.posterior_history = None
-        self.tempered_posterior_history = None
-        self.acceptance_rates = None
-        self.swap_acceptance_rates = None
 
-        self.map_params = None
+    def __init__(self, log_likelihood, log_prior, n_dim, n_walkers=1, n_chains=10):
+        self.log_likelihood = log_likelihood
+        self.log_prior = log_prior
+        self.n_dim = n_dim
+
+        self.n_walkers = n_walkers
+        self.n_chains = n_chains
+
+        swap_mask = np.zeros(shape=(n_walkers, int(np.ceil(n_chains / 2) * 2)), dtype=bool)
+        swap_mask[:, ::2] = 1
+        self.swap_mask = swap_mask
         pass
 
-    @staticmethod
-    def evaluate_posterior(priors, log_likelihood, samples):
-        log_prob = np.sum([priors[id].logpdf(samples[id]) for id in samples.keys()])
-        if np.isinf(
-                log_prob):  # In case the parameters do not satisfy the priors, we can ommit evaluating the corresponding likelihood
-            log_likelihood_val = - np.inf
-        else:
-            log_likelihood_val = log_likelihood(parameters=samples)
+    @override
+    def run(self, initial_parameters, n_samples=100, n_swaps=2):
+        # ToDo Reset all run dependent values
+        # Variance -> Will be adapted per chain, how to adapt per parameter (e.g. one could use gradient evaluation once in a while to choose variance in dependence to current gradient
+        # ? How to adapt number of chains dynamically so that also there a desired acceptance rate is achieved?
 
-        return log_likelihood_val, log_prob
+        self.beta = np.power(0.5, np.arange(self.n_chains)).reshape(1, self.n_chains)
 
-    @staticmethod
-    def __step__(args):
-        chain_id, priors, log_likelihood, cur_inv_temp, cur_var, prev_samples, prev_posterior, prev_log_likelihood, prev_log_prob = args
-        param_ids = list(prev_samples.keys())
-        proposal_means = [prev_samples[id] for id in param_ids]
+        self.variance = np.ones(shape=(self.n_walkers, self.n_chains, self.n_dim))
+        self.variance = 0.1 * self.variance * np.expand_dims(np.expand_dims(np.arange(1, n_chains + 1), axis=0),
+                                                             axis=-1)
 
-        samples = np.random.normal(proposal_means, cur_var)
-        samples = {id: samples[iI] for iI, id in enumerate(param_ids)}
+        parameters = [None] * n_samples
+        priors = [None] * n_samples
+        likelihoods = [None] * n_samples
+        step_accepts = [None] * n_samples
+        # swap_accepts = [None] * n_samples
+        swap_accepts = []
 
-        log_likelihood_val, log_prob = ParallelTempering.evaluate_posterior(priors, log_likelihood, samples)
+        params = np.array(initial_parameters)
+        likelihood = self.log_likelihood(params)
+        prior = self.log_prior(params)
+        for iN in range(n_samples):
+            params, prior, likelihood, step_accept = self.step(params, prior, likelihood, index=iN)
+            # swap_accept = np.nan * np.ones(shape=(self.n_walkers, self.n_chains - 1))
+            if iN % 10 == 9:
+                params, prior, likelihood, swap_accept = self.swap(params, prior, likelihood, index=iN)
+                swap_accepts.append(swap_accept)
 
-        # ToDo Crosscheck whether log_prob is the right quantitiy here
-        # As we consider logarithmic quantities, the multiplication is an addition
-        tempered_posterior = cur_inv_temp * log_likelihood_val + log_prob
-        posterior = log_likelihood_val + log_prob
+            parameters[iN] = params
+            priors[iN] = prior
+            likelihoods[iN] = likelihood
+            step_accepts[iN] = step_accept
+            # swap_accepts[iN] = swap_accept
 
-        # print(f"Step Chain {chain_id}: {posterior}")
-        prev_tempered_posterior = cur_inv_temp * prev_log_likelihood + prev_log_prob
+            # print(iN)
 
-        # Due to logarithms the reference is zero (e.g. np.log(1)=0 and the fraction is a difference)
-        a = min(0, tempered_posterior - prev_tempered_posterior)
-        a = np.exp(a)
-        samp = np.random.rand()
-        accept = samp < a
+        parameters = np.array(parameters)
+        priors = np.array(priors)
+        likelihoods = np.array(likelihoods)
+        step_accepts = np.array(step_accepts)
+        swap_accepts = np.array(swap_accepts)
+        return parameters, priors, likelihoods, step_accepts, swap_accepts
 
-        prev_posterior_test = sum(ParallelTempering.evaluate_posterior(priors, log_likelihood, prev_samples))
-        # if prev_posterior_test != prev_posterior:
-        #     raise Exception("The history is not correct in case this exception is thrown.")
+    def step(self, params, prior, likelihood, index):
+        move = np.random.normal(loc=0, scale=self.variance)
+        proposal = params + move
 
-        if accept:
-            # Accept
-            samples_to_append = samples
-            tempered_posterior_to_append = tempered_posterior
-            posterior_to_append = posterior
-            log_likelihood_val_to_append = log_likelihood_val
-            log_probability_to_append = log_prob
+        proposal_likelihood = self.log_likelihood(proposal)
+        proposal_prior = self.log_prior(proposal)
+        proposal_prob = self.beta * proposal_likelihood + proposal_prior
 
-        else:
-            # Reject
-            samples_to_append = prev_samples
-            tempered_posterior_to_append = prev_tempered_posterior
-            posterior_to_append = prev_posterior
-            log_likelihood_val_to_append = prev_log_likelihood
-            log_probability_to_append = prev_log_prob
+        # likelihood = self.log_likelihood(params)
+        # prior = self.log_prior(params)
+        prob = self.beta * likelihood + prior
 
-        return accept, samples_to_append, tempered_posterior_to_append, posterior_to_append, log_likelihood_val_to_append, log_probability_to_append
+        log_diff = proposal_prob - prob
+        diff = np.exp(log_diff)
+        u = np.random.uniform(size=(self.n_walkers, self.n_chains))
+        accept = u < diff
 
-    def run(self, log_likelihood, priors: dict, n_chains: int = 10, n_swaps: int = 2, n_samples: int = 1000,
-            minimal_inverse_temp: float = 10 ** (-3), var_ref: float = 0.01, use_multiprocessing=False):
-        """
+        new_prior = np.where(accept, proposal_prior, prior)
+        new_likelihood = np.where(accept, proposal_likelihood, likelihood)
 
-        :param log_likelihood:
-        :param priors: a dict containing the prior distribution of each parameter in the form of scipy.stats distribution
-        :param n_chains:
-        :param n_swaps:
-        :param n_samples:
-        :param minimal_inverse_temp:
-        :param var_ref:
-        :return:
-        """
-        target_acceptance_rate = 0.44
+        params_accepts = np.expand_dims(accept, -1)
+        new_params = np.where(params_accepts, proposal, params)
+        return new_params, new_prior, new_likelihood, accept
 
-        param_ids = list(priors.keys())
-        q = 1
-        if n_chains > 1:
-            q = np.power(minimal_inverse_temp, 1 / (n_chains - 1))
-        inverse_temperatures = np.power(q, np.arange(n_chains))
+    def swap(self, params, prior, likelihood, index):
+        # ToDo to implement!
+        log_diff = np.diff(likelihood,
+                           axis=-1)  # Check correctness of Axis (exchange only allowed between tempered chains)
+        beta_diff = -np.diff(self.beta)
 
-        map_func = map
+        log_criterion = beta_diff * log_diff
+        criterion = np.exp(log_criterion)
+        u = np.random.uniform(size=(self.n_walkers, self.n_chains - 1))
+        # Ensure in the accepts step that a single chain does not swap to both adjacent chains (it should be possible to check this by using np.diff(accept) which should not yield 0 at a position including a 1 in accept
+        proposed_accept = u < criterion
+        self.swap_mask = np.roll(self.swap_mask, 1)
+        swap_mask = self.swap_mask[:, :self.n_chains - 1]
+        accept = np.logical_and(proposed_accept, swap_mask)
 
-        if use_multiprocessing:
-            num_processes = os.cpu_count()
-            pool_size = num_processes - 1
-            print(f"Creating Multiprocess Pool with {pool_size} processes")
-            pool = multiprocessing.Pool(pool_size)
-            # pool = concurrent.futures.ThreadPoolExecutor(num_processes - 1)
-            map_func = pool.map
+        # swap_matrice_1 is accept matrice with an additional all zeros enty
+        swap_matrice_1 = np.concatenate((accept, np.zeros((self.n_walkers, 1))), axis=1)
+        swap_matrice_2 = np.roll(swap_matrice_1, 1, axis=1)
 
-        """
-        Sample Initial Parameters from Priors
-        """
-        print("Sample Initial Parameters from Priors")
-        cur_samples = []
-        cur_tempered_posterior = []
-        cur_posterior = []
-        cur_log_likelihood = []
-        cur_log_prob = []
-        cur_accepts = []
-        for iC in range(n_chains):
-            samples = {}
-            for id in param_ids:
-                samples[id] = priors[id].rvs()
+        left_rolled_prior = np.roll(prior, -1, axis=1)
+        right_rolled_prior = np.roll(prior, 1, axis=1)
+        left_rolled_likelihood = np.roll(likelihood, -1, axis=1)
+        right_rolled_likelihood = np.roll(likelihood, 1, axis=1)
+        left_rolled_params = np.roll(params, -1, axis=1)
+        right_rolled_params = np.roll(params, 1, axis=1)
 
-            log_likelihood_val, log_prob = ParallelTempering.evaluate_posterior(priors, log_likelihood, samples)
-            # ToDo Crosscheck whether log_prob is the right quantitiy here
-            # As we consider logarithmic quantities, the multiplication is an addition
-            tempered_posterior = inverse_temperatures[iC] * log_likelihood_val + log_prob
-            posterior = log_likelihood_val + log_prob
-            print(f"Chain {iC}: {posterior} ({samples})")
-            cur_samples.append(samples)
-            cur_tempered_posterior.append(tempered_posterior)
-            cur_posterior.append(posterior)
-            cur_log_likelihood.append(log_likelihood_val)
-            cur_log_prob.append(log_prob)
-            cur_accepts.append(0)
+        new_prior = np.where(swap_matrice_1, left_rolled_prior, prior)
+        new_prior = np.where(swap_matrice_2, right_rolled_prior, new_prior)
+        new_likelihood = np.where(swap_matrice_1, left_rolled_likelihood, likelihood)
+        new_likelihood = np.where(swap_matrice_2, right_rolled_likelihood, new_likelihood)
+        new_params = np.where(np.expand_dims(swap_matrice_1, -1), left_rolled_params, params)
+        new_params = np.where(np.expand_dims(swap_matrice_2, -1), right_rolled_params, new_params)
 
-        """
-        Perform Parallel Tempering
-        """
-        print("Start Parallel Tempering")
-
-        def swap_elems(arr, i, j):
-            elem_i = arr[i]
-            elem_j = arr[j]
-            arr[i] = elem_j
-            arr[j] = elem_i
-            return arr
-
-        radii = np.ones(n_chains)
-        acceptance_rates = np.zeros(n_chains)
-        acceptance_history = [cur_accepts]
-        swap_acceptance_rates = np.zeros(n_chains)
-        tempered_posterior_history = [cur_tempered_posterior]
-        posterior_history = [cur_posterior]
-        sample_history = [cur_samples]
-        log_likelihood_history = [cur_log_likelihood]
-        log_probability_history = [cur_log_prob]
-        swap_acceptance_history = [[0 for _ in range(n_chains - 1)]]
+        return new_params, new_prior, new_likelihood, accept
 
 
-        chain_ids = np.arange(n_chains)
-        prior_references = [priors for _ in range(n_chains)]
-        log_likelihood_references = [log_likelihood for _ in range(n_chains)]
 
-        cur_swap_count = 0
-        cur_swap_acceptance_rate = 0
-
-        start = time.time()
-        for iS in range(1, n_samples + 1):
-            # cur_samples = []
-            # cur_tempered_posterior = []
-            # cur_posterior = []
-            # cur_log_likelihood = []
-            # cur_accepts = []
-            swap_count = 0
-
-            # for iC in range(n_chains):
-            #     cur_temp = temperatures[iC]  # [len(temperatures) - iC]
-            #     cur_radius = radii[iC]
-            #
-            #     # cur_var = var_ref * np.exp(2 * cur_temp)
-            #     # cur_var = var_ref * 10**(cur_temp)
-            #     prev_samples = sample_history[-1][iC]
-            #     prev_tempered_posterior = tempered_posterior_history[-1][iC]
-            #
-            #     prev_posterior = posterior_history[-1][iC]
-            #     prev_log_likelihood = log_likelihood_history[-1][iC]
-            #
-            #     accept, samples, tempered_posterior, posterior, log_likelihood_val = ParallelTempering.__step__(
-            #         param_ids, cur_temp, cur_radius, prev_samples, prev_tempered_posterior, prev_posterior,
-            #         prev_log_likelihood)
-            #
-            #     cur_samples.append(samples)
-            #     cur_tempered_posterior.append(tempered_posterior)
-            #     cur_posterior.append(posterior)@
-            #     cur_log_likelihood.append(log_likelihood_val)
-            #     acceptance_rates[iC] += accept
-            #     cur_accepts.append(accept)
-            # variances = var_ref * radii * 1/inverse_temperatures#np.exp(2 * 1/inverse_temperatures)
-            variances = var_ref * radii * (1 + np.log2(1 / inverse_temperatures))
-            arguments = zip(chain_ids,
-                            prior_references,
-                            log_likelihood_references,
-                            inverse_temperatures,
-                            variances,
-                            sample_history[-1],
-                            posterior_history[-1],
-                            log_likelihood_history[-1],
-                            log_probability_history[-1])
-            arguments = list(arguments)
-            # Alternative is to implement vectorized versions, as ScipyOde employed allows for multiprocessed parallelism in case of multiple parameter sets.
-            results = map_func(ParallelTempering.__step__, arguments)
-            results = list(results)
-            # print(results)
-            results = list(map(list, zip(*results)))
-            cur_accepts, cur_samples, cur_tempered_posterior, cur_posterior, cur_log_likelihood, cur_log_prob = results
-
-            cur_swap_accepts = np.zeros(n_chains - 1)
-            accepted_swaps = []
-            for _ in range(n_swaps):
-                iC = np.random.randint(0, n_chains - 1)
-                temp_diff = inverse_temperatures[iC] - inverse_temperatures[iC + 1]
-                # rel_log_likelihood_val = log_likelihood(parameters=cur_samples[iC + 1])
-                log_likelihood_val = cur_log_likelihood[iC]
-                rel_log_likelihood_val = cur_log_likelihood[iC + 1]
-                # post_diff = cur_posterior[iC + 1] - cur_posterior[iC]
-                likelihood_diff = rel_log_likelihood_val - log_likelihood_val
-                a = min(0, temp_diff * likelihood_diff)
-                a = np.exp(a)
-                samp = np.random.rand()
-                accept = samp < a
-                if accept:
-                    # Accept Swap
-                    swap_elems(cur_samples, iC, iC + 1)
-                    # swap_elems(cur_tempered_posterior, iC, iC + 1) # Swapping Tempered Posteriors is useless
-                    swap_elems(cur_posterior, iC, iC + 1)
-                    swap_elems(cur_log_likelihood, iC, iC + 1)
-                    swap_elems(cur_log_prob, iC, iC + 1)
-                    cur_swap_accepts[iC] = 1
-                    swap_count += 1
-
-                    accepted_swaps.append(f"{iC} <-> {iC + 1}")
-                    # radii[iC] = radii[iC] / 10
-                    # radii[iC + 1]
+def log_smile_adapt(params):
+    val = np.exp(-0.5 * (np.sum(np.power(params, 2), axis=-1) - 1) ** 2 / (0.01))
+    val *= (np.sum(params * np.array([0, 1]), axis=-1) < -0.2) * 1
+    val += np.exp(-0.5 * np.sum(np.power(params + np.array([-0.6, -1]), 2), axis=-1) / 0.01)
+    val += np.exp(-0.5 * np.sum(np.power(params + np.array([+0.6, -1]), 2), axis=-1) / 0.01)
+    return np.log(val)
 
 
-            tempered_posterior_history.append(cur_tempered_posterior)
-            sample_history.append(cur_samples)
-            posterior_history.append(cur_posterior)
-            log_likelihood_history.append(cur_log_likelihood)
-            log_probability_history.append(cur_log_prob)
-            acceptance_history.append(cur_accepts)
-            swap_acceptance_history.append(cur_swap_accepts)
-
-            # Adaptive Radius selection to adapt variance to yield beneficial acceptance rates
-            cur_acceptance_rates = np.mean(acceptance_history[-100:], axis=0)
-            if iS % 2 == 0 and True:
-                radii[cur_acceptance_rates > target_acceptance_rate * 1.1] *= 1.01
-                radii[cur_acceptance_rates < target_acceptance_rate * 0.9] *= 0.99
-            if iS % 10 == 0 and True:
-                radii[cur_acceptance_rates > target_acceptance_rate * 1.3] *= 1.2
-                radii[cur_acceptance_rates < target_acceptance_rate * 0.7] *= 0.9
-            radii[radii < 0.01] = 0.01
-            radii[radii > 100] = 100
-            if n_swaps > 0:
-                cur_swap_count = len(accepted_swaps)
-                cur_swap_acceptance_rate = cur_swap_count / n_swaps * 100
-            duration = time.time() - start
-            print(f"Iteration {iS}:")
-            print(
-                f"    cur acceptance rates [{', '.join(map(lambda val: f'{val:0.3}', cur_acceptance_rates))}] ({duration / iS} s per iteration)")
-            print(f"    Accepted {cur_swap_count} ({cur_swap_acceptance_rate}%): {', '.join(accepted_swaps)}")
-            print(f"    Radii: [{', '.join(map(lambda val: f'{val:0.2}', radii))}]")
-            print(f"    Posteriors: [{', '.join(map(lambda val: f'{val:0.2}', cur_posterior))}]")
-            # print(f"Iteration {iS}, accepts {acceptance_rates}, swap count {swap_count} ({duration / iS} s per iteration) \r")
-
-            # sys.stdout.write("\r")
-            # sys.stdout.write(f"Iteration {iS}, acceptance rates {acceptance_rates / iS}\r")
-            sys.stdout.flush()
-            pass
-
-        pass
-
-        if use_multiprocessing:
-            pool.close()
-            # pool.terminate()
-
-        posterior_history = np.array(posterior_history)
-        tempered_posterior_history = np.array(tempered_posterior_history)
-        acceptance_history = np.array(acceptance_history)
-        swap_acceptance_history = np.array(swap_acceptance_history)
-
-        best_config_id = np.argmax(posterior_history)
-        best_config_id = [int(best_config_id / n_chains), int(best_config_id % n_chains)]
-        map_params = sample_history[best_config_id[0]][best_config_id[1]]
-        self.sample_history = sample_history
-        self.posterior_history = posterior_history
-        self.tempered_posterior_history = tempered_posterior_history
-        self.acceptance_history = acceptance_history
-        self.swap_acceptance_rates = swap_acceptance_rates
-
-        acceptance_rates = np.cumsum(acceptance_history, axis=0) / np.expand_dims(np.arange(n_samples + 1), 1)
-        swap_acceptance_rates = np.cumsum(swap_acceptance_history, axis=0) / np.expand_dims(np.arange(n_samples + 1), 1)
-        self.acceptance_rates = acceptance_rates
-        self.swap_acceptance_rates = swap_acceptance_rates
-
-        self.map_params = map_params
-        return sample_history, posterior_history, tempered_posterior_history, map_params
-
+# ToDo
+"""
+1. Implement dynamic variance selection
+2. Implement dynamic temperature selection
+3. Implement burn in phase detection
+4. Implement evaluation metrics
+"""
 
 if __name__ == '__main__':
-    n_chains = 10
-    minimal_temp = 10 ** (-6)
-    n_samples = 1000
-    n_swaps = 0
-    var_ref = 0.1
+    n_walkers = 100
+    n_chains = 2
+    n_samples = 10 ** 5
+    log_likelihood = log_smile_adapt
 
-    n_measurement_samples = 10
+    log_prior = lambda params: np.log(np.all(np.logical_and(params <= 2, params >= -2), axis=-1) * 1)
+    pt = ParallelTempering(log_likelihood=log_likelihood, log_prior=log_prior, n_dim=2, n_walkers=n_walkers,
+                           n_chains=n_chains)
+    parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=[0, 0], n_samples=n_samples)
 
-    p1 = 5
-    p2 = 1
+    step_acceptance_rates = np.mean(step_accepts, axis=0)
+    swap_acceptance_rates = np.mean(swap_accepts, axis=0)
 
-    measurement_data = np.random.randn(n_measurement_samples) * p2 + p1
-
-
-    def log_likelihood(parameters):
-        params = parameters
-        p1 = 10 ** params["p1"]
-        p2 = 10 ** params["p2"]
-        dist = scipy.stats.norm(loc=p1, scale=p2)
-        log_like = dist.logpdf(measurement_data)
-        log_like = np.sum(log_like)
-        return log_like
-
-
-    print(log_likelihood({"p1": 5, "p2": 1}))
-    print(log_likelihood({"p1": 2, "p2": 1}))
-    print(log_likelihood({"p1": 10, "p2": 1}))
-    print(log_likelihood({"p1": 5, "p2": 5}))
-    print(log_likelihood({"p1": 5, "p2": 0.5}))
-
-    opt = ParallelTempering()
-    # # a = 10 ** (-5)
-    # # b = 10 ** 5
-    # # priors = {"p1": scipy.stats.loguniform(a=a, b=b),  # (loc=a, scale=b - a),
-    # #           "p2": scipy.stats.loguniform(a=a, b=b)}
-    a = -5
-    b = 5
-    priors = {"p1": scipy.stats.uniform(loc=a, scale=b - a),
-              "p2": scipy.stats.uniform(loc=a, scale=b - a)}
-    sample_history, posterior_history, tempered_posterior_history, map_params = opt.run(log_likelihood=log_likelihood,
-                                                                                        priors=priors,
-                                                                                        n_chains=n_chains,
-                                                                                        minimal_inverse_temp=minimal_temp,
-                                                                                        var_ref=var_ref,
-                                                                                        n_samples=n_samples,
-                                                                                        n_swaps=n_swaps)
-
-    print("Inferred Params are:")
-    print({key: 10 ** (map_params[key]) for key in map_params})
-    print("Acceptance Rates:", opt.acceptance_rates)
-    print("Swap Acceptance Rates:", opt.swap_acceptance_rates)
-
-    rel_samples = sample_history[-int(len(sample_history) / 2):]  # Drop others to prevent artefacts from burn in phase
-    rel_posterior = posterior_history[-int(len(sample_history) / 2):]
-    rel_posterior = np.array(rel_posterior)
-    param_ids = list(priors.keys())
-    samples = np.array([[[chain[id] for id in param_ids] for chain in step] for step in rel_samples])
-    samples = samples.reshape(-1, len(param_ids))
-
-    posterior = rel_posterior.reshape(-1, 1)
-    #
-    # samples = []
-    # posterior = []
-    # for pp1 in np.linspace(-1, 1, 50):
-    #     for pp2 in np.linspace(-1, 1, 50):
-    #         params = {"p1": pp1, "p2": pp2}
-    #         samples.append((pp1, pp2))
-    #         posterior.append(log_likelihood(params))
-    # samples = np.array(samples)
-    # posterior = np.array(posterior)
-    #
-    # # color = np.sign(posterior) * np.log(np.abs(posterior))
-    color = np.exp(posterior)
-
+    print("Creating Figures")
     fig, ax = plt.subplots()
-    scatter = ax.scatter(samples[:, 0], samples[:, 1], c=color, alpha=1, cmap="Blues")
-    ax.scatter(np.log10(p1), np.log10(p2), marker="x", color="red")
-    ax.scatter(map_params["p1"], map_params["p2"], marker="x", color="magenta")
-    ax.set_xlabel(param_ids[0])
-    ax.set_ylabel(param_ids[1])
-    ax.set_xlim((a, b))
-    ax.set_ylim((a, b))
-    plt.colorbar(scatter)
+    ax.scatter(parameters[:, :, :, 0].reshape(-1), parameters[:, :, :, 1].reshape(-1), alpha=0.1)
     plt.show()
 
-    fig, ax = plt.subplots()
-    ax.hist2d(samples[:, 0], samples[:, 1], bins=np.linspace(a, b, 100), alpha=1)  # , cmap="Blues")
-    ax.scatter(np.log10(p1), np.log10(p2), marker="x", color="red")
-    ax.scatter(map_params["p1"], map_params["p2"], marker="x", color="magenta")
-    ax.set_xlabel(param_ids[0])
-    ax.set_ylabel(param_ids[1])
-    ax.set_xlim((a, b))
-    ax.set_ylim((a, b))
-    # plt.colorbar(scatter)
-    plt.show()
-
-    # minimal_temp = 10**(-3)
-    # n_chains = 16
-    # q = np.power(minimal_temp, 1 / (n_chains - 1))
-    # temperatures = np.power(q, np.arange(n_chains))
-    # # temperatures = np.logspace(-3, 0, n_chains)
-    #
-    # fig, axes = plt.subplots(4, 4)
-    # for iX, row in enumerate(axes):
-    #     for iY, ax in enumerate(row):
-    #         iI = len(row) * iX + iY
-    #         temp = temperatures[iI]
-    #         scatter = ax.scatter(samples[:, 0], samples[:, 1], c=color**temp, alpha=1, cmap="Blues")
-    #         ax.scatter(np.log10(p1), np.log10(p2), marker="x", color="red")
-    #         ax.set_xlabel(param_ids[0])
-    #         ax.set_ylabel(param_ids[1])
-    #         # plt.colorbar(scatter)
-    #         ax.set_title(f"Temp {temp}")
-    # plt.show()
-
+    fig, axes = plt.subplots(ncols=n_chains, sharex=True, sharey=True)
     for iC in range(n_chains):
-        trajectory = np.array([[step[iC][id] for id in param_ids] for step in sample_history])
-        trajectory_posterior = np.array([step[iC] for step in posterior_history])
-        color = np.exp(trajectory_posterior)
-        fig, ax = plt.subplots()
-        ax.plot(trajectory[:, 0], trajectory[:, 1], c="k", alpha=1, zorder=1)
-        scatter = ax.scatter(trajectory[:, 0], trajectory[:, 1], c=color, alpha=1, cmap="Blues", zorder=2)
-        ax.scatter(np.log10(p1), np.log10(p2), marker="x", color="red", zorder=3)
-        ax.scatter(map_params["p1"], map_params["p2"], marker="x", color="magenta")
-        ax.set_xlabel(param_ids[0])
-        ax.set_ylabel(param_ids[1])
-        ax.set_xlim((a, b))
-        ax.set_ylim((a, b))
-        ax.set_title(f"Chain {iC}")
-        plt.show()
-    pass
+        ax = axes[iC]
+        # ax.scatter(parameters[:, :, iC, 0].reshape(-1), parameters[:, :, iC, 1].reshape(-1), alpha=0.1)
+        sns.kdeplot(x=parameters[::10, :, iC, 0].reshape(-1), y=parameters[::10, :, iC, 1].reshape(-1), ax=ax,
+                    cmap="Reds")
+    plt.show()
+
+    # fig, axes = plt.subplots(ncols=n_chains, sharex=True, sharey=True)
+    # for iC in range(n_chains):
+    #     ax = axes[iC]
+    #     ax.plot(parameters[:, :, iC, 0].reshape(-1), parameters[:, :, iC, 1].reshape(-1), alpha=0.1)
+    #     ax.scatter(parameters[:, :, iC, 0].reshape(-1), parameters[:, :, iC, 1].reshape(-1), alpha=0.1)
+    # plt.show()

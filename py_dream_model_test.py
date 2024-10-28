@@ -14,7 +14,7 @@ import inspect
 from pydream.convergence import Gelman_Rubin
 
 from modules.molecules import RNA
-from optimization.parallel_tempering import ParallelTempering
+from optimization.parallel_tempering_old import ParallelTempering
 from rna_dynamics_main import process_plasmid
 
 import matplotlib.pyplot as plt
@@ -59,6 +59,13 @@ parameters = {
     "k_tx": 2,
     "k_tl": 1,
     "k_rna_deg": 0.5,
+    # "k_tx_init": 1.5,
+    # "k_star_bind": 5,
+    # "k_star_unbind": 0.1,
+    # "k_star_act": 2,
+    # "k_star_act_reg": 0.01,
+    # "k_star_stop": 1,
+    # "k_star_stop_reg": 0.01
 }
 
 # parameters = {"k_tx": 2,
@@ -85,8 +92,13 @@ log_fixed_parameters = {p_name: np.log10(fixed_parameters[p_name]) for p_name in
 Setup Model
 """
 
+# plasmids = [
+#     (("Sense1", "Star1"), None, [(True, "GFP")]),
+#     (None, None, [(True, "RFP")]),
+#     # (None, None, [(False, "Trigger1")]),
+#     (None, None, [(False, "Star1")]),
+# ]
 plasmids = [
-    # (("Sense1", "Star1"), None, [(True, "GFP")]),
     (None, None, [(True, "RFP")]),
     # (None, None, [(False, "Trigger1")]),
     # (None, None, [(False, "Star1")]),
@@ -125,7 +137,8 @@ for monomer in model.monomers:
 measured_observables_names = [
     # "obs_Protein_GFP",
     "obs_Protein_RFP",
-    # "obs_RNA_Star1"
+    # "obs_RNA_Star1",
+    # "obs_RNA_RFP"
 ]
 
 # Create lists of sampled pysb parameter names to use for subbing in parameter values in likelihood function.
@@ -255,11 +268,11 @@ if __name__ == '__main__':
 
     opt = ParallelTempering()
 
-    n_chains = 10
-    minimal_inverse_temp = 10 ** (-6)  # 10 ** (-10)
+    n_chains = 6
+    minimal_inverse_temp = 10 ** (-5)  # 10 ** (-10)
     var_ref = 0.01
-    n_samples = 1 * 10 ** 4
-    n_swaps = 1
+    n_samples = 10 * 10 ** 3
+    n_swaps = 2
 
     sample_history, posterior_history, tempered_posterior_history, map_params = opt.run(log_likelihood=log_likelihood,
                                                                                         priors=log_priors,

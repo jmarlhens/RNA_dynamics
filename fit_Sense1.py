@@ -8,7 +8,7 @@ from build_simulate_analyse.build_model import setup_model
 from rna_dynamics_main import process_plasmid, simulate_model, visualize_simulation
 
 # import parallel tempering
-from optimization.parallel_tempering import ParallelTempering
+from optimization.parallel_tempering_old import ParallelTempering
 
 def test_star():
     # Plasmid design
