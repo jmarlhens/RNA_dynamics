@@ -24,7 +24,7 @@ def test_star():
     }
 
     # load and add parameters_plasmids
-    parameters_df = pd.read_csv('data/model_parameters.csv')
+    parameters_df = pd.read_csv('../data/model_parameters.csv')
     parameters = dict(zip(parameters_df['Parameter'], parameters_df['Value']))
     parameters.update(parameters_plasmids)
 

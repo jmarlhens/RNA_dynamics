@@ -29,7 +29,7 @@ class ParallelTempering(OptimizationAlgorithm):
         self.beta = np.power(0.5, np.arange(self.n_chains)).reshape(1, self.n_chains)
 
         self.variance = np.ones(shape=(self.n_walkers, self.n_chains, self.n_dim))
-        self.variance = 0.1 * self.variance * np.expand_dims(np.expand_dims(np.arange(1, n_chains + 1), axis=0),
+        self.variance = 0.1 * self.variance * np.expand_dims(np.expand_dims(np.arange(1, self.n_chains + 1), axis=0),
                                                              axis=-1)
 
         parameters = [None] * n_samples

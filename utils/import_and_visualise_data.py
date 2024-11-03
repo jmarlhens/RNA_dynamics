@@ -97,31 +97,6 @@ def plot_replicates(data, title):
     plt.show()
 
 
-# # Load and process the CSV file
-# file_path = './data/AND-Gate_Se6To3.csv'
-# new_data = load_and_process_csv(file_path)
-# title = 'AND-Gate'
-# plot_replicates(new_data, title)
-#
-# file_path = './data/Se1To1 C-FFL.csv'
-# new_data = load_and_process_csv(file_path)
-# title = 'C-FFL'
-# plot_replicates(new_data, title)
-#
-# file_path = './data/To1 cascade .csv'
-# new_data = load_and_process_csv(file_path)
-# title = 'Cascade'
-# plot_replicates(new_data, title)
-
-
-file_path = 'data/Se1.csv'
-new_data = load_and_process_csv(file_path)
-title = 'Cascade'
-plot_replicates(new_data, title)
-
-
-# compute and plot derivatives for each condition
-
 def compute_derivative(data, condition):
     """
     Compute the derivative of the fluorescence values for a specific condition.
@@ -166,20 +141,44 @@ def plot_derivative(data, title):
     plt.tight_layout()
     plt.show()
 
-# Compute and plot the derivative for each condition
-conditions = new_data['condition'].unique()
-all_derivative_data = []
-for condition in conditions:
-    derivative_data = compute_derivative(new_data, condition)
-    all_derivative_data.append(derivative_data)
-    title = f'{condition} - Derivative'
 
-# cut time at 600, remove all time points after 600
-all_derivative_data = pd.concat(all_derivative_data, ignore_index=True)
-all_derivative_data = all_derivative_data[all_derivative_data['time'] < 250]
-all_derivative_data = all_derivative_data[all_derivative_data['time'] > 18]
 
-plot_derivative(all_derivative_data, 'Derivative')
+if __name__ == '__main__':
 
-#
+    # Load and process the CSV file
+    file_path = './data/AND-Gate_Se6To3.csv'
+    new_data = load_and_process_csv(file_path)
+    title = 'AND-Gate'
+    plot_replicates(new_data, title)
 
+    file_path = './data/Se1To1 C-FFL.csv'
+    new_data = load_and_process_csv(file_path)
+    title = 'C-FFL'
+    plot_replicates(new_data, title)
+
+    file_path = './data/To1 cascade .csv'
+    new_data = load_and_process_csv(file_path)
+    title = 'Cascade'
+    plot_replicates(new_data, title)
+
+    file_path = '../data/Se1.csv'
+    new_data = load_and_process_csv(file_path)
+    title = 'Cascade'
+    plot_replicates(new_data, title)
+
+    # compute and plot derivatives for each condition
+
+    # Compute and plot the derivative for each condition
+    conditions = new_data['condition'].unique()
+    all_derivative_data = []
+    for condition in conditions:
+        derivative_data = compute_derivative(new_data, condition)
+        all_derivative_data.append(derivative_data)
+        title = f'{condition} - Derivative'
+
+    # cut time at 600, remove all time points after 600
+    all_derivative_data = pd.concat(all_derivative_data, ignore_index=True)
+    all_derivative_data = all_derivative_data[all_derivative_data['time'] < 250]
+    all_derivative_data = all_derivative_data[all_derivative_data['time'] > 18]
+
+    plot_derivative(all_derivative_data, 'Derivative')

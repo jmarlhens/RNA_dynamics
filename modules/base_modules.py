@@ -37,7 +37,7 @@ class Translation(ReactionComplex):
         self.k_mat = self.parameters["k_mat"]
         self.k_deg = self.parameters["k_prot_deg"]
         Observable('obs_RNA_' + sequence_name, model.monomers['RNA_' + sequence_name](state='full'))
-        Expression('k_tl_eff_' + sequence_name, self.k_tl / self.K_tl + model.observables['obs_RNA_' + sequence_name])
+        Expression('k_tl_eff_' + sequence_name, self.k_tl / (self.K_tl + model.observables['obs_RNA_' + sequence_name]))
 
         rules = []
 

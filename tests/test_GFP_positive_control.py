@@ -11,7 +11,7 @@ def test_pos_control(plot=True, print_rules=True, print_odes=True, parameters_pl
 
 
     # load and add parameters_plasmids
-    parameters_df = pd.read_csv('../data/model_parameters_priors.csv')
+    parameters_df = pd.read_csv('data/model_parameters_priors.csv')
     parameters = dict(zip(parameters_df['Parameter'], parameters_df['Value']))
     parameters.update(parameters_plasmids)
 
@@ -19,8 +19,9 @@ def test_pos_control(plot=True, print_rules=True, print_odes=True, parameters_pl
     model = setup_model(plasmids, parameters)
 
     # Time span for build_simulate_analyse
-    n_steps = 100
-    t = np.linspace(0, 20, n_steps)
+    T = 600
+    n_steps = T * 10
+    t = np.linspace(0, T, n_steps)
 
     # Run the build_simulate_analyse
     y_res = simulate_model(model, t)
