@@ -1,9 +1,12 @@
-from statistics import variance
+
+
+
 
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
 
+from optimization.mcmc_utils import convergence_test, integrated_autocorrelation_time
 from optimization.optimization_algorithm import OptimizationAlgorithm
 
 
@@ -22,11 +25,11 @@ class ParallelTempering(OptimizationAlgorithm):
         self.swap_mask = swap_mask
         pass
 
-    def run(self, initial_parameters, n_samples=100, n_swaps=2):
+    def run(self, initial_parameters, n_samples=100, n_swaps=2, target_acceptance_ratio=0.5):
         # ToDo Reset all run dependent values
         # Variance -> Will be adapted per chain, how to adapt per parameter (e.g. one could use gradient evaluation once in a while to choose variance in dependence to current gradient
         # ? How to adapt number of chains dynamically so that also there a desired acceptance rate is achieved?
-
+        initial_parameters = np.array(initial_parameters)
         self.beta = np.power(0.5, np.arange(self.n_chains)).reshape(1, self.n_chains)
 
         variance = 0.1
@@ -35,10 +38,12 @@ class ParallelTempering(OptimizationAlgorithm):
                                                        axis=-1)
         self.variance *= variance
 
-        parameters = [None] * n_samples
-        priors = [None] * n_samples
-        likelihoods = [None] * n_samples
-        step_accepts = [None] * n_samples
+        n_walkers = self.n_walkers
+        n_chains = self.n_chains
+        parameters = np.zeros(shape=(n_samples, n_walkers, n_chains, *initial_parameters.shape))
+        priors = np.zeros(shape=(n_samples, n_walkers, n_chains))
+        likelihoods = np.zeros(shape=(n_samples, n_walkers, n_chains))
+        step_accepts = np.zeros(shape=(n_samples, n_walkers, n_chains))
         # swap_accepts = [None] * n_samples
         swap_accepts = []
 
@@ -56,6 +61,12 @@ class ParallelTempering(OptimizationAlgorithm):
             priors[iN] = prior
             likelihoods[iN] = likelihood
             step_accepts[iN] = step_accept
+
+            if iN > 100 and iN % 10 == 0 and True:
+                scaling_params = np.exp((np.mean(step_accepts[:iN + 1] - target_acceptance_ratio, axis=0)))
+                self.variance = self.variance * np.expand_dims(scaling_params, axis=-1)
+                pass
+            pass
             # swap_accepts[iN] = swap_accept
 
             # print(iN)
@@ -143,15 +154,26 @@ def log_smile_adapt(params):
 """
 
 if __name__ == '__main__':
-    n_walkers = 10
-    n_chains = 2
-    n_samples = 10 ** 3
+    n_walkers = 1
+    n_chains = 10
+    n_samples = 10 ** 4
+    target_acceptance_ratio = 0.1
     log_likelihood = log_smile_adapt
 
     log_prior = lambda params: np.log(np.all(np.logical_and(params <= 2, params >= -2), axis=-1) * 1)
     pt = ParallelTempering(log_likelihood=log_likelihood, log_prior=log_prior, n_dim=2, n_walkers=n_walkers,
                            n_chains=n_chains)
-    parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=[0, 0], n_samples=n_samples)
+    parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=[0, 0], n_samples=n_samples,
+                                                                         target_acceptance_ratio=target_acceptance_ratio)
+    print("Completed Sampling")
+
+    R_hat = convergence_test(parameters)
+    print(f"Potential Scale Reduction: {R_hat}")
+
+    tau = integrated_autocorrelation_time(parameters)
+    print("Average Integrated Correlation Times")
+    print(np.mean(tau, axis=0))
+
 
     step_acceptance_rates = np.mean(step_accepts, axis=0)
     swap_acceptance_rates = np.mean(swap_accepts, axis=0)
@@ -163,7 +185,10 @@ if __name__ == '__main__':
 
     fig, axes = plt.subplots(ncols=n_chains, sharex=True, sharey=True)
     for iC in range(n_chains):
-        ax = axes[iC]
+        ax = axes
+        if hasattr(axes, "shape"):
+            ax = axes[iC]
+
         # ax.scatter(parameters[:, :, iC, 0].reshape(-1), parameters[:, :, iC, 1].reshape(-1), alpha=0.1)
         sns.kdeplot(x=parameters[::10, :, iC, 0].reshape(-1), y=parameters[::10, :, iC, 1].reshape(-1), ax=ax,
                     cmap="Reds")
