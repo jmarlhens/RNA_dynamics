@@ -1,7 +1,3 @@
-
-
-
-
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
@@ -25,12 +21,26 @@ class ParallelTempering(OptimizationAlgorithm):
         self.swap_mask = swap_mask
         pass
 
-    def run(self, initial_parameters, n_samples=100, n_swaps=2, target_acceptance_ratio=0.5):
-        # ToDo Reset all run dependent values
+    def run(self, initial_parameters, n_samples=10**3,target_acceptance_ratio=None,
+            adaptive_temperature=False):
         # Variance -> Will be adapted per chain, how to adapt per parameter (e.g. one could use gradient evaluation once in a while to choose variance in dependence to current gradient
         # ? How to adapt number of chains dynamically so that also there a desired acceptance rate is achieved?
+
+        n_walkers = self.n_walkers
+        n_chains = self.n_chains
+
         initial_parameters = np.array(initial_parameters)
-        self.beta = np.power(0.5, np.arange(self.n_chains)).reshape(1, self.n_chains)
+        self.temperatures = np.power(2, np.arange(self.n_chains), dtype=float)
+
+        if adaptive_temperature:
+            self.temperatures[-1] = np.inf
+            # Value choice follows Vousden et al. 2016
+            v_factor = 10 * 10**2
+            v = int(np.ceil(v_factor / n_walkers))
+            t0 = 10 * v  # ToDo Choose in dependence to number of samples to generate
+            S = np.log(np.diff(self.temperatures, axis=-1))
+            S = S[:-1] # Diffs of T_2 - T_1, ..., T_(N-1) - T_(N-2). The diff T_N - T_(N-1) is excluded by purpose following 1 < i < N for the S_i
+
 
         variance = 0.1
         self.variance = np.ones(shape=(self.n_walkers, self.n_chains, self.n_dim))
@@ -38,8 +48,10 @@ class ParallelTempering(OptimizationAlgorithm):
                                                        axis=-1)
         self.variance *= variance
 
-        n_walkers = self.n_walkers
-        n_chains = self.n_chains
+        adaptive_proposal_distribution = target_acceptance_ratio is not None and target_acceptance_ratio > 0 and target_acceptance_ratio < 1.0
+
+        adaptive_temperature_stop_iteration = int(n_samples / 2)
+
         parameters = np.zeros(shape=(n_samples, n_walkers, n_chains, *initial_parameters.shape))
         priors = np.zeros(shape=(n_samples, n_walkers, n_chains))
         likelihoods = np.zeros(shape=(n_samples, n_walkers, n_chains))
@@ -51,9 +63,12 @@ class ParallelTempering(OptimizationAlgorithm):
         likelihood = self.log_likelihood(params)
         prior = self.log_prior(params)
         for iN in range(n_samples):
+            self.beta = 1 / np.expand_dims(self.temperatures, axis=0)
+
             params, prior, likelihood, step_accept = self.step(params, prior, likelihood, index=iN)
             # swap_accept = np.nan * np.ones(shape=(self.n_walkers, self.n_chains - 1))
-            if iN % 10 == 9:
+            swap_round = iN % 10 == 9
+            if swap_round:
                 params, prior, likelihood, swap_accept = self.swap(params, prior, likelihood, index=iN)
                 swap_accepts.append(swap_accept)
 
@@ -62,15 +77,34 @@ class ParallelTempering(OptimizationAlgorithm):
             likelihoods[iN] = likelihood
             step_accepts[iN] = step_accept
 
-            if iN > 100 and iN % 10 == 0 and True:
-                scaling_params = np.exp((np.mean(step_accepts[:iN + 1] - target_acceptance_ratio, axis=0)))
+            ##################################
+            # Adaptive Proposal Distribution #
+            ##################################
+            if adaptive_proposal_distribution and iN > 100 and iN % 10 == 0:
+                # Considers Windowed average of the last 100 steps
+                acc_rate_deviation = step_accepts[max(iN - 1000 + 1, 0):iN + 1] - target_acceptance_ratio
+                scaling_params = np.exp((np.mean(acc_rate_deviation, axis=0)))
                 self.variance = self.variance * np.expand_dims(scaling_params, axis=-1)
+
+            ###############################
+            # Adaptive Temperature Ladder #
+            ###############################
+            if adaptive_temperature and swap_round and iN > 20:# and iN < adaptive_temperature_stop_iteration:
+                kappa = 1 / v * t0 / (iN + t0)
+                # Be aware that only every 10th iteration is a swap iteration
+                rel_accepts = swap_accepts[max(len(swap_accepts) - 100, 0):]    # Select relevant data
+                swap_acceptance_rate = np.mean(rel_accepts, axis=0)             # Average over multiple samples
+                swap_acceptance_rate = np.mean(swap_acceptance_rate, axis=0)    # Average over multiple walkers
+                swap_rate_diff = -np.diff(swap_acceptance_rate, axis=0) # Compute the diff over the chains
+                S = S + kappa * swap_rate_diff
+                temp_diffs = self.temperatures
+                temp_diffs[1:-1] = np.exp(S)
+                self.temperatures = np.cumsum(temp_diffs)
+                print(f"Swap Acceptance Rate: {swap_acceptance_rate}")
+                print(f"Temperatures: {self.temperatures}")
                 pass
-            pass
-            # swap_accepts[iN] = swap_accept
-
             # print(iN)
-
+            pass
         parameters = np.array(parameters)
         priors = np.array(priors)
         likelihoods = np.array(likelihoods)
@@ -103,9 +137,8 @@ class ParallelTempering(OptimizationAlgorithm):
         return new_params, new_prior, new_likelihood, accept
 
     def swap(self, params, prior, likelihood, index):
-        log_diff = np.diff(likelihood,
-                           axis=-1)  # Check correctness of Axis (exchange only allowed between tempered chains)
-        beta_diff = -np.diff(self.beta)
+        log_diff = np.diff(likelihood, axis=-1)
+        beta_diff = -np.diff(self.beta, axis=-1)
 
         log_criterion = beta_diff * log_diff
         criterion = np.exp(log_criterion)
@@ -115,8 +148,9 @@ class ParallelTempering(OptimizationAlgorithm):
         self.swap_mask = np.roll(self.swap_mask, 1)
         swap_mask = self.swap_mask[:, :self.n_chains - 1]
         accept = np.logical_and(proposed_accept, swap_mask)
+        # accept[:, i] defines whether to swap between chain i and i+1.
 
-        # swap_matrice_1 is accept matrice with an additional all zeros enty
+        # swap_matrice_1 is accept matrice with an additional all zeros entry
         swap_matrice_1 = np.concatenate((accept, np.zeros((self.n_walkers, 1))), axis=1)
         swap_matrice_2 = np.roll(swap_matrice_1, 1, axis=1)
 
@@ -154,17 +188,20 @@ def log_smile_adapt(params):
 """
 
 if __name__ == '__main__':
-    n_walkers = 1
-    n_chains = 10
-    n_samples = 10 ** 4
-    target_acceptance_ratio = 0.1
+    n_walkers = 3
+    n_chains = 6
+    n_samples = 10 ** 5
+    target_acceptance_ratio = 0.4
     log_likelihood = log_smile_adapt
+
+    adaptive_temperature = True
 
     log_prior = lambda params: np.log(np.all(np.logical_and(params <= 2, params >= -2), axis=-1) * 1)
     pt = ParallelTempering(log_likelihood=log_likelihood, log_prior=log_prior, n_dim=2, n_walkers=n_walkers,
                            n_chains=n_chains)
     parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=[0, 0], n_samples=n_samples,
-                                                                         target_acceptance_ratio=target_acceptance_ratio)
+                                                                         target_acceptance_ratio=target_acceptance_ratio,
+                                                                         adaptive_temperature=adaptive_temperature)
     print("Completed Sampling")
 
     R_hat = convergence_test(parameters)
@@ -173,7 +210,6 @@ if __name__ == '__main__':
     tau = integrated_autocorrelation_time(parameters)
     print("Average Integrated Correlation Times")
     print(np.mean(tau, axis=0))
-
 
     step_acceptance_rates = np.mean(step_accepts, axis=0)
     swap_acceptance_rates = np.mean(swap_accepts, axis=0)
