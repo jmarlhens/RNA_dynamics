@@ -62,6 +62,7 @@ class ParallelTempering(OptimizationAlgorithm):
         params = np.array(initial_parameters)
         likelihood = self.log_likelihood(params)
         prior = self.log_prior(params)
+        max_iN = 0
         for iN in range(n_samples):
             self.beta = 1 / np.expand_dims(self.temperatures, axis=0)
 
@@ -89,7 +90,8 @@ class ParallelTempering(OptimizationAlgorithm):
             ###############################
             # Adaptive Temperature Ladder #
             ###############################
-            if adaptive_temperature and swap_round and iN > 20:# and iN < adaptive_temperature_stop_iteration:
+
+            if adaptive_temperature and swap_round and iN > 20 and iN < adaptive_temperature_stop_iteration:
                 kappa = 1 / v * t0 / (iN + t0)
                 # Be aware that only every 10th iteration is a swap iteration
                 rel_accepts = swap_accepts[max(len(swap_accepts) - 100, 0):]    # Select relevant data
@@ -100,9 +102,11 @@ class ParallelTempering(OptimizationAlgorithm):
                 temp_diffs = self.temperatures
                 temp_diffs[1:-1] = np.exp(S)
                 self.temperatures = np.cumsum(temp_diffs)
-                print(f"Swap Acceptance Rate: {swap_acceptance_rate}")
-                print(f"Temperatures: {self.temperatures}")
+                # print(f"Swap Acceptance Rate: {swap_acceptance_rate}")
+                # print(f"Temperatures: {self.temperatures}")
+                # max_iN = max([iN, max_iN])
                 pass
+
             # print(iN)
             pass
         parameters = np.array(parameters)
@@ -110,6 +114,7 @@ class ParallelTempering(OptimizationAlgorithm):
         likelihoods = np.array(likelihoods)
         step_accepts = np.array(step_accepts)
         swap_accepts = np.array(swap_accepts)
+        # print(f"max_iN: {max_iN}")
         return parameters, priors, likelihoods, step_accepts, swap_accepts
 
     def step(self, params, prior, likelihood, index):
