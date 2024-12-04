@@ -1,6 +1,7 @@
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
+from tqdm import tqdm
 
 from optimization.mcmc_utils import convergence_test, integrated_autocorrelation_time
 from optimization.optimization_algorithm import OptimizationAlgorithm
@@ -21,8 +22,8 @@ class ParallelTempering(OptimizationAlgorithm):
         self.swap_mask = swap_mask
         pass
 
-    def run(self, initial_parameters, n_samples=10**3,target_acceptance_ratio=None,
-            adaptive_temperature=False):
+    def run(self, initial_parameters, n_samples=10 ** 3, target_acceptance_ratio=None,
+            adaptive_temperature=True):
         # Variance -> Will be adapted per chain, how to adapt per parameter (e.g. one could use gradient evaluation once in a while to choose variance in dependence to current gradient
         # ? How to adapt number of chains dynamically so that also there a desired acceptance rate is achieved?
 
@@ -32,15 +33,20 @@ class ParallelTempering(OptimizationAlgorithm):
         initial_parameters = np.array(initial_parameters)
         self.temperatures = np.power(2, np.arange(self.n_chains), dtype=float)
 
+        if adaptive_temperature and n_chains <= 2:
+            print(
+                f"Disabling adaptive temperature for n_chains={n_chains}. Minimal number of chains for adaptive temperature is 3, but more chains are recommended.")
+            adaptive_temperature = False
+
         if adaptive_temperature:
             self.temperatures[-1] = np.inf
             # Value choice follows Vousden et al. 2016
-            v_factor = 10 * 10**2
+            v_factor = 10 ** 2
             v = int(np.ceil(v_factor / n_walkers))
             t0 = 10 * v  # ToDo Choose in dependence to number of samples to generate
             S = np.log(np.diff(self.temperatures, axis=-1))
-            S = S[:-1] # Diffs of T_2 - T_1, ..., T_(N-1) - T_(N-2). The diff T_N - T_(N-1) is excluded by purpose following 1 < i < N for the S_i
-
+            S = S[:-1]
+            # Diffs of T_2 - T_1, ..., T_(N-1) - T_(N-2). The diff T_N - T_(N-1) is excluded by purpose following 1 < i < N for the S_i
 
         variance = 0.1
         self.variance = np.ones(shape=(self.n_walkers, self.n_chains, self.n_dim))
@@ -63,7 +69,7 @@ class ParallelTempering(OptimizationAlgorithm):
         likelihood = self.log_likelihood(params)
         prior = self.log_prior(params)
         max_iN = 0
-        for iN in range(n_samples):
+        for iN in tqdm(range(n_samples)):
             self.beta = 1 / np.expand_dims(self.temperatures, axis=0)
 
             params, prior, likelihood, step_accept = self.step(params, prior, likelihood, index=iN)
@@ -94,10 +100,10 @@ class ParallelTempering(OptimizationAlgorithm):
             if adaptive_temperature and swap_round and iN > 20 and iN < adaptive_temperature_stop_iteration:
                 kappa = 1 / v * t0 / (iN + t0)
                 # Be aware that only every 10th iteration is a swap iteration
-                rel_accepts = swap_accepts[max(len(swap_accepts) - 100, 0):]    # Select relevant data
-                swap_acceptance_rate = np.mean(rel_accepts, axis=0)             # Average over multiple samples
-                swap_acceptance_rate = np.mean(swap_acceptance_rate, axis=0)    # Average over multiple walkers
-                swap_rate_diff = -np.diff(swap_acceptance_rate, axis=0) # Compute the diff over the chains
+                rel_accepts = swap_accepts[max(len(swap_accepts) - 100, 0):]  # Select relevant data
+                swap_acceptance_rate = np.mean(rel_accepts, axis=0)  # Average over multiple samples
+                swap_acceptance_rate = np.mean(swap_acceptance_rate, axis=0)  # Average over multiple walkers
+                swap_rate_diff = -np.diff(swap_acceptance_rate, axis=0)  # Compute the diff over the chains
                 S = S + kappa * swap_rate_diff
                 temp_diffs = self.temperatures
                 temp_diffs[1:-1] = np.exp(S)
@@ -184,16 +190,8 @@ def log_smile_adapt(params):
     return np.log(val)
 
 
-# ToDo
-"""
-1. Implement dynamic variance selection
-2. Implement dynamic temperature selection
-3. Implement burn in phase detection
-4. Implement evaluation metrics
-"""
-
 if __name__ == '__main__':
-    n_walkers = 3
+    n_walkers = 10
     n_chains = 6
     n_samples = 10 ** 5
     target_acceptance_ratio = 0.4
@@ -209,12 +207,12 @@ if __name__ == '__main__':
                                                                          adaptive_temperature=adaptive_temperature)
     print("Completed Sampling")
 
-    R_hat = convergence_test(parameters)
+    R_hat = convergence_test(parameters[int(len(parameters) / 2):])
     print(f"Potential Scale Reduction: {R_hat}")
 
-    tau = integrated_autocorrelation_time(parameters)
-    print("Average Integrated Correlation Times")
-    print(np.mean(tau, axis=0))
+    # tau = integrated_autocorrelation_time(parameters)
+    # print("Average Integrated Correlation Times")
+    # print(np.mean(tau, axis=0))
 
     step_acceptance_rates = np.mean(step_accepts, axis=0)
     swap_acceptance_rates = np.mean(swap_accepts, axis=0)
