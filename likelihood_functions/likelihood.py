@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
-from typing import Any
+from typing import Any, Dict
 from .utils import prepare_experimental_data
+from utils.GFP_calibration import convert_nM_to_AU
 
 
 def compute_condition_likelihood(
@@ -9,10 +10,34 @@ def compute_condition_likelihood(
         experimental_data: pd.DataFrame,
         tspan: np.ndarray,
         combined_params: pd.DataFrame,
-        condition: str
+        condition: str,
+        calibration_params: Dict
 ) -> pd.Series:
     """
     Compute log likelihood for a specific condition
+
+    Parameters
+    ----------
+    simulation_results : Any
+        Simulation results object
+    experimental_data : pd.DataFrame
+        Experimental data
+    tspan : np.ndarray
+        Time points array
+    combined_params : pd.DataFrame
+        Combined parameter sets
+    condition : str
+        Condition name
+    calibration_params : Dict
+        Dictionary containing:
+            - slope: float
+            - intercept: float
+            - brightness_correction: float
+
+    Returns
+    -------
+    pd.Series
+        Log likelihood values indexed by parameter set indices
     """
     # Get indices for this condition
     condition_mask = combined_params['condition'] == condition
@@ -22,15 +47,22 @@ def compute_condition_likelihood(
     # Prepare experimental data
     exp_means, exp_vars = prepare_experimental_data(experimental_data, tspan)
 
-    # Get simulation values using explicit indices
-    # sim values is in nM and should be converted into AU
+    # Get simulation values and convert from nM to AU
     sim_values = np.array([
-        simulation_results.observables[i]['obs_Protein_GFP'] * 100
+        simulation_results.observables[i]['obs_Protein_GFP']
         for i in sim_indices
     ])
 
+    # Convert simulation values from nM to AU using calibration
+    sim_values_au = convert_nM_to_AU(
+        sim_values,
+        calibration_params['slope'],
+        calibration_params['intercept'],
+        calibration_params['brightness_correction']
+    )
+
     # Calculate likelihoods
-    log_likelihoods = calculate_likelihoods(sim_values, exp_means, exp_vars)
+    log_likelihoods = calculate_likelihoods(sim_values_au, exp_means, exp_vars)
 
     # Return Series indexed by original parameter set indices
     return pd.Series(log_likelihoods, index=param_set_indices)

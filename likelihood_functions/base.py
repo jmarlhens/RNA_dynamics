@@ -6,12 +6,34 @@ import numpy as np
 
 
 class CircuitFitter:
-    def __init__(self, configs, parameters_to_fit, model_parameters_priors):
+    def __init__(self, configs, parameters_to_fit, model_parameters_priors, calibration_data):
+        """
+        Initialize CircuitFitter
+
+        Parameters
+        ----------
+        configs : list
+            List of configuration objects
+        parameters_to_fit : list
+            List of parameter names to fit
+        model_parameters_priors : pd.DataFrame
+            Prior distributions for model parameters
+        calibration_data : dict
+            Dictionary containing:
+                - slope: float
+                - intercept: float
+                - calibration_protein_slug: str (e.g., 'avgfp')
+                - target_protein_slug: str (e.g., 'superfolder-gfp')
+        """
         self.configs = configs
         self.parameters_to_fit = parameters_to_fit
         self.model_parameters_priors = model_parameters_priors
+        self.calibration_params = calibration_data
+
+        # Process calibration data and set up GFP variants
         self._setup_priors()
         self._validate_configs()
+
 
     def _validate_configs(self):
         """Check that all configs have the same model"""
@@ -96,20 +118,7 @@ class CircuitFitter:
         return results
 
     def calculate_likelihood_from_simulation(self, simulation_data: dict) -> dict:
-        """
-        Calculate log likelihood from pre-computed simulation data.
-
-        Args:
-            simulation_data: Dictionary returned by simulate_parameters()
-
-        Returns:
-            Dictionary containing:
-                'total': total log likelihood array
-                'circuits': dict of circuit likelihoods
-                    each circuit contains:
-                        'total': total circuit likelihood
-                        'conditions': dict of condition likelihoods
-        """
+        """Calculate log likelihood from pre-computed simulation data."""
         first_config_data = simulation_data[0]
         n_param_sets = len(first_config_data['combined_params']['param_set_idx'].unique())
         total_log_likelihood = np.zeros(n_param_sets)
@@ -124,7 +133,7 @@ class CircuitFitter:
             for condition_name, _ in config.condition_params.items():
                 condition_data = config.experimental_data[
                     config.experimental_data['condition'] == condition_name
-                    ]
+                ]
 
                 if len(condition_data) == 0:
                     raise ValueError(f"No experimental data found for condition: {condition_name}")
@@ -134,7 +143,8 @@ class CircuitFitter:
                     condition_data,
                     config.tspan,
                     data['combined_params'],
-                    condition_name
+                    condition_name,
+                    self.calibration_params
                 )
 
                 condition_likelihoods[condition_name] = condition_likelihood.values

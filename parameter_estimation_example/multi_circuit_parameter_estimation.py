@@ -11,6 +11,7 @@ from circuits.cascade import test_cascade
 from circuits.cffl_type_1 import test_coherent_feed_forward_loop
 from utils.import_and_visualise_data import load_and_process_csv, plot_replicates
 import pandas as pd
+from utils.GFP_calibration import fit_gfp_calibration, get_brightness_correction_factor
 
 # Parameters
 max_time = 360
@@ -97,16 +98,34 @@ circuit_configs = [
     )
 ]
 
+# Load your calibration data
+data = pd.read_csv('../calibration_gfp/gfp_Calibration.csv')
+
+# Fit the calibration curve
+calibration_results = fit_gfp_calibration(
+    data,
+    concentration_col='GFP Concentration (nM)',
+    fluorescence_pattern='F.I. (a.u)'
+)
+
+# Get the correction factor for sfGFP
+correction_factor, protein_info = get_brightness_correction_factor('avGFP', 'sfGFP')
+
+# Create calibration parameters dictionary
+calibration_params = {
+    'slope': calibration_results['slope'],
+    'intercept': calibration_results['intercept'],
+    'brightness_correction': correction_factor
+}
 
 # Load priors
 priors = pd.read_csv('../data/model_parameters_priors.csv')
-# remove k_prot_deg
 priors = priors[priors['Parameter'] != 'k_prot_deg']
 parameters_to_fit = priors.Parameter.tolist()
 n_sets=10
 
 # Create fitter
-circuit_fitter = CircuitFitter(circuit_configs, parameters_to_fit, priors)
+circuit_fitter = CircuitFitter(circuit_configs, parameters_to_fit, priors, calibration_params)
 
 # Generate test parameters (in log space)
 log_params = circuit_fitter.generate_test_parameters(n_sets=n_sets)
