@@ -4,11 +4,11 @@ from likelihood_functions import (
 )
 from likelihood_functions.visualization import plot_simulation_results
 from likelihood_functions.utils import organize_results
-from circuits.test_toehold import test_toehold
-from circuits.test_star import test_star
-from circuits.test_GFP_positive_control import test_pos_control_constant
-from circuits.test_cascade import test_cascade
-from circuits.test_cffl_type_1 import test_coherent_feed_forward_loop
+from circuits.toehold import test_toehold
+from circuits.star import test_star
+from circuits.GFP_positive_control import test_pos_control_constant
+from circuits.cascade import test_cascade
+from circuits.cffl_type_1 import test_coherent_feed_forward_loop
 from utils.import_and_visualise_data import load_and_process_csv, plot_replicates
 import pandas as pd
 

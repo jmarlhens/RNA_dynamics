@@ -23,6 +23,7 @@ def compute_condition_likelihood(
     exp_means, exp_vars = prepare_experimental_data(experimental_data, tspan)
 
     # Get simulation values using explicit indices
+    # sim values is in nM and should be converted into AU
     sim_values = np.array([
         simulation_results.observables[i]['obs_Protein_GFP'] * 100
         for i in sim_indices
