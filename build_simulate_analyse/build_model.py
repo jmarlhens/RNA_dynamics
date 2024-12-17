@@ -1,22 +1,22 @@
-import numpy as np
 import matplotlib.pyplot as plt
 from pysb import Model, Parameter, Observable
 from pysb.simulator import ScipyOdeSimulator
 from modules.star import STAR
-from modules.base_modules import Transcription, Translation
-from modules.molecules import RNA
+from modules.base_modules import Transcription, Translation, PulsedTranscription
 from modules.Csy4_activity import Csy4Activity
 from modules.toehold import Toehold
 from modules.sequestration import Sequestration
 
 
-def setup_model(plasmids, parameters, bindings=None):
+def setup_model(plasmids, parameters, bindings=None, use_pulses=False, pulse_config=None):
     """
     Set up the PySB model with the given plasmids, parameters, and optional sequestration reactions.
 
     :param plasmids: List of plasmids to be processed.
     :param parameters: Dictionary of model parameters.
     :param bindings: Optional list of tuples specifying sequestration reactions between species.
+    :param use_pulses: Boolean indicating whether to use pulsed transcription.
+    :param pulse_config: Dictionary containing pulse configuration if use_pulses is True.
     :return: PySB Model object.
     """
     model = Model()
@@ -27,14 +27,12 @@ def setup_model(plasmids, parameters, bindings=None):
 
     # Process each plasmid
     for plasmid in plasmids:
-        process_plasmid(plasmid, model)
+        process_plasmid(plasmid, model, use_pulses, pulse_config)
 
     # Process sequestration (binding and unbinding) reactions if specified
     if bindings:
         for species1_name, species2_name in bindings:
-
             Sequestration(species1_name, species2_name, model)
-
 
     # Generate observables for the model
     generate_observables(model)
@@ -42,12 +40,14 @@ def setup_model(plasmids, parameters, bindings=None):
     return model
 
 
-def process_plasmid(plasmid, model):
+def process_plasmid(plasmid, model, use_pulses=False, pulse_config=None):
     """
     Processes the given plasmid by adding it to the model with appropriate controls.
 
     :param plasmid: Tuple containing transcriptional control, translational control, and CDS list.
     :param model: The PySB model to which components are added.
+    :param use_pulses: Boolean indicating whether to use pulsed transcription.
+    :param pulse_config: Dictionary containing pulse configuration if use_pulses is True.
     """
     transcriptional_control = plasmid[0]
     translational_control = plasmid[1]
@@ -66,7 +66,6 @@ def process_plasmid(plasmid, model):
         rna_name_parts.append(translational_control[0])
     rna_name_parts.extend(sequence_names)
 
-    # Join the parts with an underscore, but only if there are parts to join
     rna_name = "_".join(rna_name_parts)
 
     # Step 1: Handle transcription with or without STAR regulation
@@ -76,25 +75,25 @@ def process_plasmid(plasmid, model):
         rna = star.product
         products = [rna]
     else:
-        # Regular transcription
-        transcription = Transcription(sequence_name=rna_name, model=model)
+        # Choose between regular or pulsed transcription
+        if use_pulses:
+            transcription = PulsedTranscription(sequence_name=rna_name, model=model, pulse_config=pulse_config)
+        else:
+            transcription = Transcription(sequence_name=rna_name, model=model)
         rna = transcription.product
         products = [rna]
 
+    # Rest of the function remains the same...
     # Step 2: Determine if Csy4 cleavage is needed
     cleavage_points = []
 
-    # Case 1: Cleavage between sense RNA (from transcriptional control) and subsequent non-translated CDS
     if transcriptional_control and len(cds) > 0:
-        # Add both the sense RNA name and the CDS sequence names for cleavage
         cleavage_set = [transcriptional_control[0]] + sequence_names
         cleavage_points.append(cleavage_set)
 
-    # Case 2: Cleavage between multiple CDSs and no transcriptional control
     if len(cds) > 1:
         cleavage_points.append(sequence_names)
 
-    # Apply Csy4 cleavage where needed
     for cleavage_set in cleavage_points:
         csy4 = Csy4Activity(rna=rna, product_rna_names=cleavage_set, model=model)
         products = csy4.product
@@ -102,15 +101,11 @@ def process_plasmid(plasmid, model):
     # Step 3: Handle translation of each CDS product
     for (translate, seq), rna in zip(cds, products):
         if not translate:
-            continue  # Skip non-translated RNAs
+            continue
         if translational_control:
-            # Apply toehold regulation if translational control is present
             Toehold(rna=rna, translational_control=translational_control, prot_name=seq, model=model)
         else:
-            # Standard translation
             Translation(rna=rna, prot_name=seq, model=model)
-
-
 
 
 def generate_observables(model):
@@ -122,11 +117,10 @@ def generate_observables(model):
             desired_state = "full"
             obs_name = "obs_" + monomer.name
             # Observable(obs_name, monomer(state=desired_state))
-        else:
+        elif "Protein" in monomer.name:
             desired_state = "mature"
             obs_name = "obs_" + monomer.name
             Observable(obs_name, monomer(state=desired_state))
-
 
 
 def simulate_model(model, t):

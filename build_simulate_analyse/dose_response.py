@@ -148,7 +148,7 @@ def plot_dose_response(parameter_values, dose_response_data, parameter_name, out
 
 def run_dose_response_tests(circuits, parameter_values, t, color=(0, 0, 0)):
     """
-    Run dose-response tests for a series of circuits and plot the results.
+    Run dose-response circuits for a series of circuits and plot the results.
 
     :param circuits: List of dictionaries containing circuit configurations.
     :param parameter_values: Array of values for the parameter to vary.
@@ -181,65 +181,65 @@ if __name__ == "__main__":
     # Define parameter values for dose-response
     parameter_values = np.logspace(-2, 2, 60).tolist()
 
-    # List of circuits with configurations for dose-response tests
+    # List of circuits with configurations for dose-response circuits
     circuits = [
         {
             'name': "STAR regulation",
-            'test_func': lambda plot: __import__('tests.test_star').test_star.test_star(plot=plot),
+            'test_func': lambda plot: __import__('circuits.test_star').test_star.test_star(plot=plot),
             'parameter_name': "k_Star1_concentration",
             'output_observables': ["obs_Protein_GFP"],
         },
         {
             'name': "Toehold regulation",
-            'test_func': lambda plot: __import__('tests.test_toehold').test_toehold.test_toehold(plot=plot),
+            'test_func': lambda plot: __import__('circuits.test_toehold').test_toehold.test_toehold(plot=plot),
             'parameter_name': "k_Trigger1_concentration",
             'output_observables': ["obs_Protein_GFP"],
         },
         {
             'name': "AND gate",
-            'test_func': lambda plot: __import__('tests.test_AND_gate').test_AND_gate.test_AND_gate(plot=plot),
+            'test_func': lambda plot: __import__('circuits.test_AND_gate').test_AND_gate.test_AND_gate(plot=plot),
             'parameter_name': "k_STAR_6_concentration",
             'output_observables': ["obs_Protein_GFP"],
         },
         {
             'name': "Cascade",
-            'test_func': lambda plot: __import__('tests.test_cascade').test_cascade.test_cascade(plot=plot),
+            'test_func': lambda plot: __import__('circuits.test_cascade').test_cascade.test_cascade(plot=plot),
             'parameter_name': "k_Star6_concentration",
             'output_observables': ["obs_Protein_GFP"],
         },
         {
             'name': "CFFL-1",
-            'test_func': lambda plot: __import__('tests.test_cffl_type_1').test_cffl_type_1.test_coherent_feed_forward_loop(plot=plot),
+            'test_func': lambda plot: __import__('circuits.test_cffl_type_1').test_cffl_type_1.test_coherent_feed_forward_loop(plot=plot),
             'parameter_name': "k_Star6_concentration",
             'output_observables': ["obs_Protein_GFP"],
         },
         {
             'name': "IFFL-1",
-            'test_func': lambda plot: __import__('tests.test_iffl1').test_iffl1.test_iffl_1(plot=plot),
+            'test_func': lambda plot: __import__('circuits.test_iffl1').test_iffl1.test_iffl_1(plot=plot),
             'parameter_name': "k_Sense6_aTrigger3_concentration",
             'output_observables': ["obs_Protein_GFP"],
         },
         {
             'name': "IFFL-1",
-            'test_func': lambda plot: __import__('tests.test_iffl1').test_iffl1.test_iffl_1(plot=plot),
+            'test_func': lambda plot: __import__('circuits.test_iffl1').test_iffl1.test_iffl_1(plot=plot),
             'parameter_name': "k_Star6_Trigger3_concentration",
             'output_observables': ["obs_Protein_GFP"],
         },
         {
             'name': "CFFL-1,2",
-            'test_func': lambda plot: __import__('tests.c12ffl').c12ffl.test_cffl_12(plot=plot),
+            'test_func': lambda plot: __import__('circuits.c12ffl').c12ffl.test_cffl_12(plot=plot),
             'parameter_name': "k_Star1_concentration",
             'output_observables': ["obs_Protein_GFP"],
         },
         {
             'name': "CFFL-1,2",
-            'test_func': lambda plot: __import__('tests.c12ffl').c12ffl.test_cffl_12(plot=plot),
+            'test_func': lambda plot: __import__('circuits.c12ffl').c12ffl.test_cffl_12(plot=plot),
             'parameter_name': "k_Star6_concentration",
             'output_observables': ["obs_Protein_GFP"],
         },
     ]
 
-    # Run dose-response tests for all circuits
+    # Run dose-response circuits for all circuits
     # run_dose_response_tests(circuits, parameter_values, t, color=dark_blue)
 
 
@@ -256,28 +256,28 @@ if __name__ == "__main__":
     circuits = [
         {
             'name': "CFFL-1",
-            'test_func': lambda plot: __import__('tests.test_cffl_type_1').test_cffl_type_1.test_coherent_feed_forward_loop(plot=plot),
+            'test_func': lambda plot: __import__('circuits.test_cffl_type_1').test_cffl_type_1.test_coherent_feed_forward_loop(plot=plot),
             'param1_name': "k_Star6_concentration",
             'param2_name': "k_Sense6_Trigger3_concentration",
             'output_observables': ["obs_Protein_GFP"],
         },
         # {
         #     'name': "AND gate",
-        #     'test_func': lambda plot: __import__('tests.test_AND_gate').test_AND_gate.test_AND_gate(plot=plot),
+        #     'test_func': lambda plot: __import__('circuits.test_AND_gate').test_AND_gate.test_AND_gate(plot=plot),
         #     'param1_name': "k_Trigger_3_concentration",
         #     'param2_name': "k_STAR_6_concentration",
         #     'output_observables': ["obs_Protein_GFP"],
         # },
         # {
         #     'name': "IFFL-1",
-        #     'test_func': lambda plot: __import__('tests.test_iffl1').test_iffl1.test_iffl_1(plot=plot),
+        #     'test_func': lambda plot: __import__('circuits.test_iffl1').test_iffl1.test_iffl_1(plot=plot),
         #     'param1_name': "k_Sense6_aTrigger3_concentration",
         #     'param2_name': "k_Star6_Trigger3_concentration",
         #     'output_observables': ["obs_Protein_GFP", "obs_RNA_aTrigger3", "obs_RNA_Trigger3"],
         # },
         # {
         #     'name': "CFFL-1,2",
-        #     'test_func': lambda plot: __import__('tests.c12ffl').c12ffl.test_cffl_12(plot=plot),
+        #     'test_func': lambda plot: __import__('circuits.c12ffl').c12ffl.test_cffl_12(plot=plot),
         #     'param1_name': "k_Star1_concentration",
         #     'param2_name': "k_Star6_concentration",
         #     'output_observables': ["obs_Protein_GFP", "obs_RNA_aSTAR6", "obs_RNA_Trigger3"],

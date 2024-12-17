@@ -41,7 +41,9 @@ def load_and_process_csv(file_path, time_unit_output='min', time_col_name='time'
     - time_col_name (str): The name of the column containing the time strings. Default is 'time'.
 
     Returns:
-    - pd.DataFrame: The processed DataFrame in long format with columns: 'time', 'condition', 'replicate', 'fluorescence'.
+    - tuple: (processed_df, tspan)
+        - processed_df (pd.DataFrame): The processed DataFrame in long format with columns: 'time', 'condition', 'replicate', 'fluorescence'
+        - tspan (np.array): Sorted array of unique time points
     """
     # Read the CSV file without a header
     data = pd.read_csv(file_path, header=None)
@@ -75,7 +77,10 @@ def load_and_process_csv(file_path, time_unit_output='min', time_col_name='time'
     # Concatenate all the new DataFrames
     new_data = pd.concat(melted_data, ignore_index=True)
 
-    return new_data
+    # Get sorted array of unique time points
+    tspan = np.sort(new_data['time'].unique())
+
+    return new_data, tspan
 
 
 def plot_replicates(data, title):
@@ -147,22 +152,22 @@ if __name__ == '__main__':
 
     # Load and process the CSV file
     file_path = './data/AND-Gate_Se6To3.csv'
-    new_data = load_and_process_csv(file_path)
+    new_data, tspan = load_and_process_csv(file_path)
     title = 'AND-Gate'
     plot_replicates(new_data, title)
 
     file_path = './data/Se1To1 C-FFL.csv'
-    new_data = load_and_process_csv(file_path)
+    new_data, tspan = load_and_process_csv(file_path)
     title = 'C-FFL'
     plot_replicates(new_data, title)
 
     file_path = './data/To1 cascade .csv'
-    new_data = load_and_process_csv(file_path)
+    new_data, tspan = load_and_process_csv(file_path)
     title = 'Cascade'
     plot_replicates(new_data, title)
 
     file_path = '../data/Se1.csv'
-    new_data = load_and_process_csv(file_path)
+    new_data, tspan = load_and_process_csv(file_path)
     title = 'Cascade'
     plot_replicates(new_data, title)
 

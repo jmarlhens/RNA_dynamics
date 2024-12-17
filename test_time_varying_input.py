@@ -26,11 +26,14 @@ Observable('obs_Time', Time())
 Observable('obs_Protein', Protein())
 
 # Define the piecewise expression for k_syn
-Expression('k_syn', Piecewise((0, sp.Lt(obs_Time, 4)), (0, sp.Gt(obs_Time, 15)), (5, True)))
+# Expression('k_syn', Piecewise((0, sp.Lt(obs_Time, 4)), (0, sp.Gt(obs_Time, 15)), (5, True)))
+Expression('k_syn',
+           Piecewise((0, sp.Lt(model.observables['obs_Time'], 4)), (0, sp.Gt(model.observables['obs_Time'], 15)),
+                     (5, True)))
 
 # Define reactions
 Rule('Protein_synthesis', None >> Protein(), model.expressions['k_syn'])
-Rule('Clock', None >> Time(), k_clock)
+Rule('Clock', None >> Time(), model.parameters['k_clock'])
 # add degradation rule
 Parameter('k_deg', 0.4)
 Rule('Protein_degradation', Protein() >> None, k_deg)
