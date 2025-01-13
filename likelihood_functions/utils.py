@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from typing import Tuple
+from utils.GFP_calibration import convert_AU_to_nM
 
 
 def prepare_combined_params(
@@ -87,33 +88,6 @@ def process_negative_controls(df: pd.DataFrame) -> pd.DataFrame:
     return processed_df[processed_df['condition'] != 'Negative']
 
 
-def load_and_process_csv(filepath: str, max_time: float = None) -> Tuple[pd.DataFrame, np.ndarray]:
-    """
-    Load and process CSV data with negative control subtraction and optional time limit
-
-    Parameters
-    ----------
-    filepath : str
-        Path to the CSV file
-    max_time : float, optional
-        Maximum time point to consider in minutes
-
-    Returns
-    -------
-    Tuple[pd.DataFrame, np.ndarray]
-        Processed DataFrame and time points array
-    """
-    df = pd.read_csv(filepath)
-
-    if max_time is not None:
-        df = df[df['time'] <= max_time].copy()
-
-    processed_df = process_negative_controls(df)
-    tspan = np.sort(processed_df['time'].unique())
-
-    return processed_df, tspan
-
-
 def organize_results(parameters_to_fit, log_params: np.ndarray, likelihood_data: dict,
                      log_prior: np.ndarray) -> pd.DataFrame:
     """
@@ -171,3 +145,41 @@ def organize_results(parameters_to_fit, log_params: np.ndarray, likelihood_data:
     results_df[('metrics', 'log_posterior', '')] = log_prior + likelihood_data['total']
 
     return results_df
+
+
+def load_and_process_csv(filepath: str, calibration_params: dict, max_time: float = None) -> Tuple[
+    pd.DataFrame, np.ndarray]:
+    """
+    Load and process experimental data
+
+    Parameters
+    ----------
+    filepath : str
+        Path to CSV file
+    calibration_params : dict
+        Dictionary containing slope, intercept, and brightness_correction
+    max_time : float, optional
+        Maximum time point to consider
+
+    Returns
+    -------
+    processed_df : pd.DataFrame
+        Processed data with fluorescence converted to nM
+    tspan : np.ndarray
+        Array of timepoints
+    """
+    df = pd.read_csv(filepath)
+
+    if max_time is not None:
+        df = df[df['time'] <= max_time].copy()
+
+    processed_df = process_negative_controls(df)
+    processed_df['fluorescence'] = convert_AU_to_nM(
+        processed_df['fluorescence'],
+        calibration_params['slope'],
+        calibration_params['intercept'],
+        calibration_params['brightness_correction']
+    )
+
+    tspan = np.sort(processed_df['time'].unique())
+    return processed_df, tspan

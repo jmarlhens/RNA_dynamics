@@ -13,56 +13,37 @@ def compute_condition_likelihood(
         condition: str,
         calibration_params: Dict
 ) -> pd.Series:
-    """
-    Compute log likelihood for a specific condition
-
-    Parameters
-    ----------
-    simulation_results : Any
-        Simulation results object
-    experimental_data : pd.DataFrame
-        Experimental data
-    tspan : np.ndarray
-        Time points array
-    combined_params : pd.DataFrame
-        Combined parameter sets
-    condition : str
-        Condition name
-    calibration_params : Dict
-        Dictionary containing:
-            - slope: float
-            - intercept: float
-            - brightness_correction: float
-
-    Returns
-    -------
-    pd.Series
-        Log likelihood values indexed by parameter set indices
-    """
-    # Get indices for this condition
+    """Compute log likelihood for a specific condition"""
     condition_mask = combined_params['condition'] == condition
     sim_indices = combined_params.index[condition_mask]
     param_set_indices = combined_params.loc[condition_mask, 'param_set_idx']
 
-    # Prepare experimental data
     exp_means, exp_vars = prepare_experimental_data(experimental_data, tspan)
 
-    # Get simulation values and convert from nM to AU
     sim_values = np.array([
         simulation_results.observables[i]['obs_Protein_GFP']
         for i in sim_indices
     ])
 
-    # Convert simulation values from nM to AU using calibration
-    sim_values_au = convert_nM_to_AU(
-        sim_values,
-        calibration_params['slope'],
-        calibration_params['intercept'],
-        calibration_params['brightness_correction']
-    )
+    log_likelihoods = calculate_likelihoods(sim_values, exp_means, exp_vars)
 
-    # Calculate likelihoods
-    log_likelihoods = calculate_likelihoods(sim_values_au, exp_means, exp_vars)
+    # import matplotlib.pyplot as plt
+    # # color each simulation with respect to its ll stored in log_likelihoods
+    # # Get 90th percentile of log likelihoods
+    # min_ll = np.percentile(log_likelihoods, 70)
+    # max_ll = np.percentile(log_likelihoods, 100)
+    #
+    # norm = plt.Normalize(vmin=min_ll, vmax=max_ll)
+    # cmap = plt.cm.viridis
+    #
+    # plt.figure(figsize=(10, 6))
+    # for i, sim in enumerate(sim_values_au):
+    #     plt.plot(sim, color=cmap(norm(log_likelihoods[i])))
+    # plt.plot(exp_means[0], 'k-', label='Experimental Data', color = 'red')
+    # plt.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), label='Log-likelihood')
+    # plt.ylim(0, 1000000)
+    # plt.legend()
+    # plt.show()
 
     # Return Series indexed by original parameter set indices
     return pd.Series(log_likelihoods, index=param_set_indices)

@@ -1,8 +1,9 @@
-import pandas as pd
-from pysb.simulator import ScipyOdeSimulator
 from .likelihood import compute_condition_likelihood
 from .utils import prepare_combined_params
+from optimization.adaptive_parallel_tempering import ParallelTempering
+import pandas as pd
 import numpy as np
+from pysb.simulator import ScipyOdeSimulator
 
 
 class CircuitFitter:
@@ -22,8 +23,8 @@ class CircuitFitter:
             Dictionary containing:
                 - slope: float
                 - intercept: float
-                - calibration_protein_slug: str (e.g., 'avgfp')
-                - target_protein_slug: str (e.g., 'superfolder-gfp')
+                - calibration_protein_slug: str (e.g., 'avGFP')
+                - target_protein_slug: str (e.g., 'sfGFP')
         """
         self.configs = configs
         self.parameters_to_fit = parameters_to_fit
@@ -33,7 +34,6 @@ class CircuitFitter:
         # Process calibration data and set up GFP variants
         self._setup_priors()
         self._validate_configs()
-
 
     def _validate_configs(self):
         """Check that all configs have the same model"""
@@ -104,9 +104,9 @@ class CircuitFitter:
                 config.condition_params
             )
 
-            simulator = ScipyOdeSimulator(config.model, config.tspan)
+            simulator = ScipyOdeSimulator(config.model, config.tspan, compiler='cython', cleanup=True)
             simulation_results = simulator.run(
-                param_values=combined_params_df.drop(['param_set_idx', 'condition'], axis=1)
+                param_values=combined_params_df.drop(['param_set_idx', 'condition'], axis=1),
             )
 
             results[i] = {
@@ -220,3 +220,75 @@ class CircuitFitter:
         likelihood_data = self.calculate_log_likelihood(log_params)
 
         return prior_data['total'] + likelihood_data['total']
+
+
+class MCMCAdapter:
+    def __init__(self, circuit_fitter):
+        """
+        Adapter to make CircuitFitter compatible with ParallelTempering
+
+        Parameters
+        ----------
+        circuit_fitter : CircuitFitter
+            Instance of your CircuitFitter class
+        """
+        self.circuit_fitter = circuit_fitter
+
+    def get_initial_parameters(self):
+        """Get initial parameters from prior means in log space"""
+        initial_params = []
+        for param_name in self.circuit_fitter.parameters_to_fit:
+            initial_params.append(self.circuit_fitter.log_means[param_name])
+        return np.array(initial_params)
+
+    def get_log_likelihood_function(self):
+        """Returns a likelihood function compatible with ParallelTempering"""
+
+        def log_likelihood(params):
+            # Reshape from (n_walkers, n_chains, n_params) to (n_samples, n_params)
+            original_shape = params.shape
+            params_2d = params.reshape(-1, original_shape[-1])
+
+            # Calculate likelihood and reshape back
+            likelihood_dict = self.circuit_fitter.calculate_log_likelihood(params_2d)
+            return likelihood_dict['total'].reshape(original_shape[:-1])
+
+        return log_likelihood
+
+    def get_log_prior_function(self):
+        """Returns a prior function compatible with ParallelTempering"""
+
+        def log_prior(params):
+            # Reshape from (n_walkers, n_chains, n_params) to (n_samples, n_params)
+            original_shape = params.shape
+            params_2d = params.reshape(-1, original_shape[-1])
+
+            # Calculate prior and reshape back
+            prior_values = self.circuit_fitter.calculate_log_prior(params_2d)
+            return prior_values.reshape(original_shape[:-1])
+
+        return log_prior
+
+    def setup_parallel_tempering(self, n_walkers=1, n_chains=10):
+        """
+        Creates and configures a ParallelTempering instance
+
+        Parameters
+        ----------
+        n_walkers : int
+            Number of walkers per chain
+        n_chains : int
+            Number of temperature chains
+
+        Returns
+        -------
+        ParallelTempering
+            Configured instance ready for sampling
+        """
+        return ParallelTempering(
+            log_likelihood=self.get_log_likelihood_function(),
+            log_prior=self.get_log_prior_function(),
+            n_dim=len(self.circuit_fitter.parameters_to_fit),
+            n_walkers=n_walkers,
+            n_chains=n_chains
+        )
