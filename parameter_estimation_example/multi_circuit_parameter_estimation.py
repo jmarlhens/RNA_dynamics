@@ -207,7 +207,7 @@ if __name__ == '__main__':
 
     profiler.disable()
 
-    current_time = datetime.datetime.now()
+    current_time = datetime.now()
     timestamp = current_time.strftime("%Y-%m-%d_%H-%M-%S")
     profiler.dump_stats(f"profiling_{timestamp}.prof")
     profiler.print_stats()
