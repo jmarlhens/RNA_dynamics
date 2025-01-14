@@ -1,9 +1,10 @@
+import numpy as np
+import pandas as pd
+from pysb.simulator import ScipyOdeSimulator
+
+from optimization.adaptive_parallel_tempering import ParallelTempering
 from .likelihood import compute_condition_likelihood
 from .utils import prepare_combined_params
-from optimization.adaptive_parallel_tempering import ParallelTempering
-import pandas as pd
-import numpy as np
-from pysb.simulator import ScipyOdeSimulator
 
 
 class CircuitFitter:
@@ -30,15 +31,22 @@ class CircuitFitter:
         self.parameters_to_fit = parameters_to_fit
         self.model_parameters_priors = model_parameters_priors
         self.calibration_params = calibration_data
+        self.simulators = {}
 
         # Process calibration data and set up GFP variants
         self._setup_priors()
         self._validate_configs()
+        self._setup_simulators()
 
     def _validate_configs(self):
         """Check that all configs have the same model"""
         # TODO: Check that all models are the same
         pass
+
+    def _setup_simulators(self):
+        for config in self.configs:
+            simulator = ScipyOdeSimulator(config.model, config.tspan, compiler='cython', cleanup=True)
+            self.simulators[config.name] = simulator
 
     def _setup_priors(self):
         """Setup prior parameters in log space for easy access"""
@@ -116,6 +124,54 @@ class CircuitFitter:
             }
 
         return results
+
+    # def simulate_parameters(self, log_params: np.ndarray) -> dict:
+    #     """
+    #     Run simulations for given parameter sets (in log space) across all conditions
+    #
+    #     Args:
+    #         log_params: Array of shape (n_samples, n_params) or (n_params,) in log space
+    #
+    #     Returns:
+    #         Dictionary with simulation results
+    #     """
+    #     # Convert to linear space for simulation
+    #     linear_params = self.log_to_linear_params(log_params, self.parameters_to_fit)
+    #
+    #
+    #     arguments = [[linear_params, config] for config in self.configs]
+    #
+    #     c_count = multiprocessing.cpu_count()
+    #     # with multiprocessing.Pool(c_count - 2) as p:
+    #     #     cur_results = p.map(self.simulate_parameters_for_config, iterable=arguments)
+    #
+    #     with concurrent.futures.ThreadPoolExecutor(max_workers=c_count - 2) as executor:
+    #         cur_results = executor.map(self.simulate_parameters_for_config, arguments)
+    #
+    #     results = {}
+    #     for i, config, cur_result in zip(range(len(self.configs)), self.configs, cur_results):
+    #         results[i] = {
+    #             'combined_params': cur_result[1],
+    #             'simulation_results': cur_result[0],
+    #             'config': config
+    #         }
+    #
+    #     return results
+    #
+    # def simulate_parameters_for_config(self, args):
+    #     linear_params, config = args
+    #     combined_params_df = prepare_combined_params(
+    #         linear_params,
+    #         config.condition_params
+    #     )
+    #
+    #     simulator = self.simulators[config.name]
+    #     simulation_results = simulator.run(
+    #         param_values=combined_params_df.drop(['param_set_idx', 'condition'], axis=1),
+    #     )
+    #
+    #     return simulation_results, combined_params_df
+
 
     def calculate_likelihood_from_simulation(self, simulation_data: dict) -> dict:
         """Calculate log likelihood from pre-computed simulation data."""

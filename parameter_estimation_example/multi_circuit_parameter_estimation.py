@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from likelihood_functions import (
     CircuitConfig,
     CircuitFitter,
@@ -15,6 +17,8 @@ from utils.import_and_visualise_data import load_and_process_csv, plot_replicate
 import pandas as pd
 from utils.GFP_calibration import fit_gfp_calibration, get_brightness_correction_factor
 import matplotlib.pyplot as plt
+
+import cProfile
 
 # Parameters
 max_time = 360
@@ -119,123 +123,133 @@ circuit_configs = [
     )
 ]
 
-# Load your calibration data
-data = pd.read_csv('../calibration_gfp/gfp_Calibration.csv')
+if __name__ == '__main__':
+    profiler = cProfile.Profile()
 
-# Fit the calibration curve
-calibration_results = fit_gfp_calibration(
-    data,
-    concentration_col='GFP Concentration (nM)',
-    fluorescence_pattern='F.I. (a.u)'
-)
+    # Load your calibration data
+    data = pd.read_csv('../calibration_gfp/gfp_Calibration.csv')
 
-# Get the correction factor for sfGFP
-correction_factor, protein_info = get_brightness_correction_factor('avGFP', 'sfGFP')
+    # Fit the calibration curve
+    calibration_results = fit_gfp_calibration(
+        data,
+        concentration_col='GFP Concentration (nM)',
+        fluorescence_pattern='F.I. (a.u)'
+    )
 
-# Create calibration parameters dictionary
-calibration_params = {
-    'slope': calibration_results['slope'],
-    'intercept': calibration_results['intercept'],
-    'brightness_correction': correction_factor
-}
+    # Get the correction factor for sfGFP
+    correction_factor, protein_info = get_brightness_correction_factor('avGFP', 'sfGFP')
 
-# Load priors
-priors = pd.read_csv('../data/model_parameters_priors.csv')
-priors = priors[priors['Parameter'] != 'k_prot_deg']
-parameters_to_fit = priors.Parameter.tolist()
-n_sets = 60
+    # Create calibration parameters dictionary
+    calibration_params = {
+        'slope': calibration_results['slope'],
+        'intercept': calibration_results['intercept'],
+        'brightness_correction': correction_factor
+    }
 
-# Create fitter
-circuit_fitter = CircuitFitter(circuit_configs, parameters_to_fit, priors, calibration_params)
+    # Load priors
+    priors = pd.read_csv('../data/model_parameters_priors.csv')
+    priors = priors[priors['Parameter'] != 'k_prot_deg']
+    parameters_to_fit = priors.Parameter.tolist()
+    n_sets = 60
 
-# Generate test parameters (in log space)
-log_params = circuit_fitter.generate_test_parameters(n_sets=n_sets)
+    # Create fitter
+    circuit_fitter = CircuitFitter(circuit_configs, parameters_to_fit, priors, calibration_params)
 
-# Run simulations (takes log params)
-import time
-tic = time.time()
-sim_data = circuit_fitter.simulate_parameters(log_params)
-toc = time.time()
-simulation_time_process = toc - tic
-print(f"Simulation time: {simulation_time_process:.2f} seconds")
+    # # Generate test parameters (in log space)
+    # log_params = circuit_fitter.generate_test_parameters(n_sets=n_sets)
+    #
+    # # Run simulations (takes log params)
+    # import time
+    #
+    # tic = time.time()
+    # sim_data = circuit_fitter.simulate_parameters(log_params)
+    # toc = time.time()
+    # simulation_time_process = toc - tic
+    # print(f"Simulation time: {simulation_time_process:.2f} seconds")
+    #
+    # # Calculate likelihood from simulation data
+    # log_likelihood = circuit_fitter.calculate_likelihood_from_simulation(sim_data)
+    #
+    # # Calculate prior (takes log params)
+    # log_prior = circuit_fitter.calculate_log_prior(log_params)
+    #
+    # # Calculate posterior (takes log params)
+    # log_posterior = log_prior + log_likelihood['total']
+    #
+    # # Organize results
+    # results_df = organize_results(parameters_to_fit, log_params, log_likelihood, log_prior)
+    #
+    # plot_all_simulation_results(sim_data, results_df, ll_quartile=10)
+    # plt.show()
+    #
+    # # Plot results
+    # for i in range(min(n_sets, 6)):
+    #     fig = plot_simulation_results(sim_data, results_df, param_set_idx=i)
 
-# Calculate likelihood from simulation data
-log_likelihood = circuit_fitter.calculate_likelihood_from_simulation(sim_data)
+    # Create the adapter
+    adapter = MCMCAdapter(circuit_fitter)
 
-# Calculate prior (takes log params)
-log_prior = circuit_fitter.calculate_log_prior(log_params)
+    # Get initial parameters from prior means
+    initial_parameters = adapter.get_initial_parameters()
 
-# Calculate posterior (takes log params)
-log_posterior = log_prior + log_likelihood['total']
-
-# Organize results
-results_df = organize_results(parameters_to_fit, log_params, log_likelihood, log_prior)
-
-plot_all_simulation_results(sim_data, results_df, ll_quartile=10)
-plt.show()
-
-# Plot results
-for i in range(min(n_sets, 6)):
-    fig = plot_simulation_results(sim_data, results_df, param_set_idx=i)
-
-# Create the adapter
-adapter = MCMCAdapter(circuit_fitter)
-
-# Get initial parameters from prior means
-initial_parameters = adapter.get_initial_parameters()
-
-# Setup parallel tempering
-pt = adapter.setup_parallel_tempering(n_walkers=10, n_chains=6)
-
-# Run sampling with initial parameters from priors
-parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(
-    initial_parameters=initial_parameters,
-    n_samples=10 ** 2,
-    target_acceptance_ratio=0.4,
-    adaptive_temperature=True
-)
-
-# parameters.shape is (10, 10, 6, 20)
-# likelihoods.shape is (10, 10, 6)
-# priors.shape is (10, 10, 6) and so on
+    # Setup parallel tempering
+    pt = adapter.setup_parallel_tempering(n_walkers=10, n_chains=6)
 
 
-# Analyze results
-results = analyze_mcmc_results(
-    parameters=parameters,
-    priors=priors,
-    likelihoods=likelihoods,
-    step_accepts=step_accepts,
-    swap_accepts=swap_accepts,
-    parameter_names=circuit_fitter.parameters_to_fit,
-    circuit_fitter=circuit_fitter  # Pass the circuit_fitter instance
-)
+    profiler.enable()
+    # Run sampling with initial parameters from priors
+    parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(
+        initial_parameters=initial_parameters,
+        n_samples=2, #10 ** 2,
+        target_acceptance_ratio=0.4,
+        adaptive_temperature=True
+    )
 
-# Access individual components
-best_params = results['best_parameters']
-stats = results['statistics']
-figures = results['figures']
+    profiler.disable()
 
-# Display figures
-plt.show()
+    current_time = datetime.datetime.now()
+    timestamp = current_time.strftime("%Y-%m-%d_%H-%M-%S")
+    profiler.dump_stats(f"profiling_{timestamp}.prof")
+    profiler.print_stats()
 
-# simulate the best parameters
-best_params = best_params['parameters']
+    # parameters.shape is (10, 10, 6, 20)
+    # likelihoods.shape is (10, 10, 6)
+    # priors.shape is (10, 10, 6) and so on
 
-# Summarize results in a DataFrame
-df = results['analyzer'].to_dataframe()
+    # Analyze results
+    results = analyze_mcmc_results(
+        parameters=parameters,
+        priors=priors,
+        likelihoods=likelihoods,
+        step_accepts=step_accepts,
+        swap_accepts=swap_accepts,
+        parameter_names=circuit_fitter.parameters_to_fit,
+        circuit_fitter=circuit_fitter  # Pass the circuit_fitter instance
+    )
 
-# Save results
-df.to_csv('results.csv', index=False)
+    # Access individual components
+    best_params = results['best_parameters']
+    stats = results['statistics']
+    figures = results['figures']
 
+    # Display figures
+    plt.show()
 
-# Distribution of likelihoods
-plt.figure(figsize=(10, 6))
-plt.hist(likelihoods.flatten(), color='blue', alpha=0.7)
-plt.xlabel('Log Likelihood')
-plt.ylabel('Frequency')
-plt.title('Distribution of Log Likelihoods')
-plt.grid(True)
-plt.tight_layout()
-plt.show()
+    # simulate the best parameters
+    best_params = best_params['parameters']
 
+    # Summarize results in a DataFrame
+    df = results['analyzer'].to_dataframe()
+
+    # Save results
+    df.to_csv('results.csv', index=False)
+
+    # Distribution of likelihoods
+    plt.figure(figsize=(10, 6))
+    plt.hist(likelihoods.flatten(), color='blue', alpha=0.7)
+    plt.xlabel('Log Likelihood')
+    plt.ylabel('Frequency')
+    plt.title('Distribution of Log Likelihoods')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
