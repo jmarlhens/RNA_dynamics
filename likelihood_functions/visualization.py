@@ -42,7 +42,7 @@ def plot_simulation_results(
                 sim_indices = data['combined_params'].index[condition_mask]
                 param_indices = data['combined_params'].loc[condition_mask, 'param_set_idx']
                 param_sim_idx = sim_indices[param_indices == param_set_idx][0]
-                sim_values = data['simulation_results'].observables[param_sim_idx]['obs_Protein_GFP'] * 100
+                sim_values = data['simulation_results'].observables[param_sim_idx]['obs_Protein_GFP']
                 y_min = min(y_min, np.min(sim_values))
                 y_max = max(y_max, np.max(sim_values))
 
@@ -168,7 +168,7 @@ def plot_all_simulation_results(
             param_indices = combined_params.loc[condition_mask, 'param_set_idx']
 
             for param_idx, sim_idx in zip(param_indices, sim_indices):
-                sim_values = simulation_results.observables[sim_idx]['obs_Protein_GFP'] * 100
+                sim_values = simulation_results.observables[sim_idx]['obs_Protein_GFP']
                 ll = condition_lls[param_idx]
                 ax.plot(config.tspan, sim_values,
                         color=cmap(norm(ll)), alpha=0.3, zorder=1)

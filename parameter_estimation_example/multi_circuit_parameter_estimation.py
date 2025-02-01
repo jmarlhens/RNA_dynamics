@@ -179,12 +179,12 @@ if __name__ == '__main__':
     # Organize results
     results_df = organize_results(parameters_to_fit, log_params, log_likelihood, log_prior)
 
-    plot_all_simulation_results(sim_data, results_df, ll_quartile=10)
+    plot_all_simulation_results(sim_data, results_df, ll_quartile=0)
     plt.show()
 
     # Plot results
-    for i in range(min(n_sets, 6)):
-        fig = plot_simulation_results(sim_data, results_df, param_set_idx=i)
+    # for i in range(min(n_sets, 6)):
+    #     fig = plot_simulation_results(sim_data, results_df, param_set_idx=i)
 
     # Create the adapter
     adapter = MCMCAdapter(circuit_fitter)
