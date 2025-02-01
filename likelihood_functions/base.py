@@ -3,14 +3,14 @@ import pandas as pd
 from pysb.simulator import ScipyOdeSimulator
 
 from optimization.adaptive_parallel_tempering import ParallelTempering
-from .likelihood import compute_condition_likelihood
-from .utils import prepare_combined_params
+from .likelihood import calculate_likelihoods
+from .utils import prepare_experimental_data, prepare_combined_params
 
 
 class CircuitFitter:
     def __init__(self, configs, parameters_to_fit, model_parameters_priors, calibration_data):
         """
-        Initialize CircuitFitter
+        Initialize CircuitFitter with caching of experimental data
 
         Parameters
         ----------
@@ -21,27 +21,43 @@ class CircuitFitter:
         model_parameters_priors : pd.DataFrame
             Prior distributions for model parameters
         calibration_data : dict
-            Dictionary containing:
-                - slope: float
-                - intercept: float
-                - calibration_protein_slug: str (e.g., 'avGFP')
-                - target_protein_slug: str (e.g., 'sfGFP')
+            Dictionary containing calibration parameters
         """
         self.configs = configs
         self.parameters_to_fit = parameters_to_fit
         self.model_parameters_priors = model_parameters_priors
         self.calibration_params = calibration_data
         self.simulators = {}
+        self.experimental_data_cache = {}  # Cache for experimental data
 
-        # Process calibration data and set up GFP variants
         self._setup_priors()
         self._validate_configs()
         self._setup_simulators()
+        self._cache_experimental_data()  # New initialization step
+
+    def _cache_experimental_data(self):
+        """Pre-calculate and cache experimental data means and variances"""
+        for config in self.configs:
+            config_cache = {}
+            for condition_name, _ in config.condition_params.items():
+                condition_data = config.experimental_data[
+                    config.experimental_data['condition'] == condition_name
+                    ]
+
+                if len(condition_data) == 0:
+                    raise ValueError(f"No experimental data found for condition: {condition_name}")
+
+                exp_means, exp_vars = prepare_experimental_data(condition_data, config.tspan)
+                config_cache[condition_name] = {
+                    'means': exp_means,
+                    'vars': exp_vars
+                }
+            self.experimental_data_cache[config.name] = config_cache
 
     def _validate_configs(self):
         """Check that all configs have the same model"""
-        # TODO: Check that all models are the same
-        pass
+        if not self.configs:
+            raise ValueError("No configurations provided")
 
     def _setup_simulators(self):
         for config in self.configs:
@@ -173,9 +189,8 @@ class CircuitFitter:
     #
     #     return simulation_results, combined_params_df
 
-
     def calculate_likelihood_from_simulation(self, simulation_data: dict) -> dict:
-        """Calculate log likelihood from pre-computed simulation data."""
+        """Calculate log likelihood from pre-computed simulation data using cached experimental data"""
         first_config_data = simulation_data[0]
         n_param_sets = len(first_config_data['combined_params']['param_set_idx'].unique())
         total_log_likelihood = np.zeros(n_param_sets)
@@ -188,24 +203,22 @@ class CircuitFitter:
             condition_likelihoods = {}
 
             for condition_name, _ in config.condition_params.items():
-                condition_data = config.experimental_data[
-                    config.experimental_data['condition'] == condition_name
-                ]
+                condition_mask = data['combined_params']['condition'] == condition_name
+                sim_indices = data['combined_params'].index[condition_mask]
+                param_set_indices = data['combined_params'].loc[condition_mask, 'param_set_idx']
 
-                if len(condition_data) == 0:
-                    raise ValueError(f"No experimental data found for condition: {condition_name}")
+                # Get cached experimental data
+                cached_data = self.experimental_data_cache[circuit_name][condition_name]
+                exp_means, exp_vars = cached_data['means'], cached_data['vars']
 
-                condition_likelihood = compute_condition_likelihood(
-                    data['simulation_results'],
-                    condition_data,
-                    config.tspan,
-                    data['combined_params'],
-                    condition_name,
-                    self.calibration_params
-                )
+                sim_values = np.array([
+                    data['simulation_results'].observables[i]['obs_Protein_GFP']
+                    for i in sim_indices
+                ])
 
-                condition_likelihoods[condition_name] = condition_likelihood.values
-                circuit_total += condition_likelihood.values
+                log_likelihoods = calculate_likelihoods(sim_values, exp_means, exp_vars)
+                condition_likelihoods[condition_name] = log_likelihoods
+                circuit_total += log_likelihoods
 
             circuit_likelihoods[circuit_name] = {
                 'total': circuit_total,

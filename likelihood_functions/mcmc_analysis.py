@@ -263,7 +263,7 @@ def analyze_mcmc_results(parameters, priors, likelihoods, step_accepts, swap_acc
     # Generate plots
     trace_fig = analyzer.plot_traces()
     dist_fig = analyzer.plot_distributions()
-    accept_fig = analyzer.plot_acceptance_rates()
+    # accept_fig = analyzer.plot_acceptance_rates()
 
     # Generate simulation plots for top 5 parameter sets
     sim_figs, best_params_array = analyzer.plot_simulations(n_best=5)
@@ -275,7 +275,7 @@ def analyze_mcmc_results(parameters, priors, likelihoods, step_accepts, swap_acc
         'figures': {
             'traces': trace_fig,
             'distributions': dist_fig,
-            'acceptance_rates': accept_fig,
+            # 'acceptance_rates': accept_fig,
             'simulations': sim_figs
         },
         'best_parameters_array': best_params_array

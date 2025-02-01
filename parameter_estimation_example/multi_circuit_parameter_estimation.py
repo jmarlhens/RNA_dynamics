@@ -155,36 +155,36 @@ if __name__ == '__main__':
     # Create fitter
     circuit_fitter = CircuitFitter(circuit_configs, parameters_to_fit, priors, calibration_params)
 
-    # # Generate test parameters (in log space)
-    # log_params = circuit_fitter.generate_test_parameters(n_sets=n_sets)
-    #
-    # # Run simulations (takes log params)
-    # import time
-    #
-    # tic = time.time()
-    # sim_data = circuit_fitter.simulate_parameters(log_params)
-    # toc = time.time()
-    # simulation_time_process = toc - tic
-    # print(f"Simulation time: {simulation_time_process:.2f} seconds")
-    #
-    # # Calculate likelihood from simulation data
-    # log_likelihood = circuit_fitter.calculate_likelihood_from_simulation(sim_data)
-    #
-    # # Calculate prior (takes log params)
-    # log_prior = circuit_fitter.calculate_log_prior(log_params)
-    #
-    # # Calculate posterior (takes log params)
-    # log_posterior = log_prior + log_likelihood['total']
-    #
-    # # Organize results
-    # results_df = organize_results(parameters_to_fit, log_params, log_likelihood, log_prior)
-    #
-    # plot_all_simulation_results(sim_data, results_df, ll_quartile=10)
-    # plt.show()
-    #
-    # # Plot results
-    # for i in range(min(n_sets, 6)):
-    #     fig = plot_simulation_results(sim_data, results_df, param_set_idx=i)
+    # Generate test parameters (in log space)
+    log_params = circuit_fitter.generate_test_parameters(n_sets=n_sets)
+
+    # Run simulations (takes log params)
+    import time
+
+    tic = time.time()
+    sim_data = circuit_fitter.simulate_parameters(log_params)
+    toc = time.time()
+    simulation_time_process = toc - tic
+    print(f"Simulation time: {simulation_time_process:.2f} seconds")
+
+    # Calculate likelihood from simulation data
+    log_likelihood = circuit_fitter.calculate_likelihood_from_simulation(sim_data)
+
+    # Calculate prior (takes log params)
+    log_prior = circuit_fitter.calculate_log_prior(log_params)
+
+    # Calculate posterior (takes log params)
+    log_posterior = log_prior + log_likelihood['total']
+
+    # Organize results
+    results_df = organize_results(parameters_to_fit, log_params, log_likelihood, log_prior)
+
+    plot_all_simulation_results(sim_data, results_df, ll_quartile=10)
+    plt.show()
+
+    # Plot results
+    for i in range(min(n_sets, 6)):
+        fig = plot_simulation_results(sim_data, results_df, param_set_idx=i)
 
     # Create the adapter
     adapter = MCMCAdapter(circuit_fitter)
@@ -211,10 +211,6 @@ if __name__ == '__main__':
     timestamp = current_time.strftime("%Y-%m-%d_%H-%M-%S")
     profiler.dump_stats(f"profiling_{timestamp}.prof")
     profiler.print_stats()
-
-    # parameters.shape is (10, 10, 6, 20)
-    # likelihoods.shape is (10, 10, 6)
-    # priors.shape is (10, 10, 6) and so on
 
     # Analyze results
     results = analyze_mcmc_results(

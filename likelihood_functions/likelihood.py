@@ -13,11 +13,12 @@ def compute_condition_likelihood(
         condition: str,
         calibration_params: Dict
 ) -> pd.Series:
-    """Compute log likelihood for a specific condition"""
+    """Compute log likelihood for a specific condition (legacy version)"""
     condition_mask = combined_params['condition'] == condition
     sim_indices = combined_params.index[condition_mask]
     param_set_indices = combined_params.loc[condition_mask, 'param_set_idx']
 
+    # Calculate experimental data (this will be cached in the new version)
     exp_means, exp_vars = prepare_experimental_data(experimental_data, tspan)
 
     sim_values = np.array([
@@ -26,7 +27,6 @@ def compute_condition_likelihood(
     ])
 
     log_likelihoods = calculate_likelihoods(sim_values, exp_means, exp_vars)
-
     # import matplotlib.pyplot as plt
     # # color each simulation with respect to its ll stored in log_likelihoods
     # # Get 90th percentile of log likelihoods
@@ -44,8 +44,6 @@ def compute_condition_likelihood(
     # plt.ylim(0, 1000000)
     # plt.legend()
     # plt.show()
-
-    # Return Series indexed by original parameter set indices
     return pd.Series(log_likelihoods, index=param_set_indices)
 
 
