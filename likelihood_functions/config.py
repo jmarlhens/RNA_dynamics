@@ -3,7 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 from .utils import process_negative_controls
-from utils.GFP_calibration import convert_AU_to_nM
+from utils.GFP_calibration import convert_au_to_nm
 
 
 @dataclass
@@ -34,7 +34,7 @@ class CircuitConfig:
 
         # Convert fluorescence from AU to nM if calibration params are provided
         if self.calibration_params is not None:
-            self.experimental_data['fluorescence'] = convert_AU_to_nM(
+            self.experimental_data['fluorescence'] = convert_au_to_nm(
                 self.experimental_data['fluorescence'],
                 self.calibration_params['slope'],
                 self.calibration_params['intercept'],

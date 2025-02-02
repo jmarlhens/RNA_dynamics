@@ -1,8 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from likelihood_functions.visualization import plot_simulation_results
 import pandas as pd
+from likelihood_functions.visualization import plot_simulation_results
+from .utils import organize_results
 
 
 class MCMCAnalysis:
@@ -226,11 +227,23 @@ class MCMCAnalysis:
         # Simulate these parameters
         sim_data = self.circuit_fitter.simulate_parameters(best_params)
 
+        # Calculate likelihoods and priors for these parameters
+        likelihood_data = self.circuit_fitter.calculate_likelihood_from_simulation(sim_data)
+        prior_data = self.circuit_fitter.calculate_log_prior(best_params)
+
+        # Organize results into DataFrame
+        results_df = organize_results(
+            self.parameter_names,
+            best_params,
+            likelihood_data,
+            prior_data
+        )
+
         # Plot results for each parameter set
         figs = []
         for i in range(n_best):
-            fig = plot_simulation_results(sim_data, param_set_idx=i)
-            fig.suptitle(f'Simulation for Parameter Set {i + 1} (Posterior: {flat_posterior[best_indices[i]]:.2f})')
+            fig = plot_simulation_results(sim_data, results_df, param_set_idx=i)
+            fig.suptitle(f'Simulation for Parameter Set {i + 1}\nPosterior: {flat_posterior[best_indices[i]]:.2f}')
             figs.append(fig)
 
         return figs, best_params

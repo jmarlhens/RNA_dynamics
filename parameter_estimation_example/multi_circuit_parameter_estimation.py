@@ -4,7 +4,7 @@ from likelihood_functions import (
     CircuitConfig,
     CircuitFitter,
 )
-from likelihood_functions.visualization import plot_simulation_results, plot_all_simulation_results
+from likelihood_functions.visualization import plot_all_simulation_results
 from likelihood_functions.utils import organize_results
 from likelihood_functions.base import MCMCAdapter
 from likelihood_functions.mcmc_analysis import analyze_mcmc_results
@@ -179,7 +179,7 @@ if __name__ == '__main__':
     # Organize results
     results_df = organize_results(parameters_to_fit, log_params, log_likelihood, log_prior)
 
-    plot_all_simulation_results(sim_data, results_df, ll_quartile=0)
+    plot_all_simulation_results(sim_data, results_df, ll_quartile=20)
     plt.show()
 
     # Plot results
@@ -195,12 +195,11 @@ if __name__ == '__main__':
     # Setup parallel tempering
     pt = adapter.setup_parallel_tempering(n_walkers=10, n_chains=6)
 
-
     profiler.enable()
     # Run sampling with initial parameters from priors
     parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(
         initial_parameters=initial_parameters,
-        n_samples=2, #10 ** 2,
+        n_samples=3,  # 10 ** 2,
         target_acceptance_ratio=0.4,
         adaptive_temperature=True
     )

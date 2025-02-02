@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from pysb.simulator import ScipyOdeSimulator
 from optimization.parallel_tempering import ParallelTempering
 import seaborn as sns
+from likelihood_functions.utils import prepare_experimental_data
 
 
 def plot_simulations(tspan, sim_values, experimental_data, likelihoods=None, color_by_likelihood=False):
@@ -61,15 +62,7 @@ def likelihood_pos_ctrl(model, param_sets, plot_comparison=True, color_by_likeli
     simulation_results = simulator.run(param_values=param_sets)
 
     # Prepare experimental data arrays
-    pos_control_subset = pos_control[pos_control['time'].isin(tspan)]
-    exp_means = np.array([
-        pos_control_subset[pos_control_subset['time'] == t]['fluorescence'].mean()
-        for t in tspan
-    ])
-    exp_vars = np.array([
-        max(pos_control_subset[pos_control_subset['time'] == t]['fluorescence'].var(), 1)
-        for t in tspan
-    ])
+    pos_control_subset, exp_means, exp_vars = prepare_experimental_data(pos_control, tspan)
 
     # Vectorized likelihood calculation
     n_sets = param_sets.shape[0]
@@ -78,9 +71,6 @@ def likelihood_pos_ctrl(model, param_sets, plot_comparison=True, color_by_likeli
         for i in range(n_sets)
     ])
 
-    # Reshape arrays for broadcasting
-    exp_means = exp_means.reshape(1, -1)
-    exp_vars = exp_vars.reshape(1, -1)
 
     # Compute residuals and likelihoods using broadcasting
     residuals = sim_values - exp_means

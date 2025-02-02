@@ -131,7 +131,7 @@ def plot_all_simulation_results(
     circuit_y_limits = {}
     for circuit_name, data in simulation_data.items():
         config = data['config']
-        simulation_results = data['simulation_results']
+        # simulation_results = data['simulation_results']
 
         # Get all experimental data for this circuit
         exp_data = config.experimental_data

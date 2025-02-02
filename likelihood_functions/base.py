@@ -14,14 +14,10 @@ class CircuitFitter:
 
         Parameters
         ----------
-        configs : list
-            List of configuration objects
-        parameters_to_fit : list
-            List of parameter names to fit
-        model_parameters_priors : pd.DataFrame
-            Prior distributions for model parameters
-        calibration_data : dict
-            Dictionary containing calibration parameters
+        configs : List of configuration objects
+        parameters_to_fit : List of parameter names to fit
+        model_parameters_priors : pd.DataFrame of prior distributions for model parameters
+        calibration_data : Dictionary containing calibration parameters
         """
         self.configs = configs
         self.parameters_to_fit = parameters_to_fit
@@ -47,7 +43,7 @@ class CircuitFitter:
                 if len(condition_data) == 0:
                     raise ValueError(f"No experimental data found for condition: {condition_name}")
 
-                exp_means, exp_vars = prepare_experimental_data(condition_data, config.tspan)
+                _, exp_means, exp_vars = prepare_experimental_data(condition_data, config.tspan)
                 config_cache[condition_name] = {
                     'means': exp_means,
                     'vars': exp_vars
@@ -205,7 +201,7 @@ class CircuitFitter:
             for condition_name, _ in config.condition_params.items():
                 condition_mask = data['combined_params']['condition'] == condition_name
                 sim_indices = data['combined_params'].index[condition_mask]
-                param_set_indices = data['combined_params'].loc[condition_mask, 'param_set_idx']
+                # param_set_indices = data['combined_params'].loc[condition_mask, 'param_set_idx']
 
                 # Get cached experimental data
                 cached_data = self.experimental_data_cache[circuit_name][condition_name]

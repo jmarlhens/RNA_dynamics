@@ -49,25 +49,25 @@ class FPbaseAPI:
         Optional[FluorescentProteinProperties]
             Protein properties if found
         """
-        df = FPbaseAPI.get_protein_data()
-        if df is None:
+        df_protein_data = FPbaseAPI.get_protein_data()
+        if df_protein_data is None:
             return FPbaseAPI._get_hardcoded_properties(protein_slug)
 
         # Filter for the specific protein
-        protein_data = df[df['slug'] == protein_slug]
+        protein_data = df_protein_data[df_protein_data['slug'] == protein_slug]
 
         if len(protein_data) == 0:
             return FPbaseAPI._get_hardcoded_properties(protein_slug)
 
-        row = protein_data.iloc[0]
+        row_protein_data = protein_data.iloc[0]
 
         # Extract properties from the first state (assuming it's the main state)
         try:
             return FluorescentProteinProperties(
-                name=row['name'],
-                brightness=float(row['states.0.brightness']),
-                quantum_yield=float(row['states.0.qy']),
-                ext_coeff=float(row['states.0.ext_coeff'])
+                name=row_protein_data['name'],
+                brightness=float(row_protein_data['states.0.brightness']),
+                quantum_yield=float(row_protein_data['states.0.qy']),
+                ext_coeff=float(row_protein_data['states.0.ext_coeff'])
             )
         except (KeyError, ValueError):
             return FPbaseAPI._get_hardcoded_properties(protein_slug)
@@ -154,20 +154,20 @@ def get_brightness_correction_factor(
     """
     Calculate brightness correction factor between two fluorescent proteins
     """
-    api = FPbaseAPI()
+    api_fp_base_api = FPbaseAPI()
 
     # Fetch protein data
-    cal_protein = api.get_protein(calibration_protein_slug)
-    target_protein = api.get_protein(target_protein_slug)
+    cal_protein = api_fp_base_api.get_protein(calibration_protein_slug)
+    target_protein = api_fp_base_api.get_protein(target_protein_slug)
 
     if not cal_protein or not target_protein:
         raise ValueError(f"Could not get data for proteins: {calibration_protein_slug}, {target_protein_slug}")
 
     # Calculate correction factor
-    correction_factor = target_protein.brightness / cal_protein.brightness
+    brightness_correction_factor = target_protein.brightness / cal_protein.brightness
 
     # Prepare protein info dictionary
-    protein_info = {
+    protein_information = {
         'calibration': {
             'name': cal_protein.name,
             'brightness': cal_protein.brightness,
@@ -182,10 +182,10 @@ def get_brightness_correction_factor(
         }
     }
 
-    return correction_factor, protein_info
+    return brightness_correction_factor, protein_information
 
 
-def convert_nM_to_AU(
+def convert_nm_to_au(
         concentration: np.ndarray,
         slope: float,
         intercept: float,
@@ -196,7 +196,7 @@ def convert_nM_to_AU(
     return concentration * corrected_slope + intercept
 
 
-def convert_AU_to_nM(
+def convert_au_to_nm(
         fluorescence: np.ndarray,
         slope: float,
         intercept: float,

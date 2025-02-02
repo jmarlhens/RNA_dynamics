@@ -40,7 +40,7 @@ def prepare_combined_params(
 def prepare_experimental_data(
         experimental_data: pd.DataFrame,
         tspan: np.ndarray
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:
     """Prepare experimental data arrays for likelihood calculation"""
     condition_subset = experimental_data[experimental_data['time'].isin(tspan)]
     exp_means = np.array([
@@ -52,7 +52,7 @@ def prepare_experimental_data(
         for t in tspan
     ])
 
-    return exp_means.reshape(1, -1), exp_vars.reshape(1, -1)
+    return condition_subset, exp_means.reshape(1, -1), exp_vars.reshape(1, -1)
 
 
 def process_negative_controls(df: pd.DataFrame) -> pd.DataFrame:
@@ -61,8 +61,7 @@ def process_negative_controls(df: pd.DataFrame) -> pd.DataFrame:
 
     Parameters
     ----------
-    df : pd.DataFrame
-        DataFrame containing columns: 'time', 'fluorescence', 'condition', 'replicate'
+    df : pd.DataFrame containing columns: 'time', 'fluorescence', 'condition', 'replicate'
 
     Returns
     -------
