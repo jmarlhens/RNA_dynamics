@@ -1,5 +1,5 @@
 from utils.import_and_visualise_data import load_and_process_csv
-from circuits.GFP_positive_control import test_pos_control_constant
+from obsolete.GFP_positive_control import test_pos_control_constant
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt

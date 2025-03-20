@@ -1,7 +1,5 @@
 import numpy as np
 import pandas as pd
-from pysb.simulator import ScipyOdeSimulator
-
 from optimization.adaptive_parallel_tempering import ParallelTempering
 from .likelihood import calculate_likelihoods
 from .utils import prepare_experimental_data, prepare_combined_params
@@ -56,8 +54,23 @@ class CircuitFitter:
             raise ValueError("No configurations provided")
 
     def _setup_simulators(self):
+        """Setup simulatora for simulation"""
+        # from pysb.simulator import CupSodaSimulator
+        # for config in self.configs:
+        #     simulator = CupSodaSimulator(
+        #         config.model,
+        #         tspan=config.tspan,
+        #         verbose=True,
+        #     )
+        #     self.simulators[config.name] = simulator
+        from pysb.simulator import ScipyOdeSimulator
         for config in self.configs:
-            simulator = ScipyOdeSimulator(config.model, config.tspan, compiler='cython', cleanup=True)
+            simulator = ScipyOdeSimulator(
+                config.model,
+                config.tspan,
+                compiler='cython',
+                cleanup=True
+            )
             self.simulators[config.name] = simulator
 
     def _setup_priors(self):

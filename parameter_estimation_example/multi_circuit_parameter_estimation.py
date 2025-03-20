@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from likelihood_functions import (
     CircuitConfig,
     CircuitFitter,
@@ -8,17 +6,17 @@ from likelihood_functions.visualization import plot_all_simulation_results
 from likelihood_functions.utils import organize_results
 from likelihood_functions.base import MCMCAdapter
 from likelihood_functions.mcmc_analysis import analyze_mcmc_results
-from circuits.toehold import test_toehold
-from circuits.star import test_star
-from circuits.GFP_positive_control import test_pos_control_constant
-from circuits.cascade import test_cascade
-from circuits.cffl_type_1 import test_coherent_feed_forward_loop
-from utils.import_and_visualise_data import load_and_process_csv, plot_replicates
+from obsolete.toehold import test_toehold
+from obsolete.star import test_star
+from obsolete.GFP_positive_control import test_pos_control_constant
+from obsolete.cascade import test_cascade
+from obsolete.cffl_type_1 import test_coherent_feed_forward_loop
+from utils.import_and_visualise_data import load_and_process_csv
 import pandas as pd
 from utils.GFP_calibration import fit_gfp_calibration, get_brightness_correction_factor
 import matplotlib.pyplot as plt
 
-import cProfile
+# import cProfile
 
 # Parameters
 max_time = 360
@@ -45,14 +43,14 @@ cffl_type_1_model = test_coherent_feed_forward_loop()
 
 # Create configs
 circuit_configs = [
-    CircuitConfig(
-        model=gfp_pos_control_model,
-        name="Positive Control (sfGFP)",
-        condition_params={"sfGFP 3 nM + Se6Tr3 5 nM + St6 15 nM": {"k_GFP_concentration": 3}},
-        experimental_data=positive_control_data,
-        tspan=tspan_positive_control,
-        max_time=max_time
-    ),
+    # CircuitConfig(
+    #     model=gfp_pos_control_model,
+    #     name="Positive Control (sfGFP)",
+    #     condition_params={"sfGFP 3 nM + Se6Tr3 5 nM + St6 15 nM": {"k_GFP_concentration": 3}},
+    #     experimental_data=positive_control_data,
+    #     tspan=tspan_positive_control,
+    #     max_time=max_time
+    # ),
     CircuitConfig(
         model=toehold_model,
         name="Toehold/Trigger",
@@ -124,7 +122,7 @@ circuit_configs = [
 ]
 
 if __name__ == '__main__':
-    profiler = cProfile.Profile()
+    # profiler = cProfile.Profile()
 
     # Load your calibration data
     data = pd.read_csv('../calibration_gfp/gfp_Calibration.csv')
@@ -195,21 +193,21 @@ if __name__ == '__main__':
     # Setup parallel tempering
     pt = adapter.setup_parallel_tempering(n_walkers=10, n_chains=6)
 
-    profiler.enable()
+    # profiler.enable()
     # Run sampling with initial parameters from priors
     parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(
         initial_parameters=initial_parameters,
-        n_samples=3,  # 10 ** 2,
+        n_samples=2000,
         target_acceptance_ratio=0.4,
         adaptive_temperature=True
     )
 
-    profiler.disable()
+    # profiler.disable()
 
-    current_time = datetime.now()
-    timestamp = current_time.strftime("%Y-%m-%d_%H-%M-%S")
-    profiler.dump_stats(f"profiling_{timestamp}.prof")
-    profiler.print_stats()
+    # current_time = datetime.now()
+    # timestamp = current_time.strftime("%Y-%m-%d_%H-%M-%S")
+    # profiler.dump_stats(f"profiling_{timestamp}.prof")
+    # profiler.print_stats()
 
     # Analyze results
     results = analyze_mcmc_results(
@@ -237,7 +235,7 @@ if __name__ == '__main__':
     df = results['analyzer'].to_dataframe()
 
     # Save results
-    df.to_csv('results.csv', index=False)
+    df.to_csv('results_2000_steps_norm_by_sample_points_no_GFP.csv', index=False)
 
     # Distribution of likelihoods
     plt.figure(figsize=(10, 6))
@@ -247,4 +245,30 @@ if __name__ == '__main__':
     plt.title('Distribution of Log Likelihoods')
     plt.grid(True)
     plt.tight_layout()
+    plt.show()
+
+
+    # pick the 60 best parameters and simulate them and plot
+    df.likelihood # likelihood
+    results['analyzer'].parameter_names # parameters
+
+
+
+
+    sixty_best_parameters = df.sort_values(by='likelihood', ascending=False).head(1000)
+    # extract values of parameters
+    sixty_best_parameters_values = sixty_best_parameters[results['analyzer'].parameter_names].values
+    sim_data = circuit_fitter.simulate_parameters(sixty_best_parameters_values)
+
+    # Calculate likelihood from simulation data
+    log_likelihood = circuit_fitter.calculate_likelihood_from_simulation(sim_data)
+
+    # Calculate prior (takes log params)
+    log_prior = circuit_fitter.calculate_log_prior(sixty_best_parameters_values)
+
+
+    results_df = organize_results(parameters_to_fit, sixty_best_parameters_values, log_likelihood, log_prior)
+
+
+    plot_all_simulation_results(sim_data, results_df, ll_quartile=20)
     plt.show()

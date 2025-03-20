@@ -1,14 +1,12 @@
 
 import numpy as np
-from pysb import Model, Parameter, Observable
 import pandas as pd
-from build_simulate_analyse.build_model import setup_model
+from circuits.build_model import setup_model
 
 # import process_plasmid
-from rna_dynamics_main import process_plasmid, simulate_model, visualize_simulation
+from rna_dynamics_main import simulate_model, visualize_simulation
 
 # import parallel tempering
-from optimization.parallel_tempering_old import ParallelTempering
 
 def test_star():
     # Plasmid design
