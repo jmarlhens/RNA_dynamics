@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 import pandas as pd
-from circuit import Circuit
+from circuits.circuit import Circuit
+from circuits.modules.base_modules import KineticsType
 
 
 class CircuitManager:
@@ -126,7 +127,8 @@ class CircuitManager:
         }
 
     def create_circuit(self, name, parameters=None, use_pulses=False,
-                       pulse_config=None, pulse_indices=None):
+                       pulse_config=None, pulse_indices=None,
+                       kinetics_type=KineticsType.MICHAELIS_MENTEN):
         """
         Create a Circuit instance from a stored configuration.
 
@@ -142,6 +144,8 @@ class CircuitManager:
             Configuration for pulsed inputs if use_pulses is True
         pulse_indices : list, optional
             Indices of plasmids to pulse if use_pulses is True
+        kinetics_type : KineticsType, optional
+            Type of kinetics to use (Michaelis-Menten or mass action)
 
         Returns:
         --------
@@ -155,7 +159,7 @@ class CircuitManager:
         if parameters:
             merged_parameters.update(parameters)
 
-        # Create and return a Circuit instance
+        # Create and return a Circuit instance with kinetics_type
         return Circuit(
             name=name,
             plasmids=config["plasmids"],
@@ -163,7 +167,8 @@ class CircuitManager:
             use_pulses=use_pulses,
             pulse_config=pulse_config,
             pulse_indices=pulse_indices,
-            parameters_file=self.parameters_file
+            parameters_file=self.parameters_file,
+            kinetics_type=kinetics_type
         )
 
     def list_circuits(self):

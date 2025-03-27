@@ -210,6 +210,7 @@ if __name__ == '__main__':
     R_hat = convergence_test(parameters[int(len(parameters) / 2):])
     print(f"Potential Scale Reduction: {R_hat}")
 
+    # R_hat value below 1.2 are favorable
     # tau = integrated_autocorrelation_time(parameters)
     # print("Average Integrated Correlation Times")
     # print(np.mean(tau, axis=0))

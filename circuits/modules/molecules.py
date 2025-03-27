@@ -1,5 +1,6 @@
 from pysb import Monomer, Rule, Model
 
+
 class MyMonomer(Monomer):
     prefix = "MyMonomer_"
 
@@ -12,7 +13,6 @@ class MyMonomer(Monomer):
     def get_instance(cls, sequence_name: str, model: Model):
         name = cls.prefix + sequence_name
 
-        monomer = None
         species = model.monomers.keys()
         if name in species:
             monomer = model.monomers[name]
@@ -21,13 +21,14 @@ class MyMonomer(Monomer):
 
         return monomer
 
+
 class RNA(MyMonomer):
     prefix = "RNA_"
 
     def __init__(self, sequence_name: str, model: Model):
         name = RNA.sequence_name_to_name(sequence_name)
         # Separate binding sites for sense (STAR regulation) and toehold (Toehold regulation)
-        super().__init__(name=name, sites=["sense", "toehold", "state"],
+        super().__init__(name=name, sites=["b", "sense", "toehold", "state"],
                          site_states={
                              "state": {"full", "partial", "init"},
                          })
@@ -42,6 +43,7 @@ class RNA(MyMonomer):
 
         # Add the degradation rule to the model
         model.add_component(degradation_rule)
+
 
 class Protein(MyMonomer):
     prefix = "Protein_"

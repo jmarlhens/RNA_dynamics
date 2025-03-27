@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from circuits.build_model import setup_model
+from circuits.build_model import setup_model, KineticsType
 from utils.print_odes import find_ODEs_from_Pysb_model, convert_to_latex, write_to_file
 from pysb.simulator import ScipyOdeSimulator
 import itertools
@@ -15,30 +15,15 @@ class Circuit:
 
     def __init__(self, name, plasmids, parameters=None,
                  use_pulses=False, pulse_config=None, pulse_indices=None,
-                 parameters_file=None):
+                 parameters_file=None, kinetics_type=KineticsType.MICHAELIS_MENTEN):
         """
         Initialize a circuit with its model.
 
         Parameters:
         -----------
-        name : str
-            Name of the circuit
-        plasmids : list of tuples
-            List of plasmid tuples in the format [(tx_control, tl_control, cds), ...]
-            where:
-              - tx_control: Transcriptional control (tuple or None)
-              - tl_control: Translational control (tuple or None)
-              - cds: List of coding sequences as tuples (is_translated, sequence_name)
-        parameters : dict, optional
-            Parameters for the circuit (overrides defaults)
-        use_pulses : bool, optional
-            Whether to use pulse configurations
-        pulse_config : dict, optional
-            Configuration for pulsed inputs if use_pulses is True
-        pulse_indices : list, optional
-            Indices of plasmids to pulse if use_pulses is True
-        parameters_file : str or Path, optional
-            Path to the parameters CSV file
+        (... other parameters as before ...)
+        kinetics_type : KineticsType, optional
+            Type of kinetics to use (Michaelis-Menten or mass action)
         """
         self.name = name
         self.plasmids = plasmids
@@ -47,12 +32,36 @@ class Circuit:
         self.pulse_config = pulse_config
         self.pulse_indices = pulse_indices or []
         self.parameters_file = parameters_file
+        self.kinetics_type = kinetics_type
 
         # Load parameters from CSV and merge with user parameters
         self.parameters = self._load_parameters()
 
         # Setup the model during initialization
         self.model = self._setup_model()
+
+    def _setup_model(self):
+        """
+        Internal method to setup the model using the provided configuration.
+        """
+        # Setup the model with kinetics_type
+        if self.use_pulses and self.pulse_config:
+            model = setup_model(
+                self.plasmids,
+                self.parameters,
+                use_pulses=True,
+                pulse_config=self.pulse_config,
+                pulse_indices=self.pulse_indices,
+                kinetics_type=self.kinetics_type
+            )
+        else:
+            model = setup_model(
+                self.plasmids,
+                self.parameters,
+                kinetics_type=self.kinetics_type
+            )
+
+        return model
 
     def _get_parameters_to_remove(self):
         """
@@ -108,29 +117,6 @@ class Circuit:
                     model_parameters.pop(param, None)
 
         return model_parameters
-
-    def _setup_model(self):
-        """
-        Internal method to setup the model using the provided configuration.
-
-        Returns:
-        --------
-        model : PySB model
-            The configured model
-        """
-        # Setup the model
-        if self.use_pulses and self.pulse_config:
-            model = setup_model(
-                self.plasmids,
-                self.parameters,
-                use_pulses=True,
-                pulse_config=self.pulse_config,
-                pulse_indices=self.pulse_indices
-            )
-        else:
-            model = setup_model(self.plasmids, self.parameters)
-
-        return model
 
     def simulate(self, t_span=None, param_values=None, print_rules=False, print_odes=False):
         """

@@ -63,6 +63,7 @@ class CircuitFitter:
         #         verbose=True,
         #     )
         #     self.simulators[config.name] = simulator
+
         from pysb.simulator import ScipyOdeSimulator
         for config in self.configs:
             simulator = ScipyOdeSimulator(

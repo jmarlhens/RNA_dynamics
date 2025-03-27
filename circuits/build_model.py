@@ -1,14 +1,13 @@
-import matplotlib.pyplot as plt
 from pysb import Model, Parameter, Observable
-from pysb.simulator import ScipyOdeSimulator
-from modules.star import STAR
-from modules.base_modules import Transcription, Translation, PulsedTranscription, TranscriptionFactory, TranscriptionType
-from modules.Csy4_activity import Csy4Activity
-from modules.toehold import Toehold
-from modules.sequestration import Sequestration
+from circuits.modules.star import STAR
+from circuits.modules.base_modules import TranscriptionFactory, TranscriptionType, KineticsType, TranslationFactory
+from circuits.modules.Csy4_activity import Csy4Activity
+from circuits.modules.toehold import Toehold
+from circuits.modules.sequestration import Sequestration
 
 
-def setup_model(plasmids, parameters, bindings=None, use_pulses=False, pulse_config=None, pulse_indices=None):
+def setup_model(plasmids, parameters, bindings=None, use_pulses=False, pulse_config=None,
+                pulse_indices=None, kinetics_type=KineticsType.MICHAELIS_MENTEN):
     """
     Set up the PySB model with the given plasmids, parameters, and optional sequestration reactions.
 
@@ -19,6 +18,7 @@ def setup_model(plasmids, parameters, bindings=None, use_pulses=False, pulse_con
     :param pulse_config: Dictionary containing pulse configuration if use_pulses is True.
     :param pulse_indices: List of indices indicating which plasmids should be pulsed.
                           If None and use_pulses is True, all plasmids will be pulsed.
+    :param kinetics_type: Type of kinetics to use (Michaelis-Menten or mass action).
     :return: PySB Model object.
     """
     model = Model()
@@ -31,7 +31,13 @@ def setup_model(plasmids, parameters, bindings=None, use_pulses=False, pulse_con
     for idx, plasmid in enumerate(plasmids):
         # Determine if this plasmid should be pulsed
         apply_pulse = use_pulses and (pulse_indices is None or idx in pulse_indices)
-        process_plasmid(plasmid, model, apply_pulse, pulse_config)
+        process_plasmid(
+            plasmid, 
+            model, 
+            use_pulses=apply_pulse, 
+            pulse_config=pulse_config, 
+            kinetics_type=kinetics_type
+        )
 
     # Process sequestration (binding and unbinding) reactions if specified
     if bindings:
@@ -44,7 +50,8 @@ def setup_model(plasmids, parameters, bindings=None, use_pulses=False, pulse_con
     return model
 
 
-def process_plasmid(plasmid, model, use_pulses=False, pulse_config=None):
+def process_plasmid(plasmid, model, use_pulses=False, pulse_config=None, 
+                    kinetics_type=KineticsType.MICHAELIS_MENTEN):
     """
     Processes the given plasmid by adding it to the model with appropriate controls.
 
@@ -52,6 +59,7 @@ def process_plasmid(plasmid, model, use_pulses=False, pulse_config=None):
     :param model: The PySB model to which components are added.
     :param use_pulses: Boolean indicating whether to use pulsed transcription.
     :param pulse_config: Dictionary containing pulse configuration if use_pulses is True.
+    :param kinetics_type: Type of kinetics to use (Michaelis-Menten or mass action).
     """
     transcriptional_control = plasmid[0]
     translational_control = plasmid[1]
@@ -74,26 +82,33 @@ def process_plasmid(plasmid, model, use_pulses=False, pulse_config=None):
 
     # Step 1: Handle transcription with or without STAR regulation
     if transcriptional_control:
-        # Create STAR-regulated transcription
-        star = STAR(sequence_name=rna_name, transcriptional_control=transcriptional_control, model=model)
+        # Create STAR-regulated transcription with specified kinetics type
+        star = STAR(
+            sequence_name=rna_name, 
+            transcriptional_control=transcriptional_control, 
+            model=model, 
+            kinetics_type=kinetics_type
+        )
         rna = star.product
         products = [rna]
     else:
         # Choose between regular or pulsed transcription using the factory pattern
         if use_pulses:
-            # Use the TranscriptionFactory to create appropriate transcription instance
+            # Use the TranscriptionFactory to create appropriate transcription instance with kinetics_type
             transcription = TranscriptionFactory.create_transcription(
                 transcription_type=TranscriptionType.PULSED,
                 sequence_name=rna_name,
                 model=model,
-                pulse_config=pulse_config
+                pulse_config=pulse_config,
+                kinetics_type=kinetics_type
             )
         else:
-            # Use the TranscriptionFactory to create regular transcription
+            # Use the TranscriptionFactory to create regular transcription with kinetics_type
             transcription = TranscriptionFactory.create_transcription(
                 transcription_type=TranscriptionType.CONSTANT,
                 sequence_name=rna_name,
-                model=model
+                model=model,
+                kinetics_type=kinetics_type
             )
         rna = transcription.product
         products = [rna]
@@ -109,17 +124,28 @@ def process_plasmid(plasmid, model, use_pulses=False, pulse_config=None):
         cleavage_points.append(sequence_names)
 
     for cleavage_set in cleavage_points:
-        csy4 = Csy4Activity(rna=rna, product_rna_names=cleavage_set, model=model)
+        csy4 = Csy4Activity(rna=rna, product_rna_names=cleavage_set, model=model, kinetics_type=kinetics_type)
         products = csy4.product
 
-    # Step 3: Handle translation of each CDS product
+    # Step 3: Handle translation of each CDS product with specified kinetics type
     for (translate, seq), rna in zip(cds, products):
         if not translate:
             continue
         if translational_control:
-            Toehold(rna=rna, translational_control=translational_control, prot_name=seq, model=model)
+            Toehold(
+                rna=rna, 
+                translational_control=translational_control, 
+                prot_name=seq, 
+                model=model,
+                kinetics_type=kinetics_type
+            )
         else:
-            Translation(rna=rna, prot_name=seq, model=model)
+            TranslationFactory.create_translation(
+                rna=rna,
+                prot_name=seq,
+                model=model,
+                kinetics_type=kinetics_type
+            )
 
 
 def generate_observables(model):
@@ -135,30 +161,3 @@ def generate_observables(model):
             desired_state = "mature"
             obs_name = "obs_" + monomer.name
             Observable(obs_name, monomer(state=desired_state))
-
-
-def simulate_model(model, t):
-    """
-    Simulates the model using the specified time points.
-    """
-    simulator = ScipyOdeSimulator(model)
-    y_res = simulator.run(tspan=t)
-    return y_res
-
-
-def visualize_simulation(t, y_res, species_to_plot):
-    """
-    Visualizes the build_simulate_analyse results.
-    """
-    fig, ax = plt.subplots()
-    species = y_res.dataframe.columns
-
-    for spec in species:
-        if spec in species_to_plot:
-            ax.plot(t, y_res.dataframe[spec], label=spec.replace("obs_", ""))
-
-    ax.legend()
-    plt.xlabel('Time')
-    plt.ylabel('Concentration')
-    plt.title('Simulation Results')
-    plt.show()

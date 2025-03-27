@@ -1,31 +1,49 @@
 from circuit_manager import CircuitManager
 from circuit_visualizer import CircuitVisualizer
 import numpy as np
-import pandas as pd
+from circuits.modules.base_modules import KineticsType
 
 
 def main():
     """
     Main entry point for the circuit simulation system.
-    Contains example usage of the CircuitManager and Circuit classes with separated visualization.
+    Shows examples of using both Michaelis-Menten and mass action kinetics.
     """
-    # Create a circuit manager and visualizer
-    manager = CircuitManager(parameters_file="../data/model_parameters_priors.csv")
+    # Create circuit managers for both kinetics types
+    manager_mm = CircuitManager(parameters_file="../data/model_parameters_priors_with_mass_action.csv")
+
+    # Create a visualizer
     visualizer = CircuitVisualizer()
 
     # List available circuits
-    print(f"Available circuits: {manager.list_circuits()}")
+    print(f"Available circuits: {manager_mm.list_circuits()}")
 
-    # Example: create a constant circuit
-    gfp_circuit = manager.create_circuit("gfp")
+    # Example: create and simulate a GFP circuit with Michaelis-Menten kinetics (default)
+    gfp_circuit_mm = manager_mm.create_circuit("gfp")
+    result_mm, t_span = gfp_circuit_mm.simulate(print_rules=True)
 
-    # Simulate it with printing options
-    result_constant, t_span = gfp_circuit.simulate(print_rules=True)
+    # Visualize the Michaelis-Menten results
+    visualizer.plot_simulation_results(
+        result_mm,
+        f"{gfp_circuit_mm.name} (Michaelis-Menten)",
+        t_span
+    )
 
-    # Now visualize the results separately
-    visualizer.plot_simulation_results(result_constant, gfp_circuit.name, t_span)
+    # Create and simulate the same circuit with mass action kinetics
+    gfp_circuit_ma = manager_mm.create_circuit(
+        "gfp",
+        kinetics_type=KineticsType.MASS_ACTION
+    )
+    result_ma, t_span = gfp_circuit_ma.simulate(print_rules=True)
 
-    # Example: create a pulsed circuit
+    # Visualize the mass action results
+    visualizer.plot_simulation_results(
+        result_ma,
+        f"{gfp_circuit_ma.name} (Mass Action)",
+        t_span
+    )
+
+    # Example: Compare pulsed circuit with both kinetics types
     pulse_config = {
         'use_pulse': True,
         'pulse_start': 4,
@@ -34,48 +52,74 @@ def main():
         'base_concentration': 0.0
     }
 
-    # Also adjust degradation rates for quicker response
+    # Adjust degradation rates for quicker response
     pulsed_params = {
         'k_prot_deg': 0.1,
         'k_rna_deg': 0.1
     }
 
-    gfp_pulsed_circuit = manager.create_circuit(
+    # Create pulsed circuit with Michaelis-Menten kinetics
+    pulsed_mm = manager_mm.create_circuit(
         "gfp",
         parameters=pulsed_params,
         use_pulses=True,
         pulse_config=pulse_config,
-        pulse_indices=[0]  # Pulse the GFP plasmid (first plasmid)
+        pulse_indices=[0],  # Pulse the GFP plasmid
+        kinetics_type=KineticsType.MICHAELIS_MENTEN
     )
+    #
+    # # Create pulsed circuit with mass action kinetics
+    # pulsed_ma = manager_mm.create_circuit(
+    #     "gfp",
+    #     parameters=pulsed_params,
+    #     use_pulses=True,
+    #     pulse_config=pulse_config,
+    #     pulse_indices=[0],  # Pulse the GFP plasmid
+    #     kinetics_type=KineticsType.MASS_ACTION
+    # )
 
-    # Simulate it
-    result_pulsed, t_span = gfp_pulsed_circuit.simulate()
+    # Simulate both
+    result_pulsed_mm, t_span = pulsed_mm.simulate()
+    # result_pulsed_ma, t_span = pulsed_ma.simulate()
 
     # Visualize pulsed results
     visualizer.plot_simulation_results(
-        result_pulsed,
-        gfp_pulsed_circuit.name,
+        result_pulsed_mm,
+        f"{pulsed_mm.name} Pulsed (Michaelis-Menten)",
         t_span,
         pulse_config=pulse_config
     )
 
-    # Example: Parameter comparison with multiple simulations
-    compare_parameters_with_param_values()
+    # visualizer.plot_simulation_results(
+    #     result_pulsed_ma,
+    #     f"{pulsed_ma.name} Pulsed (Mass Action)",
+    #     t_span,
+    #     pulse_config=pulse_config
+    # )
 
-    # Parameter sweep example
-    parameter_sweep()
+    # Compare parameters with both kinetics types
+    compare_parameters_with_both_kinetics()
 
 
-def compare_parameters_with_param_values():
+def compare_parameters_with_both_kinetics():
     """
-    Example using param_values for multiple simulations with improved visualization.
+    Example comparing parameter effects using both kinetics models.
     """
     # Create circuit manager and visualizer
-    manager = CircuitManager(parameters_file="../data/model_parameters_priors.csv")
+    manager = CircuitManager(parameters_file="../data/model_parameters_priors_with_mass_action.csv")
     visualizer = CircuitVisualizer()
 
-    # Create a single circuit instance
-    circuit = manager.create_circuit("star")
+    # Create a circuit instance with Michaelis-Menten kinetics
+    circuit_mm = manager.create_circuit(
+        "star",
+        kinetics_type=KineticsType.MICHAELIS_MENTEN
+    )
+
+    # Create the same circuit with mass action kinetics
+    circuit_ma = manager.create_circuit(
+        "star",
+        kinetics_type=KineticsType.MASS_ACTION
+    )
 
     # Define parameter values to compare
     param_values = {
@@ -85,108 +129,36 @@ def compare_parameters_with_param_values():
     # Time span for all simulations
     t_span = np.linspace(0, 30, 3001)
 
-    # Run all simulations at once using param_values
-    result, t_span = circuit.simulate(t_span=t_span, param_values=param_values)
+    # Run simulations for both kinetics types
+    print("Michaelis-Menten rules:")
+    print(circuit_mm.model.rules)
+    print("Mass Action rules:")
+    print(circuit_ma.model.rules)
+    result_mm, _ = circuit_mm.simulate(t_span=t_span, param_values=param_values)
+    result_ma, _ = circuit_ma.simulate(t_span=t_span, param_values=param_values)
 
-    # Use the visualizer to create a parameter comparison plot
+    # Plot parameter comparisons
     visualizer.plot_parameter_comparison(
-        result,
+        result_mm,
         t_span,
         'obs_Protein_GFP',
         param_values,
         'k_Star6_concentration',
-        title='Effect of Star6 Concentration on GFP Expression',
+        title='Effect of Star6 Concentration (Michaelis-Menten)',
         ylabel='GFP Concentration'
     )
 
-    # Also plot all simulations without parameter-specific formatting
-    visualizer.plot_simulation_results(result, circuit.name, t_span)
-
-    # Example with more parameters
-    # Create a grid of parameters
-    many_params = {
-        "k_Star6_concentration": np.linspace(0.5, 5.0, 10),
-        "k_prot_deg": np.linspace(0.05, 0.15, 3)
-    }
-
-    # Create all combinations
-    param_grid = []
-    for conc in many_params["k_Star6_concentration"]:
-        for deg in many_params["k_prot_deg"]:
-            param_grid.append({
-                "k_Star6_concentration": conc,
-                "k_prot_deg": deg
-            })
-
-    param_df = pd.DataFrame(param_grid)
-
-    # Run many simulations
-    result_many, t_span = circuit.simulate(t_span=t_span, param_values=param_df)
-
-    # Visualize all simulations
-    visualizer.plot_simulation_results(result_many, f"{circuit.name} (30 parameter sets)", t_span)
-
-    return result
-
-
-def parameter_sweep():
-    """
-    Example of a parameter sweep with improved visualization.
-    """
-    # Create circuit manager and visualizer
-    manager = CircuitManager(parameters_file="../data/model_parameters_priors.csv")
-    visualizer = CircuitVisualizer()
-
-    # Create a single circuit instance
-    circuit = manager.create_circuit("star")
-
-    # Define parameter grid
-    star_concentrations = np.linspace(0.1, 5.0, 10)
-    protein_degradation_rates = np.linspace(0.05, 0.15, 3)
-
-    # Create parameter grid as a DataFrame directly
-    param_grid = []
-    for conc in star_concentrations:
-        for deg_rate in protein_degradation_rates:
-            param_grid.append({
-                "k_Star6_concentration": conc,
-                "k_prot_deg": deg_rate
-            })
-
-    param_df = pd.DataFrame(param_grid)
-
-    # Time span for all simulations
-    t_span = np.linspace(0, 30, 3001)
-
-    # Run all simulations at once
-    result, _ = circuit.simulate(t_span=t_span, param_values=param_df)
-
-    # Use the visualizer to create a heatmap
-    visualizer.plot_parameter_sweep_heatmap(
-        result,
+    visualizer.plot_parameter_comparison(
+        result_ma,
+        t_span,
         'obs_Protein_GFP',
-        star_concentrations,
-        'Star6 Concentration',
-        protein_degradation_rates,
-        'Protein Degradation Rate',
-        metric='max',
-        title='Parameter Sweep: Effect on Max GFP Expression'
+        param_values,
+        'k_Star6_concentration',
+        title='Effect of Star6 Concentration (Mass Action)',
+        ylabel='GFP Concentration'
     )
 
-    # Also plot with a different metric
-    visualizer.plot_parameter_sweep_heatmap(
-        result,
-        'obs_Protein_GFP',
-        star_concentrations,
-        'Star6 Concentration',
-        protein_degradation_rates,
-        'Protein Degradation Rate',
-        metric='auc',
-        title='Parameter Sweep: Effect on Total GFP Expression (AUC)',
-        cmap='plasma'
-    )
-
-    return result
+    return result_mm, result_ma
 
 
 if __name__ == "__main__":

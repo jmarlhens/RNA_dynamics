@@ -1,6 +1,6 @@
 from pysb import Rule, Model
-from modules.reactioncomplex import ReactionComplex
-from modules.molecules import RNA
+from circuits.modules.reactioncomplex import ReactionComplex
+from circuits.modules.molecules import RNA
 
 class Sequestration(ReactionComplex):
     def __init__(self, species1_name, species2_name, model: Model):

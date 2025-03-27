@@ -1,9 +1,12 @@
-from pysb import Rule, Model, Expression
-from modules.molecules import RNA
-from modules.reactioncomplex import ReactionComplex
+from pysb import Rule, Model, Expression, Monomer, Parameter, Observable, Initial
+from circuits.modules.molecules import RNA
+from circuits.modules.reactioncomplex import ReactionComplex
+from circuits.modules.base_modules import KineticsType
+
 
 class STAR(ReactionComplex):
-    def __init__(self, sequence_name: str = None, transcriptional_control: tuple = None, model: Model = None):
+    def __init__(self, sequence_name: str = None, transcriptional_control: tuple = None,
+                 model: Model = None, kinetics_type: KineticsType = KineticsType.MICHAELIS_MENTEN):
         assert sequence_name is not None
         assert transcriptional_control is not None
 
@@ -18,7 +21,21 @@ class STAR(ReactionComplex):
         self.star_name = transcriptional_control[1]
         self.rna_name = rna.sequence_name
         self.regulator_name = self.star_name
+        self.kinetics_type = kinetics_type
 
+        # Choose which implementation to use based on kinetics_type
+        if kinetics_type == KineticsType.MICHAELIS_MENTEN:
+            self.rules = self._setup_michaelis_menten(regulated, regulator, sequence_name, model)
+        elif kinetics_type == KineticsType.MASS_ACTION:
+            self.rules = self._setup_mass_action(regulated, regulator, sequence_name, model)
+        else:
+            raise ValueError(f"Unknown kinetics type: {kinetics_type}")
+
+    def _setup_michaelis_menten(self, regulated, regulator, sequence_name, model):
+        """
+        Set up STAR regulation with the original Michaelis-Menten style kinetics.
+        This preserves the original implementation's behavior.
+        """
         # Parameters
         self.k_init = self.parameters["k_tx_init"]
         self.k_concentration = self.parameters["k_" + sequence_name + "_concentration"]
@@ -36,7 +53,7 @@ class STAR(ReactionComplex):
         # RNA transcription initiation: RNA starts in unbound state (sense=None)
         transcription_initiation_rule = Rule(
             f'STAR_RNA_transcription_initiation_{regulated.name}',
-            None >> regulated(state='init', sense=None, toehold=None),
+            None >> regulated(state='init', sense=None, toehold=None, b=None),
             model.expressions['k_tx_plasmid_' + sequence_name]
         )
         rules.append(transcription_initiation_rule)
@@ -95,4 +112,133 @@ class STAR(ReactionComplex):
         )
         rules.append(partial_transcription_rule)
 
-        self.rules = rules
+        return rules
+
+    def _setup_mass_action(self, regulated, regulator, sequence_name, model):
+        """
+        Set up STAR regulation with mass action kinetics.
+        This implements a more mechanistic model with explicit RNA polymerase.
+        """
+        # Add RNA polymerase monomer if it doesn't exist
+        polymerase_name = 'RNAPolymerase'
+        polymerase = next((m for m in model.monomers if m.name == polymerase_name), None)
+        if polymerase is None:
+            Monomer(polymerase_name, ['b'])
+            Initial(model.monomers[polymerase_name](b=None), model.parameters['rnap_0'])
+
+        # Add DNA monomer for this sequence if it doesn't exist
+        dna_name = 'DNA_' + sequence_name
+        dna = next((m for m in model.monomers if m.name == dna_name), None)
+        if dna is None:
+            Monomer(dna_name, ['b', 'sense'])
+            self.k_concentration = self.parameters[f"k_{sequence_name}_concentration"]
+            Initial(model.monomers[dna_name](b=None, sense=None), self.k_concentration)
+
+        # Parameters for mass action kinetics
+        self.k_init = self.parameters["k_tx_init"]
+        self.k_bind_rnap = self.parameters["k_tx_bind"]
+        self.k_unbind_rnap = self.parameters.get("k_tx_unbind", 0.1)  # Default if not provided
+        self.k_cat_rnap = self.parameters["k_tx_cat"]
+
+        # STAR binding parameters (keep from original implementation)
+        self.k_star_bind = self.parameters["k_star_bind"]
+        self.k_star_unbind = self.parameters["k_star_unbind"]
+
+        rules = []
+
+        # Rule 1: Polymerase binding to DNA (without STAR)
+        rule1 = Rule(
+            f'STAR_polymerase_binding_without_regulator_{sequence_name}',
+            model.monomers[polymerase_name](b=None) +
+            model.monomers[dna_name](b=None, sense=None) >>
+            model.monomers[polymerase_name](b=1) %
+            model.monomers[dna_name](b=1, sense=None),
+            self.k_bind_rnap
+        )
+        rules.append(rule1)
+
+        # Rule 2: Transcription initiation (RNA production from complex without STAR)
+        rule2 = Rule(
+            f'STAR_transcription_initiation_without_regulator_{regulated.name}',
+            model.monomers[polymerase_name](b=1) %
+            model.monomers[dna_name](b=1, sense=None) >>
+            model.monomers[polymerase_name](b=None) +
+            model.monomers[dna_name](b=None, sense=None) +
+            regulated(state="init", sense=None, toehold=None, b=None),
+            self.k_cat_rnap
+        )
+        rules.append(rule2)
+
+        # Rule 3: STAR binding to DNA 
+        rule3 = Rule(
+            f'STAR_binding_to_dna_{regulator.name}',
+            regulator(state='full', sense=None) +
+            model.monomers[dna_name](sense=None) >>
+            regulator(state='full', sense=1) %
+            model.monomers[dna_name](sense=1),
+            self.k_star_bind
+        )
+        rules.append(rule3)
+
+        # Rule 4: STAR unbinding from DNA
+        rule4 = Rule(
+            f'STAR_unbinding_from_dna_{regulator.name}',
+            regulator(state='full', sense=1) %
+            model.monomers[dna_name](sense=1) >>
+            regulator(state='full', sense=None) +
+            model.monomers[dna_name](sense=None),
+            self.k_star_unbind
+        )
+        rules.append(rule4)
+
+        # Rule 5: Polymerase binding to DNA with STAR bound
+        rule5 = Rule(
+            f'STAR_polymerase_binding_with_regulator_{sequence_name}',
+            model.monomers[polymerase_name](b=None) +
+            (regulator(state='full', sense=1) % model.monomers[dna_name](b=None, sense=1)) >>
+            model.monomers[polymerase_name](b=2) %
+            (regulator(state='full', sense=1) % model.monomers[dna_name](b=2, sense=1)),
+            self.k_bind_rnap # Assume STAR enhances binding
+        )
+        rules.append(rule5)
+
+        # Rule 6: Enhanced transcription with STAR and polymerase bound
+        rule6 = Rule(
+            f'STAR_enhanced_transcription_{regulated.name}',
+            model.monomers[polymerase_name](b=2) %
+            (regulator(state='full', sense=1) % model.monomers[dna_name](b=2, sense=1)) >>
+            model.monomers[polymerase_name](b=None) +
+            (regulator(state='full', sense=1) % model.monomers[dna_name](b=None, sense=1)) +
+            regulated(state="init", sense=None, toehold=None, b=None),
+            self.k_cat_rnap
+        )
+        rules.append(rule6)
+
+        # Rule 7: Conversion from init to full (elongation)
+        rule7 = Rule(
+            f'STAR_elongation_to_full_{regulated.name}',
+            regulated(state='init', sense=None) >>
+            regulated(state='full', sense=None),
+            self.parameters["k_star_act"]
+        )
+        rules.append(rule7)
+
+        # Rule 8: Conversion from init to partial (termination)
+        rule8 = Rule(
+            f'STAR_termination_to_partial_{regulated.name}',
+            regulated(state='init', sense=None) >>
+            regulated(state='partial', sense=None),
+            self.parameters["k_star_stop"]
+        )
+        rules.append(rule8)
+
+        # Create observables
+        Observable(f'obs_STAR_{dna_name}_complex',
+                   regulator(state='full', sense=1) % model.monomers[dna_name](sense=1))
+        Observable(f'obs_RNAP_{dna_name}_complex',
+                   model.monomers[polymerase_name](b=1) % model.monomers[dna_name](b=1))
+        Observable(f'obs_RNAP_STAR_{dna_name}_complex',
+                   model.monomers[polymerase_name](b=2) %
+                   (regulator(state='full', sense=1) % model.monomers[dna_name](b=2, sense=1)))
+
+        return rules

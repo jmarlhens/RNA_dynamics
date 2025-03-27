@@ -1,7 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
-from typing import Dict, List, Optional, Tuple, Union
 
 
 class CircuitVisualizer:
@@ -45,7 +43,7 @@ class CircuitVisualizer:
 
         # Determine if we have a pulse configuration
         if pulse_config is not None:
-            fig, axs = plt.subplots(3, 1, figsize=(10, 12), sharex=True)
+            fig, axs = plt.subplots(3, 1, figsize=(8, 12), sharex="all")
 
             # Create protein plot
             CircuitVisualizer._plot_observables(axs[0], result, protein_observables, t_span)
@@ -67,7 +65,7 @@ class CircuitVisualizer:
             axs[2].grid(True)
 
         else:
-            fig, axs = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+            fig, axs = plt.subplots(2, 1, figsize=(8, 10), sharex="all")
 
             # Create protein plot
             CircuitVisualizer._plot_observables(axs[0], result, protein_observables, t_span)
@@ -206,7 +204,7 @@ class CircuitVisualizer:
         fig : matplotlib Figure
             The generated figure
         """
-        fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(8, 6))
 
         # Extract parameter values to display in legend
         if isinstance(param_values, dict):
@@ -250,101 +248,6 @@ class CircuitVisualizer:
             ax.legend()
 
         ax.grid(True)
-        plt.tight_layout()
-        plt.show()
-
-        return fig
-
-    @staticmethod
-    def plot_parameter_sweep_heatmap(result, observable, param_values1, param_name1,
-                                     param_values2, param_name2, metric='max',
-                                     title=None, cmap='viridis'):
-        """
-        Create a heatmap for a 2D parameter sweep.
-
-        Parameters:
-        -----------
-        result : SimulationResult
-            The PySB simulation results object
-        observable : str
-            Name of the observable to analyze
-        param_values1 : array
-            Values for the first parameter (y-axis)
-        param_name1 : str
-            Name of the first parameter
-        param_values2 : array
-            Values for the second parameter (x-axis)
-        param_name2 : str
-            Name of the second parameter
-        metric : str, optional
-            Metric to use: 'max', 'mean', 'auc', etc.
-        title : str, optional
-            Plot title
-        cmap : str, optional
-            Colormap name
-
-        Returns:
-        --------
-        fig : matplotlib Figure
-            The generated figure
-        """
-        # Calculate metric values
-        n_values1 = len(param_values1)
-        n_values2 = len(param_values2)
-        total_sims = n_values1 * n_values2
-
-        # Check if we have multiple simulations
-        if isinstance(result.observables, list):
-            # Extract values based on the metric for multiple simulations
-            if metric == 'max':
-                values = np.array([np.max(result.observables[i][observable])
-                                   for i in range(min(total_sims, len(result.observables)))])
-            elif metric == 'mean':
-                values = np.array([np.mean(result.observables[i][observable])
-                                   for i in range(min(total_sims, len(result.observables)))])
-            elif metric == 'auc':
-                values = np.array([np.trapz(result.observables[i][observable])
-                                   for i in range(min(total_sims, len(result.observables)))])
-            else:
-                raise ValueError(f"Unknown metric: {metric}")
-        else:
-            # Single simulation case (unlikely in a parameter sweep)
-            if metric == 'max':
-                values = np.array([np.max(result.observables[observable])])
-            elif metric == 'mean':
-                values = np.array([np.mean(result.observables[observable])])
-            elif metric == 'auc':
-                values = np.array([np.trapz(result.observables[observable])])
-            else:
-                raise ValueError(f"Unknown metric: {metric}")
-
-        # Reshape for heatmap - ensure we have the right number of values
-        if len(values) == total_sims:
-            value_matrix = values.reshape(n_values1, n_values2)
-        else:
-            # Handle case where we have fewer values than expected
-            print(f"Warning: Expected {total_sims} values but got {len(values)}.")
-            missing = total_sims - len(values)
-            padded_values = np.pad(values, (0, missing), mode='constant', constant_values=np.nan)
-            value_matrix = padded_values.reshape(n_values1, n_values2)
-
-        # Create heatmap
-        fig, ax = plt.subplots(figsize=(10, 8))
-        im = ax.imshow(value_matrix, cmap=cmap, origin='lower', aspect='auto',
-                       extent=[min(param_values2), max(param_values2),
-                               min(param_values1), max(param_values1)])
-
-        # Add colorbar
-        metric_label = {'max': 'Maximum', 'mean': 'Mean', 'auc': 'Area Under Curve'}
-        cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label(f'{metric_label.get(metric, metric)} {CircuitVisualizer._get_display_name(observable)}')
-
-        # Set labels and title
-        ax.set_xlabel(param_name2)
-        ax.set_ylabel(param_name1)
-        ax.set_title(title if title else
-                     f'Effect of {param_name1} and {param_name2} on {CircuitVisualizer._get_display_name(observable)}')
-
         plt.tight_layout()
         plt.show()
 
