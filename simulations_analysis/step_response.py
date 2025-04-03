@@ -134,12 +134,8 @@ def simulate_multiple_parameter_sets(
     import pandas as pd
 
     # Load default parameters from CSV if needed
-    try:
-        parameters_df = pd.read_csv('../data/model_parameters_priors.csv')
-        default_params = dict(zip(parameters_df['Parameter'], parameters_df['Value']))
-    except:
-        default_params = {}
-        print("Warning: Could not load default parameters from CSV")
+    parameters_df = pd.read_csv('../data/model_parameters_priors.csv')
+    default_params = dict(zip(parameters_df['Parameter'], parameters_df['Value']))
 
     # Setup model with base parameters (we'll override with param_values during simulation)
     # First make sure all parameters are positive and in linear scale
@@ -657,7 +653,6 @@ def batch_process_step_responses(
 if __name__ == "__main__":
     # Example usage
     import pandas as pd
-    import os
 
     # Example 1: Plot step response for a single circuit
     toehold_samples = pd.read_csv("../data/fit_data/individual_circuits/results_toehold_trigger_20250224_133718.csv")

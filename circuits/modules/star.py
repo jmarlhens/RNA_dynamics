@@ -1,4 +1,4 @@
-from pysb import Rule, Model, Expression, Monomer, Parameter, Observable, Initial
+from pysb import Rule, Model, Expression, Monomer, Observable, Initial
 from circuits.modules.molecules import RNA
 from circuits.modules.reactioncomplex import ReactionComplex
 from circuits.modules.base_modules import KineticsType
@@ -198,7 +198,7 @@ class STAR(ReactionComplex):
             (regulator(state='full', sense=1) % model.monomers[dna_name](b=None, sense=1)) >>
             model.monomers[polymerase_name](b=2) %
             (regulator(state='full', sense=1) % model.monomers[dna_name](b=2, sense=1)),
-            self.k_bind_rnap # Assume STAR enhances binding
+            self.k_bind_rnap  # Assume STAR enhances binding
         )
         rules.append(rule5)
 

@@ -1,5 +1,7 @@
 from matplotlib.colors import LinearSegmentedColormap
 import numpy as np
+import matplotlib.pyplot as plt
+
 
 def hex_to_rgb(hex):
     h = hex.lstrip("#")
@@ -20,8 +22,6 @@ cmap_colors = np.array(cmap_colors)
 cmap = LinearSegmentedColormap.from_list("my_cmap", cmap_colors / 255)
 
 # print color map
-import matplotlib.pyplot as plt
-
 fig, ax = plt.subplots()
 cmap = LinearSegmentedColormap.from_list("my_cmap", cmap_colors / 255)
 cbar = plt.colorbar(plt.cm.ScalarMappable(cmap=cmap))
@@ -30,8 +30,6 @@ plt.show()
 
 
 # load Color scheme.xslx
-import pandas as pd
-import ast
 
 # # first col is the id, forst row is the column names
 # color_scheme = pd.read_excel("Color scheme.xlsx", index_col=0, header=0)

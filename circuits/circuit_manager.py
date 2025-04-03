@@ -52,7 +52,7 @@ class CircuitManager:
         with open(self.json_file, 'w') as f:
             json.dump(circuits, f, indent=2)
 
-    def add_circuit(self, name, plasmids, default_parameters=None):
+    def add_circuit(self, name, plasmids, default_parameters=None, bindings=None):
         """
         Add a new circuit configuration to the JSON file.
 
@@ -62,12 +62,10 @@ class CircuitManager:
             Name of the circuit
         plasmids : list of tuples
             List of plasmid tuples in the format [(tx_control, tl_control, cds), ...]
-            where:
-              - tx_control: Transcriptional control (tuple or None)
-              - tl_control: Translational control (tuple or None)
-              - cds: List of coding sequences as tuples (is_translated, sequence_name)
         default_parameters : dict, optional
             Default parameters for the circuit
+        bindings : list, optional
+            List of tuples specifying sequestration reactions between species
         """
         circuits = self.load_circuits()
 
@@ -83,7 +81,8 @@ class CircuitManager:
         # Add circuit to the dictionary
         circuits["circuits"][name] = {
             "plasmids": json_plasmids,
-            "default_parameters": default_parameters or {}
+            "default_parameters": default_parameters or {},
+            "bindings": bindings or []  # Add bindings
         }
 
         # Save updated circuits to JSON file
@@ -92,16 +91,6 @@ class CircuitManager:
     def get_circuit_config(self, name):
         """
         Get a specific circuit configuration from the JSON file.
-
-        Parameters:
-        -----------
-        name : str
-            Name of the circuit
-
-        Returns:
-        --------
-        dict
-            Circuit configuration with plasmids converted to Python tuples
         """
         circuits = self.load_circuits()
         circuit = circuits["circuits"].get(name)
@@ -117,40 +106,23 @@ class CircuitManager:
             cds = [(gene[0], gene[1]) for gene in json_cds]
             plasmids.append((tx_control, tl_control, cds))
 
-        # Get default parameters
+        # Get default parameters and bindings
         default_parameters = circuit.get("default_parameters", {})
+        bindings = circuit.get("bindings", [])
 
         return {
             "name": name,
             "plasmids": plasmids,
-            "default_parameters": default_parameters
+            "default_parameters": default_parameters,
+            "bindings": bindings
         }
 
     def create_circuit(self, name, parameters=None, use_pulses=False,
                        pulse_config=None, pulse_indices=None,
-                       kinetics_type=KineticsType.MICHAELIS_MENTEN):
+                       kinetics_type=KineticsType.MICHAELIS_MENTEN,
+                       bindings=None):
         """
         Create a Circuit instance from a stored configuration.
-
-        Parameters:
-        -----------
-        name : str
-            Name of the circuit
-        parameters : dict, optional
-            Custom parameters to override defaults
-        use_pulses : bool, optional
-            Whether to use pulse configurations
-        pulse_config : dict, optional
-            Configuration for pulsed inputs if use_pulses is True
-        pulse_indices : list, optional
-            Indices of plasmids to pulse if use_pulses is True
-        kinetics_type : KineticsType, optional
-            Type of kinetics to use (Michaelis-Menten or mass action)
-
-        Returns:
-        --------
-        circuit : Circuit
-            The configured Circuit instance
         """
         config = self.get_circuit_config(name)
 
@@ -159,7 +131,10 @@ class CircuitManager:
         if parameters:
             merged_parameters.update(parameters)
 
-        # Create and return a Circuit instance with kinetics_type
+        # Use provided bindings or get from config
+        circuit_bindings = bindings if bindings is not None else config.get("bindings", [])
+
+        # Create and return a Circuit instance
         return Circuit(
             name=name,
             plasmids=config["plasmids"],
@@ -168,7 +143,8 @@ class CircuitManager:
             pulse_config=pulse_config,
             pulse_indices=pulse_indices,
             parameters_file=self.parameters_file,
-            kinetics_type=kinetics_type
+            kinetics_type=kinetics_type,
+            bindings=circuit_bindings
         )
 
     def list_circuits(self):
@@ -177,8 +153,7 @@ class CircuitManager:
 
         Returns:
         --------
-        list
-            List of circuit names
+        list of circuit names
         """
         circuits = self.load_circuits()
         return list(circuits["circuits"].keys())

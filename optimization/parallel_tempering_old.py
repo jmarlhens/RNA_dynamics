@@ -1,5 +1,4 @@
 import multiprocessing
-import concurrent.futures
 
 import os
 import sys
@@ -13,8 +12,7 @@ from optimization.optimization_algorithm import OptimizationAlgorithm
 # from minimal_test import memory_location
 
 
-import cProfile, pstats, io
-from pstats import SortKey
+import cProfile
 
 class ParallelTempering(OptimizationAlgorithm):
     def __init__(self):
@@ -63,7 +61,7 @@ class ParallelTempering(OptimizationAlgorithm):
         samp = np.random.rand()
         accept = samp < a
 
-        prev_posterior_test = sum(ParallelTempering.evaluate_posterior(priors, log_likelihood, prev_samples))
+        _ = sum(ParallelTempering.evaluate_posterior(priors, log_likelihood, prev_samples))
         # if prev_posterior_test != prev_posterior:
         #     raise Exception("The history is not correct in case this exception is thrown.")
 

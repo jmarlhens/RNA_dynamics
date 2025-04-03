@@ -1,4 +1,9 @@
 import pandas as pd
+from scipy.optimize import curve_fit
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import linregress
+
 
 # Load the provided file to inspect the data structure
 file_path = 'gfp_Calibration.csv'
@@ -6,9 +11,6 @@ data = pd.read_csv(file_path)
 
 # Display the first few rows to understand its structure
 data.head()
-
-import numpy as np
-import matplotlib.pyplot as plt
 
 # Prepare the data
 gfp_concentration = data['GFP Concentration (nM)']
@@ -40,8 +42,6 @@ plt.tight_layout()
 
 # Show the plot
 plt.show()
-
-from scipy.stats import linregress
 
 # Perform linear regression on the mean fluorescence data
 slope, intercept, r_value, p_value, std_err = linregress(gfp_concentration, mean_fluorescence)
@@ -91,22 +91,10 @@ regression_params
 # # Plot residuals
 # plt.figure(figsize=(10, 6))
 # plt.scatter(gfp_concentration, residuals, alpha=0.7, color='blue', label='Residuals')
-# plt.axhline(0, color='red', linestyle='--', label='Zero Residual Line')
-#
-# # Formatting the plot
-# plt.title('Residuals vs GFP Concentration')
-# plt.xlabel('GFP Concentration (nM)')
-# plt.ylabel('Residuals (a.u.)')
-# plt.legend()
-# plt.grid(True)
-# plt.tight_layout()
-# plt.show()
-
+# p
 
 # Calculate the variance for each concentration
 variance_fluorescence = fluorescence_replicates.var(axis=1)
-
-from scipy.optimize import curve_fit
 
 # Define the linear model with zero intercept
 def linear_model(concentration, factor):

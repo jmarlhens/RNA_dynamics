@@ -9,6 +9,7 @@ from likelihood_functions.mcmc_analysis import analyze_mcmc_results
 from utils.import_and_visualise_data import load_and_process_csv
 from utils.GFP_calibration import fit_gfp_calibration, get_brightness_correction_factor
 from circuits.circuit_manager import CircuitManager
+from data.circuit_configs import DATA_FILES, get_circuit_conditions
 
 
 def setup_calibration():
@@ -33,8 +34,8 @@ def setup_calibration():
 
 
 def fit_single_circuit(circuit_manager, circuit_name, condition_params,
-                       experimental_data, tspan, priors,
-                       max_time=360, n_samples=10, n_walkers=10, n_chains=6):
+                       experimental_data, tspan, priors, min_time=30,
+                       max_time=210, n_samples=400, n_walkers=10, n_chains=6):
     """
     Fit a single circuit and save its results using the new CircuitManager system
     """
@@ -50,6 +51,7 @@ def fit_single_circuit(circuit_manager, circuit_name, condition_params,
         condition_params=condition_params,
         experimental_data=experimental_data,
         tspan=tspan,
+        min_time=min_time,
         max_time=max_time
     )
 
@@ -85,7 +87,9 @@ def fit_single_circuit(circuit_manager, circuit_name, condition_params,
     # Save results
     df = results['analyzer'].to_dataframe()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"results_{circuit_name.lower().replace('/', '_')}_{timestamp}.csv"
+    # Only replace invalid filename characters but preserve case
+    safe_circuit_name = circuit_name.replace('/', '_')
+    filename = f"results_{safe_circuit_name}_{timestamp}.csv"
     df.to_csv(filename, index=False)
 
     # Plot and save best fit results
@@ -104,7 +108,7 @@ def fit_single_circuit(circuit_manager, circuit_name, condition_params,
 
     plt.figure(figsize=(12, 8))
     plot_all_simulation_results(sim_data, results_df, ll_quartile=20)
-    plt.savefig(f"fit_{circuit_name.lower().replace('/', '_')}_{timestamp}.png")
+    plt.savefig(f"fit_{safe_circuit_name}_{timestamp}.png")
     plt.close()
 
     return results, df
@@ -116,149 +120,71 @@ def main():
         parameters_file="../data/model_parameters_priors.csv",
         json_file="../data/circuits/circuits.json"
     )
-    # No need to register circuits as they're already in the JSON file
-    # But uncomment this if you have additional circuits to register
-    # register_all_circuits(circuit_manager)
 
     # List available circuits to verify
     available_circuits = circuit_manager.list_circuits()
     print(f"Available circuits: {available_circuits}")
 
-    # Load data
-    max_time = 360
-    toehold_trigger_data, tspan_toehold = load_and_process_csv('../data/data_parameter_estimation/toehold_trigger.csv')
-    sense_star_data, tspan_star = load_and_process_csv('../data/data_parameter_estimation/sense_star.csv')
-    cascade_data, tspan_cascade = load_and_process_csv('../data/data_parameter_estimation/cascade.csv')
-    cffl_type_1_data, tspan_cffl_type_1 = load_and_process_csv('../data/data_parameter_estimation/c1_ffl_and.csv')
+    # Define maximum simulation time
+    min_time = 30
+    max_time = 210
 
-    # Define condition parameters for each circuit
-    condition_configs = {
-        "toehold": {
-            "condition_params": {
-                "To3 5 + Tr3 5": {"k_Toehold3_GFP_concentration": 5, "k_Trigger3_concentration": 5},
-                "To3 5 + Tr3 4": {"k_Toehold3_GFP_concentration": 5, "k_Trigger3_concentration": 4},
-                "To3 5 + Tr3 3": {"k_Toehold3_GFP_concentration": 5, "k_Trigger3_concentration": 3},
-                "To3 5 + Tr3 2": {"k_Toehold3_GFP_concentration": 5, "k_Trigger3_concentration": 2},
-                "To3 5 + Tr3 1": {"k_Toehold3_GFP_concentration": 5, "k_Trigger3_concentration": 1},
-                "To3 5": {"k_Toehold3_GFP_concentration": 5, "k_Trigger3_concentration": 0}
-            },
-            "experimental_data": toehold_trigger_data,
-            "tspan": tspan_toehold
-        },
-        "star": {
-            "condition_params": {
-                "Se6 5 nM + St6 15 nM": {"k_Sense6_GFP_concentration": 5, "k_Star6_concentration": 15},
-                "Se6 5 nM + St6 10 nM": {"k_Sense6_GFP_concentration": 5, "k_Star6_concentration": 10},
-                "Se6 5 nM + St6 5 nM": {"k_Sense6_GFP_concentration": 5, "k_Star6_concentration": 5},
-                "Se6 5 nM + St6 3 nM": {"k_Sense6_GFP_concentration": 5, "k_Star6_concentration": 3},
-                "Se6 5 nM + St6 0 nM": {"k_Sense6_GFP_concentration": 0, "k_Star6_concentration": 0}
-            },
-            "experimental_data": sense_star_data,
-            "tspan": tspan_star
-        },
-        "cascade": {
-            "condition_params": {
-                "To3 3 nM + Se6Tr3P 5 nM + St6 15 nM": {
-                    "k_Toehold3_GFP_concentration": 3,
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 15
-                },
-                "To3 3 nM + Se6Tr3P 5 nM + St6 10 nM": {
-                    "k_Toehold3_GFP_concentration": 3,
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 10
-                },
-                "To3 3 nM + Se6Tr3P 5 nM + St6 5 nM": {
-                    "k_Toehold3_GFP_concentration": 3,
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 5
-                },
-                "To3 3 nM + Se6Tr3P 5 nM + St6 3 nM": {
-                    "k_Toehold3_GFP_concentration": 3,
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 3
-                },
-                "To3 3 nM + Se6Tr3P 5 nM + St6 0 nM": {
-                    "k_Toehold3_GFP_concentration": 3,
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 0
-                }
-            },
-            "experimental_data": cascade_data,
-            "tspan": tspan_cascade
-        },
-        "cffl_type_1": {
-            "condition_params": {
-                "15 nM": {
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 15,
-                    "k_Sense6_Toehold3_GFP_concentration": 3
-                },
-                "12 nM": {
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 12,
-                    "k_Sense6_Toehold3_GFP_concentration": 3
-                },
-                "10 nM": {
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 10,
-                    "k_Sense6_Toehold3_GFP_concentration": 3
-                },
-                "7 nM": {
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 7,
-                    "k_Sense6_Toehold3_GFP_concentration": 3
-                },
-                "5 nM": {
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 5,
-                    "k_Sense6_Toehold3_GFP_concentration": 3
-                },
-                "3 nM": {
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 3,
-                    "k_Sense6_Toehold3_GFP_concentration": 3
-                },
-                "0 nM": {
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 0,
-                    "k_Sense6_Toehold3_GFP_concentration": 3
-                }
-            },
-            "experimental_data": cffl_type_1_data,
-            "tspan": tspan_cffl_type_1
-        }
-    }
+    # Load data for all circuits in central configuration
+    circuit_data = {}
+    for circuit_name, data_file in DATA_FILES.items():
+        try:
+            data, tspan = load_and_process_csv(data_file)
+            circuit_data[circuit_name] = {
+                "experimental_data": data,
+                "tspan": tspan
+            }
+            print(f"Loaded data for {circuit_name}")
+        except Exception as e:
+            print(f"Error loading data for {circuit_name}: {e}")
 
     # Load priors
     priors = pd.read_csv('../data/model_parameters_priors.csv')
     priors = priors[priors['Parameter'] != 'k_prot_deg']
 
     # Fit each circuit individually
-    circuits_to_fit = ["star", "cascade", "cffl_type_1", "toehold"]  # Using exact names from the JSON file
+    # You can specify which circuits to fit
+    # circuits_to_fit = ["star", "cascade", "cffl_type_1", "toehold"]
+    # citcuits_to_fit = ["sense_star_6", "cascade", "toehold_trigger", "cffl_type_1", "star_antistar_1"]
+    # circuits_to_fit = ["toehold_trigger", "cffl_type_1", "star_antistar_1"]
+    circuits_to_fit = ["cascade"]
+
     for circuit_name in circuits_to_fit:
         if circuit_name in available_circuits:
             print(f"\nFitting {circuit_name}...")
-            # Get the configuration, handling the case where the name might differ
-            config_key = circuit_name
-            if circuit_name not in condition_configs and circuit_name == "cffl_type_1":
-                # Handle the special case for cffl_type_1
-                config_key = "cffl_type_1"
 
-            if config_key in condition_configs:
-                config = condition_configs[config_key]
+            # Get condition parameters from centralized configuration
+            condition_params = get_circuit_conditions(circuit_name)
+            if not condition_params:
+                print(f"Warning: No conditions defined for circuit '{circuit_name}' in configuration, skipping.")
+                continue
+
+            # Get the experimental data for this circuit
+            if circuit_name not in circuit_data:
+                print(f"Warning: No data loaded for circuit '{circuit_name}', skipping.")
+                continue
+
+            data_info = circuit_data[circuit_name]
+
+            # Fit the circuit
+            try:
                 results, df = fit_single_circuit(
                     circuit_manager=circuit_manager,
                     circuit_name=circuit_name,
-                    condition_params=config["condition_params"],
-                    experimental_data=config["experimental_data"],
-                    tspan=config["tspan"],
+                    condition_params=condition_params,
+                    experimental_data=data_info["experimental_data"],
+                    tspan=data_info["tspan"],
                     priors=priors,
+                    min_time=min_time,
                     max_time=max_time
                 )
                 print(f"Completed fitting {circuit_name}")
-            else:
-                print(f"Warning: Configuration for circuit '{circuit_name}' not found.")
+            except Exception as e:
+                print(f"Error fitting circuit {circuit_name}: {e}")
         else:
             print(f"Warning: Circuit '{circuit_name}' not found in available circuits.")
 

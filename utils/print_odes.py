@@ -131,9 +131,7 @@ def simpy_equations_from_Pysb_model(model):
     return equations_sym, variables
 
 
-import re
 
-import re
 
 
 def convert_to_latex_fractions(eq):

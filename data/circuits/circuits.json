@@ -1,6 +1,6 @@
 {
   "circuits": {
-    "star": {
+    "sense_star_6": {
       "plasmids": [
         [
           [
@@ -29,7 +29,8 @@
       "default_parameters": {
         "k_Sense6_GFP_concentration": 1,
         "k_Star6_concentration": 1
-      }
+      },
+      "bindings": []
     },
     "gfp": {
       "plasmids": [
@@ -46,7 +47,8 @@
       ],
       "default_parameters": {
         "k_GFP_concentration": 3
-      }
+      },
+      "bindings": []
     },
     "and_gate": {
       "plasmids": [
@@ -91,7 +93,8 @@
         "k_Sense_6_Toehold_3_GFP_concentration": 1,
         "k_STAR_6_concentration": 1,
         "k_Trigger_3_concentration": 1
-      }
+      },
+      "bindings": []
     },
     "cffl_type_1": {
       "plasmids": [
@@ -139,7 +142,8 @@
         "k_Sense6_Trigger3_concentration": 1,
         "k_Star6_concentration": 1,
         "k_Sense6_Toehold3_GFP_concentration": 1
-      }
+      },
+      "bindings": []
     },
     "cascade": {
       "plasmids": [
@@ -184,7 +188,8 @@
         "k_Star6_concentration": 1,
         "k_Sense6_Trigger3_concentration": 1,
         "k_Toehold3_GFP_concentration": 1
-      }
+      },
+      "bindings": []
     },
     "cffl_12": {
       "plasmids": [
@@ -257,7 +262,8 @@
         "k_Sense1_aSTAR6_concentration": 1000,
         "k_Sense6_Trigger3_concentration": 1,
         "k_Sense6_Toehold3_GFP_concentration": 1
-      }
+      },
+      "bindings": []
     },
     "cleaved_transcription": {
       "plasmids": [
@@ -278,7 +284,8 @@
       ],
       "default_parameters": {
         "k_STAR_GFP_concentration": 1
-      }
+      },
+      "bindings": []
     },
     "iffl_1": {
       "plasmids": [
@@ -327,7 +334,8 @@
         "k_Star6_Trigger3_concentration": 1,
         "k_Sense6_aTrigger3_concentration": 1,
         "k_Toehold3_GFP_concentration": 1
-      }
+      },
+      "bindings": []
     },
     "sequestration": {
       "plasmids": [
@@ -355,9 +363,10 @@
       "default_parameters": {
         "k_Star6_concentration": 1,
         "k_aStar6_concentration": 1
-      }
+      },
+      "bindings": []
     },
-    "toehold": {
+    "toehold_trigger": {
       "plasmids": [
         [
           null,
@@ -386,7 +395,56 @@
       "default_parameters": {
         "k_Toehold3_GFP_concentration": 1,
         "k_Trigger3_concentration": 1
-      }
+      },
+      "bindings": []
+    },
+    "star_antistar_1": {
+      "plasmids": [
+        [
+          null,
+          null,
+          [
+            [
+              false,
+              "Star1"
+            ]
+          ]
+        ],
+        [
+          null,
+          null,
+          [
+            [
+              false,
+              "aStar1"
+            ]
+          ]
+        ],
+        [
+          [
+            "Sense1",
+            "Star1"
+          ],
+          null,
+          [
+            [
+              true,
+              "GFP"
+            ]
+          ]
+        ]
+      ],
+      "default_parameters": {
+        "k_Star1_concentration": 1,
+        "k_aStar1_concentration": 1,
+        "k_Sense1_GFP_concentration": 1
+      },
+      "bindings": [
+        [
+          "Star1",
+          "aStar1"
+        ]
+      ]
     }
   }
 }

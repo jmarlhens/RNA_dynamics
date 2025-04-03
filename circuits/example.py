@@ -123,7 +123,7 @@ def compare_parameters_with_both_kinetics():
 
     # Define parameter values to compare
     param_values = {
-        "k_Star6_concentration": [0.5, 1.0, 2.0, 5.0, 10.0]
+        "k_Star6_concentration": [0, 3]
     }
 
     # Time span for all simulations

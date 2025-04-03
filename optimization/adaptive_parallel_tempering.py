@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 
-from optimization.mcmc_utils import convergence_test, integrated_autocorrelation_time
+from optimization.mcmc_utils import convergence_test
 from optimization.optimization_algorithm import OptimizationAlgorithm
 
 
@@ -68,7 +68,7 @@ class ParallelTempering(OptimizationAlgorithm):
         params = np.array(initial_parameters)
         likelihood = self.log_likelihood(params)
         prior = self.log_prior(params)
-        max_iN = 0
+        # max_iN = 0
         for iN in tqdm(range(n_samples)):
             self.beta = 1 / np.expand_dims(self.temperatures, axis=0)
 
@@ -199,7 +199,10 @@ if __name__ == '__main__':
 
     adaptive_temperature = True
 
-    log_prior = lambda params: np.log(np.all(np.logical_and(params <= 2, params >= -2), axis=-1) * 1)
+    # log_prior = lambda params: np.log(np.all(np.logical_and(params <= 2, params >= -2), axis=-1) * 1)
+    def log_prior(params):
+        return np.log(np.all(np.logical_and(params <= 2, params >= -2), axis=-1) * 1)
+
     pt = ParallelTempering(log_likelihood=log_likelihood, log_prior=log_prior, n_dim=2, n_walkers=n_walkers,
                            n_chains=n_chains)
     parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=[0, 0], n_samples=n_samples,

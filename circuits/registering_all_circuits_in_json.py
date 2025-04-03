@@ -188,6 +188,29 @@ def register_basic_circuits(manager):
     )
 
 
+def register_star_antistar_1(manager):
+    """Register STAR-STAR* circuit"""
+    plasmids = [
+        (None, None, [(False, "Star1")]),  # Step 1: Express Star1
+        (None, None, [(False, "aStar1")]),  # Step 2: Express aStar1
+        (("Sense1", "Star1"), None, [(True, "GFP")]),  # Step 3: Sense1 controls GFP
+    ]
+
+    # Define binding between Star1 and aStar1
+    bindings = [("Star1", "aStar1")]
+
+    manager.add_circuit(
+        name="star_antistar_1",
+        plasmids=plasmids,
+        default_parameters={
+            'k_Star1_concentration': 1,  # Initial concentration of Star1
+            'k_aStar1_concentration': 1,  # Initial concentration of aStar1
+            'k_Sense1_GFP_concentration': 1,  # Initial concentration of GFP
+        },
+        bindings=bindings  # Add bindings
+    )
+
+
 def main():
     """Initialize the database with all circuits"""
     # You can specify the parameters file path here
@@ -195,7 +218,8 @@ def main():
 
     # Create a circuit manager and register all circuits
     manager = CircuitManager(parameters_file=parameters_file)
-    register_all_circuits(manager, parameters_file)
+    register_star_antistar_1(manager)
+    register_all_circuits(manager)
 
     # List all available circuits
     circuits = manager.list_circuits()
@@ -204,10 +228,10 @@ def main():
         print(f"  - {circuit}")
 
     # Example: Load and simulate a circuit
-    example_circuit = "cascade"
+    example_circuit = "star_antistar_1"
     if example_circuit in circuits:
         circuit = manager.create_circuit(example_circuit)
-        _ = circuit.simulate(plot=True)
+        _ = circuit.simulate()
         print(f"Successfully simulated {example_circuit} circuit")
 
 

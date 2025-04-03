@@ -149,7 +149,6 @@ if __name__ == '__main__':
     Y = np.random.uniform(size=(10, 1))
     X_c = X - np.mean(X)
     Y_c = Y - np.mean(Y)
-    import timeit
 
     #
     # c1 = np.array([np.correlate(X_c, np.roll(Y_c, iX))[0] for iX in range(len(X))])

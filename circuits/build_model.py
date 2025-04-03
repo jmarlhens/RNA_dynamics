@@ -4,6 +4,7 @@ from circuits.modules.base_modules import TranscriptionFactory, TranscriptionTyp
 from circuits.modules.Csy4_activity import Csy4Activity
 from circuits.modules.toehold import Toehold
 from circuits.modules.sequestration import Sequestration
+from circuits.modules.molecules import RNA
 
 
 def setup_model(plasmids, parameters, bindings=None, use_pulses=False, pulse_config=None,
@@ -50,7 +51,7 @@ def setup_model(plasmids, parameters, bindings=None, use_pulses=False, pulse_con
     return model
 
 
-def process_plasmid(plasmid, model, use_pulses=False, pulse_config=None, 
+def process_plasmid(plasmid, model, use_pulses=False, pulse_config=None,
                     kinetics_type=KineticsType.MICHAELIS_MENTEN):
     """
     Processes the given plasmid by adding it to the model with appropriate controls.
@@ -84,9 +85,9 @@ def process_plasmid(plasmid, model, use_pulses=False, pulse_config=None,
     if transcriptional_control:
         # Create STAR-regulated transcription with specified kinetics type
         star = STAR(
-            sequence_name=rna_name, 
-            transcriptional_control=transcriptional_control, 
-            model=model, 
+            sequence_name=rna_name,
+            transcriptional_control=transcriptional_control,
+            model=model,
             kinetics_type=kinetics_type
         )
         rna = star.product
@@ -128,24 +129,42 @@ def process_plasmid(plasmid, model, use_pulses=False, pulse_config=None,
         products = csy4.product
 
     # Step 3: Handle translation of each CDS product with specified kinetics type
-    for (translate, seq), rna in zip(cds, products):
+    for translate, seq in cds:
         if not translate:
             continue
-        if translational_control:
-            Toehold(
-                rna=rna, 
-                translational_control=translational_control, 
-                prot_name=seq, 
-                model=model,
-                kinetics_type=kinetics_type
-            )
-        else:
-            TranslationFactory.create_translation(
-                rna=rna,
-                prot_name=seq,
-                model=model,
-                kinetics_type=kinetics_type
-            )
+
+        # Find the appropriate RNA to translate for this CDS
+        # First check if there's an RNA product with a matching name
+        translated_rna = None
+
+        # Option 1: Look for direct match in RNA names
+        for rna_product in products:
+            if seq in rna_product.sequence_name:
+                # Get a proper RNA instance for this sequence
+                translated_rna = RNA.get_instance(sequence_name=seq, model=model)
+                break
+
+        # Option 2: If no match found, use the raw sequence name
+        if translated_rna is None:
+            translated_rna = RNA.get_instance(sequence_name=seq, model=model)
+
+        # Now translate this RNA
+        if translated_rna:
+            if translational_control:
+                Toehold(
+                    rna=translated_rna,
+                    translational_control=translational_control,
+                    prot_name=seq,
+                    model=model,
+                    kinetics_type=kinetics_type
+                )
+            else:
+                TranslationFactory.create_translation(
+                    rna=translated_rna,
+                    prot_name=seq,
+                    model=model,
+                    kinetics_type=kinetics_type
+                )
 
 
 def generate_observables(model):

@@ -14,7 +14,7 @@ k_trigger_unbinding,0.5,4
 k_tx_init,1.0,4
 k_star_bind,5.0,4
 k_star_unbind,0.1,4
-k_star_act,0.01,4
+k_star_act,1.0,4
 k_star_act_reg,3.0,4
 k_star_stop,4.0,4
 k_star_stop_reg,0.01,4
@@ -26,8 +26,8 @@ k_tx_cat,0.02,
 k_tl_bind,0.01,
 k_tl_unbind,0.642,
 k_tl_cat,0.016,
-RNAP_0,1000.0,
-Ribosome_0,1000.0,
+rnap_0,1000.0,
+ribosome_0,1000.0,
 k_tx_bind_star,3.0,
 k_tx_cat_star,6.0,
 k_tl_bind_unbound,0.001,

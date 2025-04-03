@@ -1,4 +1,3 @@
-from statistics import variance
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -148,7 +147,10 @@ if __name__ == '__main__':
     n_samples = 10 ** 3
     log_likelihood = log_smile_adapt
 
-    log_prior = lambda params: np.log(np.all(np.logical_and(params <= 2, params >= -2), axis=-1) * 1)
+    # log_prior = lambda params: np.log(np.all(np.logical_and(params <= 2, params >= -2), axis=-1) * 1)
+    def log_prior(params):
+        return np.log(np.all(np.logical_and(params <= 2, params >= -2), axis=-1) * 1)
+
     pt = ParallelTempering(log_likelihood=log_likelihood, log_prior=log_prior, n_dim=2, n_walkers=n_walkers,
                            n_chains=n_chains)
     parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=[0, 0], n_samples=n_samples)

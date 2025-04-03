@@ -15,16 +15,8 @@ class Circuit:
 
     def __init__(self, name, plasmids, parameters=None,
                  use_pulses=False, pulse_config=None, pulse_indices=None,
-                 parameters_file=None, kinetics_type=KineticsType.MICHAELIS_MENTEN):
-        """
-        Initialize a circuit with its model.
-
-        Parameters:
-        -----------
-        (... other parameters as before ...)
-        kinetics_type : KineticsType, optional
-            Type of kinetics to use (Michaelis-Menten or mass action)
-        """
+                 parameters_file=None, kinetics_type=KineticsType.MICHAELIS_MENTEN,
+                 bindings=None):  # Add bindings parameter
         self.name = name
         self.plasmids = plasmids
         self.user_parameters = parameters or {}
@@ -33,22 +25,24 @@ class Circuit:
         self.pulse_indices = pulse_indices or []
         self.parameters_file = parameters_file
         self.kinetics_type = kinetics_type
+        self.bindings = bindings or []  # Store bindings
 
         # Load parameters from CSV and merge with user parameters
         self.parameters = self._load_parameters()
 
-        # Setup the model during initialization
+        # Set up the model during initialization
         self.model = self._setup_model()
 
     def _setup_model(self):
         """
-        Internal method to setup the model using the provided configuration.
+        Internal method to set up the model using the provided configuration.
         """
-        # Setup the model with kinetics_type
+        # Set up the model with kinetics_type and bindings
         if self.use_pulses and self.pulse_config:
             model = setup_model(
                 self.plasmids,
                 self.parameters,
+                bindings=self.bindings,
                 use_pulses=True,
                 pulse_config=self.pulse_config,
                 pulse_indices=self.pulse_indices,
@@ -58,6 +52,7 @@ class Circuit:
             model = setup_model(
                 self.plasmids,
                 self.parameters,
+                bindings=self.bindings,
                 kinetics_type=self.kinetics_type
             )
 
@@ -70,8 +65,7 @@ class Circuit:
 
         Returns:
         --------
-        list
-            List of parameter names to remove
+        list of parameter names to remove
         """
         if not self.use_pulses or not self.pulse_indices:
             return []

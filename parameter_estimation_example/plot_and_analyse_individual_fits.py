@@ -8,11 +8,13 @@ from likelihood_functions.utils import organize_results
 from likelihood_functions.visualization import plot_all_simulation_results
 from utils.import_and_visualise_data import load_and_process_csv
 from utils.GFP_calibration import fit_gfp_calibration, get_brightness_correction_factor
+from circuits.circuit_manager import CircuitManager
+from data.circuit_configs import get_circuit_conditions, get_data_file
 
 
 def setup_calibration():
     """Set up GFP calibration parameters"""
-    data = pd.read_csv('../calibration_gfp/gfp_Calibration.csv')
+    data = pd.read_csv('../utils/calibration_gfp/gfp_Calibration.csv')
     calibration_results = fit_gfp_calibration(
         data,
         concentration_col='GFP Concentration (nM)',
@@ -27,17 +29,19 @@ def setup_calibration():
     }
 
 
-def load_circuit_results(results_dir='../fit_data/individual_circuits'):
+def load_circuit_results(results_dir='../data/fit_data/individual_circuits'):
     """Load all circuit results from CSV files"""
     results = {}
     # Find all results CSV files
-    pattern = os.path.join(results_dir, 'results_cffl*.csv')
+    pattern = os.path.join(results_dir, 'results_*.csv')
     result_files = glob.glob(pattern)
 
     for file_path in result_files:
         # Extract circuit name from filename
         filename = os.path.basename(file_path)
-        circuit_name = filename.split('_')[1]  # Assumes format: results_circuitname_timestamp.csv
+
+        circuit_name = filename.split('_')[1:-2]
+        circuit_name = '_'.join(circuit_name)
 
         # Load results
         df = pd.read_csv(file_path)
@@ -91,168 +95,93 @@ def plot_likelihood_distributions(results, save_dir='.'):
     plt.close()
 
 
-def plot_fits(results, save_dir='.', n_samples=400):
+def plot_fits(results, save_dir='.', n_samples=400, min_time=None):
     """Plot fits for each circuit using both best and random samples"""
-    # First, we need to recreate the circuit configurations and load the data
-    from obsolete.toehold import test_toehold
-    from obsolete.star import test_star
-    from obsolete.cascade import test_cascade
-    from obsolete.cffl_type_1 import test_coherent_feed_forward_loop
-
-    # Load data
-    max_time = 360
-    data_files = {
-        'toehold': '../data/data_parameter_estimation/toehold_trigger.csv',
-        'sense': '../data/data_parameter_estimation/sense_star.csv',
-        'cascade': '../data/data_parameter_estimation/cascade.csv',
-        'cffl type 1': '../data/data_parameter_estimation/c1_ffl_and.csv'
-    }
-
-    # Load priors for parameter names
+    # Initialize CircuitManager and load requirements
+    circuit_manager = CircuitManager(
+        parameters_file="../data/model_parameters_priors.csv",
+        json_file="../data/circuits/circuits.json"
+    )
     priors = pd.read_csv('../data/model_parameters_priors.csv')
     priors = priors[priors['Parameter'] != 'k_prot_deg']
     parameters_to_fit = priors.Parameter.tolist()
 
     for circuit_name, df in results.items():
-        # Load experimental data
-        exp_data, tspan = load_and_process_csv(data_files[circuit_name])
+        print(f"Processing circuit {circuit_name}")
 
-        # Get the circuit configuration
-        if circuit_name == 'toehold':
-            model = test_toehold()
-            conditions = {
-                "To3 5 + Tr3 5": {"k_Toehold3_GFP_concentration": 5, "k_Trigger3_concentration": 5},
-                "To3 5 + Tr3 4": {"k_Toehold3_GFP_concentration": 5, "k_Trigger3_concentration": 4},
-                "To3 5 + Tr3 3": {"k_Toehold3_GFP_concentration": 5, "k_Trigger3_concentration": 3},
-                "To3 5 + Tr3 2": {"k_Toehold3_GFP_concentration": 5, "k_Trigger3_concentration": 2},
-                "To3 5 + Tr3 1": {"k_Toehold3_GFP_concentration": 5, "k_Trigger3_concentration": 1},
-                "To3 5": {"k_Toehold3_GFP_concentration": 5, "k_Trigger3_concentration": 0}
-            }
-        elif circuit_name == 'sense':
-            model = test_star()
-            conditions = {
-                "Se6 5 nM + St6 15 nM": {"k_Sense6_GFP_concentration": 5, "k_Star6_concentration": 15},
-                "Se6 5 nM + St6 10 nM": {"k_Sense6_GFP_concentration": 5, "k_Star6_concentration": 10},
-                "Se6 5 nM + St6 5 nM": {"k_Sense6_GFP_concentration": 5, "k_Star6_concentration": 5},
-                "Se6 5 nM + St6 3 nM": {"k_Sense6_GFP_concentration": 5, "k_Star6_concentration": 3},
-                "Se6 5 nM + St6 0 nM": {"k_Sense6_GFP_concentration": 0, "k_Star6_concentration": 0}
-            }
-        elif circuit_name == 'cascade':
-            model = test_cascade()
-            conditions = {
-                "To3 3 nM + Se6Tr3P 5 nM + St6 15 nM": {
-                    "k_Toehold3_GFP_concentration": 3,
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 15
-                },
-                "To3 3 nM + Se6Tr3P 5 nM + St6 10 nM": {
-                    "k_Toehold3_GFP_concentration": 3,
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 10
-                },
-                "To3 3 nM + Se6Tr3P 5 nM + St6 5 nM": {
-                    "k_Toehold3_GFP_concentration": 3,
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 5
-                },
-                "To3 3 nM + Se6Tr3P 5 nM + St6 3 nM": {
-                    "k_Toehold3_GFP_concentration": 3,
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 3
-                },
-                "To3 3 nM + Se6Tr3P 5 nM + St6 0 nM": {
-                    "k_Toehold3_GFP_concentration": 3,
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 0
-                }
-            }
-        else:  # cffl
-            model = test_coherent_feed_forward_loop()
-            conditions = {
-                "15 nM": {
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 15,
-                    "k_Sense6_Toehold3_GFP_concentration": 3
-                },
-                "12 nM": {
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 12,
-                    "k_Sense6_Toehold3_GFP_concentration": 3
-                },
-                "10 nM": {
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 10,
-                    "k_Sense6_Toehold3_GFP_concentration": 3
-                },
-                "7 nM": {
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 7,
-                    "k_Sense6_Toehold3_GFP_concentration": 3
-                },
-                "5 nM": {
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 5,
-                    "k_Sense6_Toehold3_GFP_concentration": 3
-                },
-                "3 nM": {
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 3,
-                    "k_Sense6_Toehold3_GFP_concentration": 3
-                },
-                "0 nM": {
-                    "k_Sense6_Trigger3_concentration": 5,
-                    "k_Star6_concentration": 0,
-                    "k_Sense6_Toehold3_GFP_concentration": 3
-                }
-            }
+        # Get circuit data and setup
+        conditions = get_circuit_conditions(circuit_name)
+        data_file = get_data_file(circuit_name)
+        exp_data, tspan = load_and_process_csv(data_file)
 
+        # Create circuit and configuration
+        first_condition = list(conditions.keys())[0]
+        circuit = circuit_manager.create_circuit(circuit_name, parameters=conditions[first_condition])
         config = CircuitConfig(
-            model=model,
+            model=circuit.model,
             name=circuit_name,
             condition_params=conditions,
             experimental_data=exp_data,
             tspan=tspan,
-            max_time=max_time
+            max_time=360,
+            min_time=min_time  # Add min_time parameter
         )
 
-        # Create circuit fitter
+        # Create fitter
         calibration_params = setup_calibration()
         circuit_fitter = CircuitFitter([config], parameters_to_fit, priors, calibration_params)
 
-        # Get best parameters and simulate
+        # BEST PARAMETERS: Select, simulate and plot
         best_params = df.sort_values(by='likelihood', ascending=False).head(n_samples)
-        best_params_values = best_params[parameters_to_fit].values
-        sim_data_best = circuit_fitter.simulate_parameters(best_params_values)
+        log_params_best = best_params[parameters_to_fit].values
 
-        # Calculate likelihood and prior for best parameters
+        # Simulate with params
+        sim_data_best = circuit_fitter.simulate_parameters(log_params_best)
         log_likelihood_best = circuit_fitter.calculate_likelihood_from_simulation(sim_data_best)
-        log_prior_best = circuit_fitter.calculate_log_prior(best_params_values)
+        log_prior_best = circuit_fitter.calculate_log_prior(log_params_best)
 
-        # Organize results and plot best fits
-        results_df_best = organize_results(parameters_to_fit, best_params_values, log_likelihood_best, log_prior_best)
+        # Convert to linear for plotting
+        linear_params_best = 10 ** log_params_best
+        results_df_best = organize_results(
+            parameters_to_fit,
+            linear_params_best,
+            log_likelihood_best,
+            log_prior_best
+        )
 
+        # Plot best fits
         plt.figure(figsize=(12, 8))
         plot_all_simulation_results(sim_data_best, results_df_best, ll_quartile=20)
         plt.suptitle(f'Top {n_samples} Best Fits for {circuit_name}')
+        if min_time:
+            plt.suptitle(f'Top {n_samples} Best Fits for {circuit_name} (t₀={min_time}min)')
         plt.savefig(os.path.join(save_dir, f'best_fits_{circuit_name}.png'))
         plt.close()
 
-        # Get random parameters and simulate
+        # RANDOM PARAMETERS: Select, simulate and plot
         random_params = df.sample(n=n_samples)
-        random_params_values = random_params[parameters_to_fit].values
-        sim_data_random = circuit_fitter.simulate_parameters(random_params_values)
+        log_params_random = random_params[parameters_to_fit].values
 
-        # Calculate likelihood and prior for random parameters
+        # Simulate with params
+        sim_data_random = circuit_fitter.simulate_parameters(log_params_random)
         log_likelihood_random = circuit_fitter.calculate_likelihood_from_simulation(sim_data_random)
-        log_prior_random = circuit_fitter.calculate_log_prior(random_params_values)
+        log_prior_random = circuit_fitter.calculate_log_prior(log_params_random)
 
-        # Organize results and plot random fits
-        results_df_random = organize_results(parameters_to_fit, random_params_values, log_likelihood_random,
-                                             log_prior_random)
+        # Convert to linear for plotting
+        linear_params_random = 10 ** log_params_random
+        results_df_random = organize_results(
+            parameters_to_fit,
+            linear_params_random,
+            log_likelihood_random,
+            log_prior_random
+        )
 
+        # Plot random fits
         plt.figure(figsize=(12, 8))
         plot_all_simulation_results(sim_data_random, results_df_random, ll_quartile=20)
         plt.suptitle(f'{n_samples} Random Samples Fits for {circuit_name}')
+        if min_time:
+            plt.suptitle(f'{n_samples} Random Samples Fits for {circuit_name} (t₀={min_time}min)')
         plt.savefig(os.path.join(save_dir, f'random_fits_{circuit_name}.png'))
         plt.close()
 
@@ -267,9 +196,9 @@ def main():
     results = load_circuit_results()
 
     # Generate plots
-    plot_parameter_distributions(results, output_dir)
+    # plot_parameter_distributions(results, output_dir)
     plot_likelihood_distributions(results, output_dir)
-    plot_fits(results, output_dir, n_samples=200)
+    plot_fits(results, output_dir, n_samples=210, min_time=30)
 
 
 if __name__ == '__main__':
