@@ -1,12 +1,18 @@
-from pysb import Rule, Model, Monomer, Parameter, Observable, Initial
+from pysb import Rule, Model, Monomer, Observable, Initial
 from circuits.modules.molecules import RNA, Protein
 from circuits.modules.reactioncomplex import ReactionComplex
 from circuits.modules.base_modules import KineticsType
 
 
 class Toehold(ReactionComplex):
-    def __init__(self, rna: RNA = None, translational_control: tuple = None, prot_name: str = None,
-                 model: Model = None, kinetics_type: KineticsType = KineticsType.MICHAELIS_MENTEN):
+    def __init__(
+        self,
+        rna: RNA = None,
+        translational_control: tuple = None,
+        prot_name: str = None,
+        model: Model = None,
+        kinetics_type: KineticsType = KineticsType.MICHAELIS_MENTEN,
+    ):
         assert rna is not None
         assert translational_control is not None
 
@@ -31,22 +37,21 @@ class Toehold(ReactionComplex):
             raise ValueError(f"Unknown kinetics type: {kinetics_type}")
 
     def binding_unbinding_rna(self, rna, trigger, rules):
-
         # Binding rule: Trigger RNA binds to Toehold RNA at the `toehold` site when both are unbound (toehold=None)
         binding_rule = Rule(
-            f'TOEHOLD_{trigger.name}_binding_to_{rna.name}',
-            trigger(state="full", toehold=None) + rna(state="full", toehold=None) >>
-            trigger(state="full", toehold=1) % rna(state="full", toehold=1),
-            self.k_toehold_binding
+            f"TOEHOLD_{trigger.name}_binding_to_{rna.name}",
+            trigger(state="full", toehold=None) + rna(state="full", toehold=None)
+            >> trigger(state="full", toehold=1) % rna(state="full", toehold=1),
+            self.k_toehold_binding,
         )
         rules.append(binding_rule)
 
         # Unbinding rule: Trigger RNA unbinds from Toehold RNA at the `toehold` site
         unbinding_rule = Rule(
-            f'TOEHOLD_{trigger.name}_unbinding_from_{rna.name}',
-            trigger(state="full", toehold=1) % rna(state="full", toehold=1) >>
-            trigger(state="full", toehold=None) + rna(state="full", toehold=None),
-            self.k_toehold_unbinding
+            f"TOEHOLD_{trigger.name}_unbinding_from_{rna.name}",
+            trigger(state="full", toehold=1) % rna(state="full", toehold=1)
+            >> trigger(state="full", toehold=None) + rna(state="full", toehold=None),
+            self.k_toehold_unbinding,
         )
         rules.append(unbinding_rule)
 
@@ -69,19 +74,20 @@ class Toehold(ReactionComplex):
 
         # Translation when Toehold RNA is unbound (toehold=None)
         unbound_translation_rule = Rule(
-            f'TOEHOLD_unbound_translation_of_{rna.name}_to_{protein.name}',
-            rna(state="full", toehold=None) >>
-            rna(state="full", toehold=None) + protein(state="immature"),
-            self.k_tl_unbound
+            f"TOEHOLD_unbound_translation_of_{rna.name}_to_{protein.name}",
+            rna(state="full", toehold=None)
+            >> rna(state="full", toehold=None) + protein(state="immature"),
+            self.k_tl_unbound,
         )
         rules.append(unbound_translation_rule)
 
         # Translation when Toehold RNA is bound to the Trigger (toehold=1)
         bound_translation_rule = Rule(
-            f'TOEHOLD_bound_translation_of_{rna.name}_to_{protein.name}',
-            trigger(state="full", toehold=1) % rna(state="full", toehold=1) >>
-            trigger(state="full", toehold=1) % rna(state="full", toehold=1) + protein(state="immature"),
-            self.k_tl_bound
+            f"TOEHOLD_bound_translation_of_{rna.name}_to_{protein.name}",
+            trigger(state="full", toehold=1) % rna(state="full", toehold=1)
+            >> trigger(state="full", toehold=1) % rna(state="full", toehold=1)
+            + protein(state="immature"),
+            self.k_tl_bound,
         )
         rules.append(bound_translation_rule)
 
@@ -93,20 +99,36 @@ class Toehold(ReactionComplex):
         This implements a more mechanistic model with explicit ribosome binding.
         """
         # Add ribosome monomer if it doesn't exist
-        ribosome_name = 'Ribosome'
+        ribosome_name = "ribosome"
         ribosome = next((m for m in model.monomers if m.name == ribosome_name), None)
         if ribosome is None:
-            Monomer(ribosome_name, ['b', 'state'])
-            Parameter('Ribosome_0', 1.0)  # Initial concentration of ribosomes
-            Initial(model.monomers[ribosome_name](b=None, state='free'), model.parameters['Ribosome_0'])
+            # The way the ribosome rules are modeled are not very accurate at the moment, the code will run but the rules don't reflect the actual binding and unbinding of the ribosome. Print a warning.
+            print(
+                f"Warning: Using default ribosome monomer '{ribosome_name}' in the model. These rules are not accurate."
+            )
+            Monomer(
+                ribosome_name, ["b", "state"], {"state": ["free", "bound", "active"]}
+            )
+            Initial(
+                model.monomers[ribosome_name](b=None, state="free"),
+                model.parameters["ribosome_0"],
+            )
 
         # Parameters for mass action kinetics
         self.k_toehold_binding = self.parameters["k_trigger_binding"]
         self.k_toehold_unbinding = self.parameters["k_trigger_unbinding"]
-        self.k_ribo_bind_unbound = self.parameters.get("k_tl_bind_unbound", 0.1)  # Default if not provided
-        self.k_ribo_bind_bound = self.parameters.get("k_tl_bind_bound", 1.0)  # Default if not provided
-        self.k_ribo_cat_unbound = self.parameters.get("k_tl_cat_unbound", 0.1)  # Default if not provided
-        self.k_ribo_cat_bound = self.parameters.get("k_tl_cat_bound", 1.0)  # Default if not provided
+        self.k_ribo_bind_unbound = self.parameters.get(
+            "k_tl_bind_unbound", 0.1
+        )  # Default if not provided
+        self.k_ribo_bind_bound = self.parameters.get(
+            "k_tl_bind_bound", 1.0
+        )  # Default if not provided
+        self.k_ribo_cat_unbound = self.parameters.get(
+            "k_tl_cat_unbound", 0.1
+        )  # Default if not provided
+        self.k_ribo_cat_bound = self.parameters.get(
+            "k_tl_cat_bound", 1.0
+        )  # Default if not provided
 
         rules = []
 
@@ -115,54 +137,64 @@ class Toehold(ReactionComplex):
 
         # Rule 3: Ribosome binding to unbound RNA (inefficient)
         rule3 = Rule(
-            f'TOEHOLD_ribosome_binding_unbound_{rna.name}',
-            model.monomers[ribosome_name](b=None, state='free') + rna(state="full", toehold=None, b=None) >>
-            model.monomers[ribosome_name](b=1, state='bound') % rna(state="full", toehold=None, b=1),
-            self.k_ribo_bind_unbound
+            f"TOEHOLD_ribosome_binding_unbound_{rna.name}",
+            model.monomers[ribosome_name](b=None, state="free")
+            + rna(state="full", toehold=None, b=None)
+            >> model.monomers[ribosome_name](b=1, state="bound")
+            % rna(state="full", toehold=None, b=1),
+            self.k_ribo_bind_unbound,
         )
         rules.append(rule3)
 
         # Rule 4: Translation (protein production) from unbound RNA-ribosome complex (inefficient)
         rule4 = Rule(
-            f'TOEHOLD_translation_unbound_{rna.name}_to_{protein.name}',
-            model.monomers[ribosome_name](b=1, state='bound') % rna(state="full", toehold=None, b=1) >>
-            model.monomers[ribosome_name](b=None, state='free') +
-            rna(state="full", toehold=None, b=None) +
-            protein(state="immature"),
-            self.k_ribo_cat_unbound
+            f"TOEHOLD_translation_unbound_{rna.name}_to_{protein.name}",
+            model.monomers[ribosome_name](b=1, state="bound")
+            % rna(state="full", toehold=None, b=1)
+            >> model.monomers[ribosome_name](b=None, state="free")
+            + rna(state="full", toehold=None, b=None)
+            + protein(state="immature"),
+            self.k_ribo_cat_unbound,
         )
         rules.append(rule4)
 
         # Rule 5: Ribosome binding to trigger-bound RNA (efficient)
         rule5 = Rule(
-            f'TOEHOLD_ribosome_binding_bound_{rna.name}',
-            model.monomers[ribosome_name](b=None, state='free') +
-            (trigger(state="full", toehold=1) % rna(state="full", toehold=1, b=None)) >>
-            model.monomers[ribosome_name](b=2, state='active') %
-            (trigger(state="full", toehold=1) % rna(state="full", toehold=1, b=2)),
-            self.k_ribo_bind_bound
+            f"TOEHOLD_ribosome_binding_bound_{rna.name}",
+            model.monomers[ribosome_name](b=None, state="free")
+            + (trigger(state="full", toehold=1) % rna(state="full", toehold=1, b=None))
+            >> model.monomers[ribosome_name](b=2, state="active")
+            % (trigger(state="full", toehold=1) % rna(state="full", toehold=1, b=2)),
+            self.k_ribo_bind_bound,
         )
         rules.append(rule5)
 
         # Rule 6: Translation (protein production) from trigger-bound RNA-ribosome complex (efficient)
         rule6 = Rule(
-            f'TOEHOLD_translation_bound_{rna.name}_to_{protein.name}',
-            model.monomers[ribosome_name](b=2, state='active') %
-            (trigger(state="full", toehold=1) % rna(state="full", toehold=1, b=2)) >>
-            model.monomers[ribosome_name](b=None, state='free') +
-            (trigger(state="full", toehold=1) % rna(state="full", toehold=1, b=None)) +
-            protein(state="immature"),
-            self.k_ribo_cat_bound
+            f"TOEHOLD_translation_bound_{rna.name}_to_{protein.name}",
+            model.monomers[ribosome_name](b=2, state="active")
+            % (trigger(state="full", toehold=1) % rna(state="full", toehold=1, b=2))
+            >> model.monomers[ribosome_name](b=None, state="free")
+            + (trigger(state="full", toehold=1) % rna(state="full", toehold=1, b=None))
+            + protein(state="immature"),
+            self.k_ribo_cat_bound,
         )
         rules.append(rule6)
 
         # Create observables
-        Observable(f'obs_Trigger_{rna.name}_complex',
-                   trigger(state="full", toehold=1) % rna(state="full", toehold=1))
-        Observable(f'obs_Ribosome_unbound_{rna.name}_complex',
-                   model.monomers[ribosome_name](b=1, state='bound') % rna(state="full", toehold=None, b=1))
-        Observable(f'obs_Ribosome_Trigger_{rna.name}_complex',
-                   model.monomers[ribosome_name](b=2, state='active') %
-                   (trigger(state="full", toehold=1) % rna(state="full", toehold=1, b=2)))
+        Observable(
+            f"obs_Trigger_{rna.name}_complex",
+            trigger(state="full", toehold=1) % rna(state="full", toehold=1),
+        )
+        Observable(
+            f"obs_Ribosome_unbound_{rna.name}_complex",
+            model.monomers[ribosome_name](b=1, state="bound")
+            % rna(state="full", toehold=None, b=1),
+        )
+        Observable(
+            f"obs_Ribosome_Trigger_{rna.name}_complex",
+            model.monomers[ribosome_name](b=2, state="active")
+            % (trigger(state="full", toehold=1) % rna(state="full", toehold=1, b=2)),
+        )
 
         return rules
