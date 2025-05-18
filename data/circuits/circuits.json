@@ -473,6 +473,57 @@
           "aStar1"
         ]
       ]
+    },
+    "trigger_antitrigger": {
+      "plasmids": [
+        {
+          "name": "gfp_plasmid",
+          "tx_control": null,
+          "tl_control": [
+            "Toehold3",
+            "Trigger3"
+          ],
+          "cds": [
+            [
+              true,
+              "GFP"
+            ]
+          ]
+        },
+        {
+          "name": "trigger3_plasmid",
+          "tx_control": null,
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "Trigger3"
+            ]
+          ]
+        },
+        {
+          "name": "antitrigger3_plasmid",
+          "tx_control": null,
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "aTrigger3"
+            ]
+          ]
+        }
+      ],
+      "default_parameters": {
+        "k_Trigger3_concentration": 1,
+        "k_aTrigger3_concentration": 1,
+        "k_Toehold3_GFP_concentration": 1
+      },
+      "bindings": [
+        [
+          "Trigger3",
+          "aTrigger3"
+        ]
+      ]
     }
   }
 }

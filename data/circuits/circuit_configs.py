@@ -5,6 +5,7 @@ Contains circuit condition parameters and data file paths.
 
 # Data file paths for each circuit
 DATA_FILES = {
+    "trigger_antitrigger": "../data/data_parameter_estimation/trigger_antitrigger.csv",
     "sense_star_6": "../data/data_parameter_estimation/sense_star.csv",
     "cascade": "../data/data_parameter_estimation/cascade.csv",
     "toehold_trigger": "../data/data_parameter_estimation/toehold_trigger.csv",
@@ -14,6 +15,33 @@ DATA_FILES = {
 
 # Circuit condition parameters
 CIRCUIT_CONDITIONS = {
+    "trigger_antitrigger": {
+        "To3 3 nM + Tr3 5 nM": {
+            "k_Toehold3_GFP_concentration": 3,
+            "k_Trigger3_concentration": 5,
+            "k_aTrigger3_concentration": 0,
+        },
+        "To3 3 nM + Tr3 3 nM": {
+            "k_Toehold3_GFP_concentration": 3,
+            "k_Trigger3_concentration": 3,
+            "k_aTrigger3_concentration": 0,
+        },
+        "To3 3 nM + Tr3 5 nM + aTr3 5 nM": {
+            "k_Toehold3_GFP_concentration": 3,
+            "k_Trigger3_concentration": 5,
+            "k_aTrigger3_concentration": 5,
+        },
+        "To3 3 nM + Tr3 5 nM + aTr3 10 nM": {
+            "k_Toehold3_GFP_concentration": 3,
+            "k_Trigger3_concentration": 5,
+            "k_aTrigger3_concentration": 10,
+        },
+        "To3 3 nM + Tr3 5 nM + aTr3 15 nM": {
+            "k_Toehold3_GFP_concentration": 3,
+            "k_Trigger3_concentration": 5,
+            "k_aTrigger3_concentration": 15,
+        },
+    },
     "star_antistar_1": {
         "Sense only": {
             "k_Star1_concentration": 0,

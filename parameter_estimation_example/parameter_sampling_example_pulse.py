@@ -105,7 +105,9 @@ def load_circuit_results(results_dir=None):
     return results
 
 
-def extract_parameters_from_results(df, random_n=10, convert_from_log=True):
+def extract_parameters_from_results(
+    df, random_n=10, convert_from_log=True, score_metric="posterior"
+):
     """
     Extract parameters from results DataFrame for visualization.
 
@@ -117,17 +119,19 @@ def extract_parameters_from_results(df, random_n=10, convert_from_log=True):
         Number of random parameters to extract
     convert_from_log : bool, optional
         Whether to convert parameters from log10 scale to linear scale
+    score_metric : str, optional
+        Metric to use for color coding ('posterior', 'likelihood', or 'prior')
 
     Returns:
     --------
-    pandas.DataFrame
-        DataFrame with extracted parameter values
+    tuple
+        (parameters_df, scores) where parameters_df is DataFrame with parameters,
+        and scores is a Series with the selected metric values
     """
-
     # only keep chain 0
     df = df[df["chain"] == 0]
 
-    # burn the first 50% of the samples (steps should be > than 50% of the total steps)
+    # burn the first 50% of the samples
     df = df[df["iteration"] > df["iteration"].max() / 1.5]
 
     # Sample random parameters if requested
@@ -135,10 +139,12 @@ def extract_parameters_from_results(df, random_n=10, convert_from_log=True):
         random_indices = np.random.choice(df.index, size=random_n, replace=False)
         random_params = df.loc[random_indices]
 
-    # # only select the 5 best likelihood samples
-    # random_params = df.nlargest(random_n, 'likelihood')
+    # Extract scores before removing columns
+    scores = None
+    if score_metric in random_params.columns:
+        scores = random_params[score_metric].copy()
 
-    # remove iteration, walker, chain, likelihood, posterior, prior, step_accepted columns
+    # remove non-parameter columns
     cols_to_remove = [
         "iteration",
         "walker",
@@ -154,7 +160,7 @@ def extract_parameters_from_results(df, random_n=10, convert_from_log=True):
     if convert_from_log:
         random_params = 10**random_params
 
-    return random_params
+    return random_params, scores
 
 
 def get_pulse_plasmids_for_circuit(circuit_name):
@@ -191,28 +197,19 @@ def visualize_fits_with_sampler(
     show_protein=True,
     show_rna=True,
     show_pulse=True,
+    scores=None,
+    score_metric=None,
 ):
     """
     Visualize circuit fits using the ParameterSamplingManager with configurable plot options.
 
     Parameters:
     -----------
-    circuit_name : str
-        Name of the circuit to visualize
-    parameters : dict
-        Dictionary with parameter values (from extract_parameters_from_results)
-    circuit_manager : CircuitManager
-        Circuit manager instance
-    output_dir : str, optional
-        Directory to save output plots
-    pulse_config : dict, optional
-        Pulse configuration for visualization
-    show_protein : bool, optional
-        Whether to show protein dynamics in the plots (default: True)
-    show_rna : bool, optional
-        Whether to show RNA dynamics in the plots (default: True)
-    show_pulse : bool, optional
-        Whether to show pulse profile in the plots (default: True)
+    (previous parameters...)
+    scores : pandas.Series, optional
+        Scores to use for color coding (posterior, likelihood, etc)
+    score_metric : str, optional
+        Name of the score metric being used
     """
     # Create output directory if needed
     if output_dir:
@@ -239,7 +236,7 @@ def visualize_fits_with_sampler(
 
     # Adjust figure size based on number of plots shown
     num_plots = sum([show_protein, show_rna, show_pulse])
-    figsize = (6, 3 * num_plots)  # Allocate roughly 3 inches of height per plot
+    figsize = (6, 3 * num_plots)
 
     # Run the parameter sweep visualization with the selected plot options
     sampling_manager.plot_parameter_sweep_with_pulse(
@@ -247,13 +244,15 @@ def visualize_fits_with_sampler(
         param_df=parameters,
         k_prot_deg=k_prot_deg,
         pulse_configuration=pulse_config,
-        pulse_plasmids=pulse_plasmids,  # Use specific plasmid names for this circuit
+        pulse_plasmids=pulse_plasmids,
         t_span=t_span,
-        figsize=figsize,
+        figure_size=figsize,
         save_path=save_path,
         show_protein=show_protein,
         show_rna=show_rna,
         show_pulse=show_pulse,
+        scores=scores,
+        score_metric=score_metric,
     )
 
 
@@ -304,6 +303,7 @@ def run_parameter_analysis(config=None):
     show_protein = cfg.get("show_protein", True)
     show_rna = cfg.get("show_rna", True)
     show_pulse = cfg.get("show_pulse", True)
+    score_metric = cfg.get("score_metric", "posterior")
 
     # Process each circuit
     for circuit_name in circuit_names[:]:
@@ -313,11 +313,12 @@ def run_parameter_analysis(config=None):
 
         logger.info(f"Processing circuit {circuit_name}")
 
-        # Extract parameters from results
-        parameters = extract_parameters_from_results(
+        # Extract parameters and scores from results
+        parameters, scores = extract_parameters_from_results(
             results[circuit_name],
             random_n=cfg["random_n_params"],
             convert_from_log=True,
+            score_metric=score_metric,
         )
 
         # Create circuit-specific output directory
@@ -333,6 +334,8 @@ def run_parameter_analysis(config=None):
             show_protein=show_protein,
             show_rna=show_rna,
             show_pulse=show_pulse,
+            scores=scores,
+            score_metric=score_metric,
         )
 
 

@@ -75,7 +75,6 @@ class ParameterSamplingManager:
         _pulse_config=None,
         kinetics_type=KineticsType.MICHAELIS_MENTEN,
         t_span=None,
-        log_scale=False,
         additional_params=None,
         pulse_plasmids=None,
     ):
@@ -96,8 +95,6 @@ class ParameterSamplingManager:
             Type of kinetics to use (default: MICHAELIS_MENTEN)
         t_span : array, optional
             Time span for simulation (creates default if None)
-        log_scale : bool, optional
-            Whether the parameter was sampled in log scale
         additional_params : dict, optional
             Additional parameters to set for all simulations
         pulse_plasmids : list, optional
@@ -153,59 +150,28 @@ class ParameterSamplingManager:
         pulse_configuration=None,
         kinetics_type=KineticsType.MICHAELIS_MENTEN,
         t_span=None,
-        log_scale=False,
         additional_params=None,
         observe_protein="obs_Protein_GFP",
         title=None,
-        figsize=(6, 10),
+        figure_size=(6, 10),
         save_path=None,
         show_protein=True,
         show_rna=True,
         show_pulse=True,
         pulse_plasmids=None,
+        scores=None,
+        score_metric=None,
     ):
         """
-        Run a parameter sweep and create a visualization with customizable plot selection.
+        Run a parameter sweep and create a visualization with color coding based on scores.
 
         Parameters:
         -----------
-        circuit_name : str
-            Name of the circuit to simulate
-        param_df : DataFrame
-            DataFrame containing parameter values
-        k_prot_deg : float, optional
-            Protein degradation rate (default: 0.1)
-        pulse_config : dict, optional
-            Pulse configuration if using pulses
-        kinetics_type : KineticsType, optional
-            Type of kinetics to use (default: MICHAELIS_MENTEN)
-        t_span : array, optional
-            Time span for simulation (creates default if None)
-        log_scale : bool, optional
-            Whether the parameter was sampled in log scale
-        additional_params : dict, optional
-            Additional parameters to set for all simulations
-        observe_protein : str, optional
-            Name of the protein observable to plot (default: obs_Protein_GFP)
-        title : str, optional
-            Custom title for the plot
-        figsize : tuple, optional
-            Figure size (default: (6, 10))
-        save_path : str, optional
-            Path to save the figure (if provided)
-        show_protein : bool, optional
-            Whether to show protein plot (default: True)
-        show_rna : bool, optional
-            Whether to show RNA plot (default: True)
-        show_pulse : bool, optional
-            Whether to show pulse plot (default: True)
-        pulse_plasmids : list, optional
-            List of plasmid names to pulse (replaces pulse_indices)
-
-        Returns:
-        --------
-        matplotlib.figure.Figure
-            The generated figure
+        (previous parameters...)
+        scores : pandas.Series, optional
+            Score values to use for color coding (e.g., posterior, likelihood)
+        score_metric : str, optional
+            Name of the score metric (for title/legend)
         """
         # Run parameter sweep
         result, t_span, param_values, circuit = self.run_parameter_sweep(
@@ -215,12 +181,11 @@ class ParameterSamplingManager:
             pulse_configuration,
             kinetics_type,
             t_span,
-            log_scale,
             additional_params,
             pulse_plasmids=pulse_plasmids,
         )
 
-        # Determine which plots to show and how many subplots we need
+        # Determine which plots to show
         plots_to_show = []
         if show_protein:
             plots_to_show.append("protein")
@@ -229,40 +194,49 @@ class ParameterSamplingManager:
         if show_pulse:
             plots_to_show.append("pulse")
 
-        num_plots = len(plots_to_show)
+        number_of_plots = len(plots_to_show)
+        if number_of_plots == 0:
+            raise ValueError("At least one plot type must be shown")
 
-        if num_plots == 0:
-            raise ValueError(
-                "At least one plot type (protein, RNA, or pulse) must be shown"
-            )
-
-        # Create a figure with the appropriate number of subplots
-        fig, axs = plt.subplots(num_plots, 1, figsize=figsize, sharex=True)
-
-        # If there's only one subplot, axs won't be an array, so convert it to one
-        if num_plots == 1:
+        # Create figure with subplots
+        fig, axs = plt.subplots(number_of_plots, 1, figsize=figure_size, sharex=True)
+        if number_of_plots == 1:
             axs = [axs]
 
-        # Track the current subplot index
         plot_idx = 0
+
+        # Create a colormap for scores if provided
+        if scores is not None:
+            cmap = plt.cm.viridis
+            # Normalize scores for colormap
+            norm = plt.Normalize(scores.min(), scores.max())
+            # Create colors based on scores
+            colors = [cmap(norm(score)) for score in scores]
+        else:
+            # Default colors if no scores
+            colors = [plt.cm.tab10(i % 10) for i in range(len(param_df))]
 
         # Plot protein observables if requested
         if show_protein:
-            for i, value in enumerate(param_values):
+            for i in range(len(param_df)):
                 if i < len(result.observables):
-                    # Plot the specified protein observable
                     if observe_protein in result.observables[i].dtype.names:
+                        # Use color from our color list
+                        color = colors[i] if i < len(colors) else "blue"
                         axs[plot_idx].plot(
-                            t_span, result.observables[i][observe_protein]
+                            t_span, result.observables[i][observe_protein], color=color
                         )
 
             axs[plot_idx].set_ylabel("Protein concentration")
+            if score_metric:
+                axs[plot_idx].set_title(f"Protein Dynamics (colored by {score_metric})")
+            else:
+                axs[plot_idx].set_title("Protein Dynamics")
             axs[plot_idx].grid(True)
             plot_idx += 1
 
         # Plot RNA observables if requested
         if show_rna:
-            # Get RNA observables
             rna_observables = [
                 name
                 for name in result.observables[0].dtype.names
@@ -270,15 +244,23 @@ class ParameterSamplingManager:
             ]
 
             for rna_obs in rna_observables:
-                # Use the first simulation as example for RNA
-                axs[plot_idx].plot(
-                    t_span,
-                    result.observables[0][rna_obs],
-                    label=_get_display_name(rna_obs),
-                )
+                for i in range(len(param_df)):
+                    if i < len(result.observables):
+                        # Use same color scheme as protein
+                        color = colors[i] if i < len(colors) else plt.cm.tab10(i % 10)
+                        axs[plot_idx].plot(
+                            t_span,
+                            result.observables[i][rna_obs],
+                            label=_get_display_name(rna_obs) if i == 0 else None,
+                            color=color,
+                            alpha=0.7,
+                        )
 
             axs[plot_idx].set_ylabel("RNA concentration")
-            axs[plot_idx].set_title("RNA Dynamics")
+            if score_metric:
+                axs[plot_idx].set_title(f"RNA Dynamics (colored by {score_metric})")
+            else:
+                axs[plot_idx].set_title("RNA Dynamics")
             axs[plot_idx].grid(True)
             axs[plot_idx].legend(loc="best")
             plot_idx += 1
@@ -314,8 +296,8 @@ class ParameterSamplingManager:
                     param_matrix, aspect="auto", extent=[min(t_span), max(t_span), 0, 1]
                 )
 
-        # Set overall x-label and title
-        axs[-1].set_xlabel("Time (min)")  # Add x-label to the bottom subplot
+        # Set overall labels and title
+        axs[-1].set_xlabel("Time (min)")
         if title:
             fig.suptitle(title, fontsize=16, y=0.98)
         else:
@@ -324,7 +306,6 @@ class ParameterSamplingManager:
         plt.tight_layout()
         plt.subplots_adjust(top=0.9)
 
-        # Save figure if path is provided
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches="tight")
 

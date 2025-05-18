@@ -1,4 +1,3 @@
-
 # Synthetic Circuit Simulation System: Comprehensive Guide
 
 This documentation provides a detailed explanation of the synthetic circuit simulation system, which enables the modeling, simulation, and analysis of various genetic circuits.
@@ -12,6 +11,7 @@ This documentation provides a detailed explanation of the synthetic circuit simu
 - [Running Simulations](#running-simulations)
 - [Pulse Configuration](#pulse-configuration)
 - [Visualization and Analysis](#visualization-and-analysis)
+- [Named Plasmids Feature](#named-plasmids-feature)
 - [Extending the System](#extending-the-system)
 - [Example Workflows](#example-workflows)
 - [Troubleshooting](#troubleshooting)
@@ -37,9 +37,10 @@ The system utilizes PySB underneath for model generation and simulation.
 Circuits are defined by plasmids, which are represented as tuples with the following structure:
 
 ```python
-(transcriptional_control, translational_control, cds)
+(plasmid_name, transcriptional_control, translational_control, cds)
 ```
 
+The `plasmid_name` field is a unique identifier for the plasmid within the circuit.
 
 ### JSON Storage
 
@@ -57,7 +58,7 @@ Circuit configurations are stored in a JSON file with the following structure:
 }
 ```
 
-The JSON storage only contains the circuit structure and default parameters, while simulation configurations (like pulse behavior) are specified at runtime.
+The JSON storage contains the circuit structure and default parameters, while simulation configurations (like pulse behavior) are specified at runtime.
 
 ## Getting Started
 
@@ -104,7 +105,7 @@ star_circuit = manager.create_circuit(
     }
 )
 
-# Circuit with pulse configuration
+# Circuit with pulse configuration using named plasmids
 pulsed_circuit = manager.create_circuit(
     "gfp",
     parameters={"k_prot_deg": 0.1, "k_rna_deg": 0.1},
@@ -116,17 +117,17 @@ pulsed_circuit = manager.create_circuit(
         'pulse_concentration': 5.0,
         'base_concentration': 0.0
     },
-    pulse_indices=[0]  # Pulse the first plasmid
+    pulse_plasmids=["gfp_plasmid"]  # Pulse the plasmid by name
 )
 ```
 
 ### Registering a New Circuit
 
 ```python
-# Define plasmids for a new circuit
+# Define plasmids for a new circuit with names
 custom_plasmids = [
-    (("STAR1", "SENSE1"), None, [(True, "GFP")]),
-    (None, None, [(False, "Gene2")])
+    ("gfp_plasmid", ("STAR1", "SENSE1"), None, [(True, "GFP")]),
+    ("gene2_plasmid", None, None, [(False, "Gene2")])
 ]
 
 # Add to database with default parameters
@@ -184,13 +185,13 @@ pulse_config = {
     'base_concentration': 0.0    # Low/base concentration
 }
 
-# Create circuit with pulse on the second plasmid
+# Create circuit with pulse on a specific plasmid by name
 toehold_circuit = manager.create_circuit(
-    "toehold",
+    "toehold_trigger",
     parameters={"k_Toehold3_GFP_concentration": 5},
     use_pulses=True,
     pulse_config=pulse_config,
-    pulse_indices=[1]  # Pulse the second plasmid
+    pulse_plasmids=["trigger3_plasmid"]  # Pulse the plasmid by name
 )
 
 # Simulate
@@ -204,10 +205,10 @@ result = toehold_circuit.simulate(plot=True)
     - The system automatically removes concentration parameters for pulsed plasmids
     - A time-dependent expression is created to represent the concentration
     - The pulse follows a square wave pattern defined by the pulse configuration
-2. The `pulse_indices` parameter indicates which plasmids should be pulsed. For example:
+2. The `pulse_plasmids` parameter indicates which plasmids should be pulsed by name. For example:
     
-    - `[0]`: Pulse the first plasmid
-    - `[1,2]`: Pulse the second and third plasmids
+    - `["gfp_plasmid"]`: Pulse the GFP plasmid
+    - `["star6_plasmid", "trigger3_plasmid"]`: Pulse both Star6 and Trigger3 plasmids
 
 ## Visualization and Analysis
 
@@ -250,6 +251,41 @@ ax.grid(True)
 plt.show()
 ```
 
+### Parameter Sampling and Visualization
+
+For parameter sampling and visualization with pulses, use the `ParameterSamplingManager`:
+
+```python
+from circuits.circuit_generation.parameter_sampling_and_simulation import ParameterSamplingManager
+
+# Create a manager
+sampling_manager = ParameterSamplingManager(circuit_manager)
+
+# Define parameter values to sweep
+param_df = {"k_prot_deg": [0.05, 0.1, 0.2, 0.3]}
+
+# Define pulse configuration
+pulse_configuration = {
+    'use_pulse': True,
+    'pulse_start': 5,
+    'pulse_end': 15,
+    'pulse_concentration': 5.0,
+    'base_concentration': 0.0
+}
+
+# Run parameter sweep with visualization
+sampling_manager.plot_parameter_sweep_with_pulse(
+    circuit_name="toehold_trigger",
+    param_df=param_df,
+    k_prot_deg=0.1,
+    pulse_configuration=pulse_configuration,  # Note the parameter name
+    pulse_plasmids=["trigger3_plasmid"],  # Pulse by name
+    show_protein=True,
+    show_rna=True,
+    show_pulse=True
+)
+```
+
 ### Comparing Multiple Simulations
 
 ```python
@@ -272,6 +308,105 @@ ax.legend()
 plt.show()
 ```
 
+## Named Plasmids Feature
+
+The named plasmids feature replaces the previous index-based approach for referencing plasmids in pulse configurations.
+
+### Overview
+
+Previously, the system used numerical indices to identify which plasmids to pulse in a circuit. This approach was error-prone and not user-friendly, especially when working with complex circuits containing multiple plasmids.
+
+The new approach introduces explicit names for plasmids, making it easier to:
+- Reference specific plasmids in pulse configurations
+- Understand circuit designs
+- Maintain and modify circuits
+
+### Changes Made
+
+1. **Extended Plasmid Structure**: Plasmids now include a name field
+   - Old format: `(tx_control, tl_control, cds)`
+   - New format: `(name, tx_control, tl_control, cds)`
+
+2. **Updated JSON Storage**: Plasmids in JSON files now include a name field
+   - Old format: `[tx_control, tl_control, cds]`
+   - New format: `{"name": "plasmid_name", "tx_control": [...], "tl_control": [...], "cds": [...]}`
+
+3. **New Pulse Configuration**: Circuit creation now accepts `pulse_plasmids` (a list of plasmid names)
+   - Old approach: `pulse_indices=[0, 1]`
+   - New approach: `pulse_plasmids=["star6_plasmid", "trigger3_plasmid"]`
+
+4. **Parameter Sampling**: The `plot_parameter_sweep_with_pulse` function now uses `pulse_configuration` instead of `pulse_config` for consistency
+
+5. **Backward Compatibility**: The system maintains compatibility with existing code
+   - `pulse_indices` is still supported
+   - Legacy plasmid formats are automatically upgraded with generated names
+
+### Creating Circuits with Named Plasmids
+
+```python
+from circuit_manager import CircuitManager
+from registering_all_circuits_in_json import register_all_circuits
+
+# Initialize manager
+manager = CircuitManager(parameters_file="data/model_parameters_priors.csv")
+register_all_circuits(manager)
+
+# Create a circuit with pulsed plasmids (by name)
+toehold_circuit = manager.create_circuit(
+    "toehold_trigger",
+    use_pulses=True,
+    pulse_config={
+        'use_pulse': True,
+        'pulse_start': 5,
+        'pulse_end': 15,
+        'pulse_concentration': 5.0,
+        'base_concentration': 0.0
+    },
+    pulse_plasmids=["trigger3_plasmid"]  # Reference by name instead of index
+)
+
+# Simulate
+result, t_span = toehold_circuit.simulate(plot=True)
+```
+
+### Parameter Sweep with Named Plasmids
+
+```python
+import numpy as np
+from circuits.circuit_generation.parameter_sampling_and_simulation import ParameterSamplingManager
+
+# Setup
+manager = CircuitManager(parameters_file="data/model_parameters_priors.csv")
+register_all_circuits(manager)
+sampling_manager = ParameterSamplingManager(manager)
+
+# Define parameter values to sweep
+param_df = {
+    'k_prot_deg': np.linspace(0.05, 0.5, 5)  # Vary protein degradation rate
+}
+
+# Define pulse configuration
+pulse_configuration = {
+    'use_pulse': True,
+    'pulse_start': 5,
+    'pulse_end': 15,
+    'pulse_concentration': 5.0,
+    'base_concentration': 0.0
+}
+
+# Run parameter sweep with visualization
+sampling_manager.plot_parameter_sweep_with_pulse(
+    circuit_name="toehold_trigger",
+    param_df=param_df,
+    k_prot_deg=0.1,
+    pulse_configuration=pulse_configuration,  # Note the parameter name
+    pulse_plasmids=["trigger3_plasmid"],  # Pulse by name
+    show_protein=True,
+    show_rna=True,
+    show_pulse=True
+)
+```
+
 ## Extending the System
 
 ### Adding New Circuit Types
@@ -282,9 +417,9 @@ To add a new circuit type, create a registration function in `register_circuits.
 def register_my_circuit(manager):
     """Register my new circuit"""
     plasmids = [
-        # Define plasmid structure
-        (None, None, [(True, "GeneA")]),
-        (None, None, [(False, "GeneB")])
+        # Define plasmid structure with names
+        ("geneA_plasmid", None, None, [(True, "GeneA")]),
+        ("geneB_plasmid", None, None, [(False, "GeneB")])
     ]
     
     manager.add_circuit(
@@ -322,7 +457,7 @@ class MyCustomCircuit(Circuit):
 ```python
 # Initialize
 from circuit_manager import CircuitManager
-from register_circuits import register_all_circuits
+from registering_all_circuits_in_json import register_all_circuits
 
 manager = CircuitManager(parameters_file="data/model_parameters_priors.csv")
 register_all_circuits(manager)
@@ -330,40 +465,6 @@ register_all_circuits(manager)
 # Create and simulate a circuit
 circuit = manager.create_circuit("gfp")
 result = circuit.simulate(plot=True)
-```
-
-### Advanced Workflow: Parameter Sweep
-
-```python
-import numpy as np
-import matplotlib.pyplot as plt
-
-# Setup
-manager = CircuitManager(parameters_file="data/model_parameters_priors.csv")
-register_all_circuits(manager)
-
-# Define parameter values to sweep
-star_concentrations = np.linspace(0.1, 5.0, 10)
-max_gfp_values = []
-
-# Perform parameter sweep
-for conc in star_concentrations:
-    circuit = manager.create_circuit(
-        "star", 
-        parameters={"k_Star6_concentration": conc}
-    )
-    result = circuit.simulate(plot=False)
-    max_gfp = np.max(result.observables['obs_Protein_GFP'])
-    max_gfp_values.append(max_gfp)
-
-# Plot results
-plt.figure(figsize=(10, 6))
-plt.plot(star_concentrations, max_gfp_values, 'o-')
-plt.xlabel('Star6 Concentration')
-plt.ylabel('Max GFP Expression')
-plt.title('Parameter Sweep: Effect of Star6 on GFP Expression')
-plt.grid(True)
-plt.show()
 ```
 
 ### Advanced Workflow: Pulse Response Analysis
@@ -387,10 +488,10 @@ for duration in pulse_durations:
     }
     
     circuit = manager.create_circuit(
-        "toehold",
+        "toehold_trigger",
         use_pulses=True,
         pulse_config=pulse_config,
-        pulse_indices=[1]
+        pulse_plasmids=["trigger3_plasmid"]  # Pulse by name
     )
     
     result = circuit.simulate(t_span=np.linspace(0, 50, 5001), plot=False)
@@ -415,18 +516,27 @@ plt.show()
     
     - Make sure the parameters file path is correct
     - Try using an absolute path if relative paths don't work
+
 2. **Parameter errors**:
     
     - When using pulses, the system automatically removes concentration parameters for pulsed plasmids
     - Make sure not to provide concentration parameters for pulsed plasmids in your parameters dictionary
+
 3. **Simulation errors**:
     
     - Check if all required parameters are defined
     - Ensure plasmid structure matches the expected format
+    - Verify that plasmid names exist if using `pulse_plasmids`
+
 4. **Visualization issues**:
     
     - Make sure matplotlib is properly installed
     - Check if the simulation result contains the expected observables
+
+5. **Parameter sampling issues**:
+    
+    - Ensure the parameter name `pulse_configuration` is used correctly in `plot_parameter_sweep_with_pulse`
+    - Verify plasmid names match those in the circuit definition
 
 ### Debugging Tips
 
@@ -455,7 +565,15 @@ plt.show()
     print(f"Parameters that will be removed: {params_to_remove}")
     ```
     
-4. **Save circuit configurations to examine**:
+4. **View available plasmid names**:
+    
+    ```python
+    circuit = manager.create_circuit("toehold_trigger")
+    plasmid_names = [plasmid[0] for plasmid in circuit.plasmids]
+    print(f"Available plasmid names: {plasmid_names}")
+    ```
+    
+5. **Save circuit configurations to examine**:
     
     ```python
     import json
@@ -465,210 +583,6 @@ plt.show()
         json.dump(circuits, f, indent=2)
     ```
 
-
-# Named Plasmids Feature Documentation
-
-This document explains the new named plasmids feature for the circuit simulation system, which replaces the previous index-based approach for referencing plasmids in pulse configurations.
-
-## Overview
-
-Previously, the system used numerical indices to identify which plasmids to pulse in a circuit. This approach was error-prone and not user-friendly, especially when working with complex circuits containing multiple plasmids.
-
-The new approach introduces explicit names for plasmids, making it easier to:
-- Reference specific plasmids in pulse configurations
-- Understand circuit designs
-- Maintain and modify circuits
-
-## Changes Made
-
-1. **Extended Plasmid Structure**: Plasmids now include a name field
-   - Old format: `(tx_control, tl_control, cds)`
-   - New format: `(name, tx_control, tl_control, cds)`
-
-2. **Updated JSON Storage**: Plasmids in JSON files now include a name field
-   - Old format: `[tx_control, tl_control, cds]`
-   - New format: `{"name": "plasmid_name", "tx_control": [...], "tl_control": [...], "cds": [...]}`
-
-3. **New Pulse Configuration**: Circuit creation now accepts `pulse_plasmids` (a list of plasmid names)
-   - Old approach: `pulse_indices=[0, 1]`
-   - New approach: `pulse_plasmids=["star6_plasmid", "trigger3_plasmid"]`
-
-4. **Backward Compatibility**: The system maintains compatibility with existing code
-   - `pulse_indices` is still supported
-   - Legacy plasmid formats are automatically upgraded with generated names
-
-## Using Named Plasmids
-
-### Creating Circuits with Named Plasmids
-
-```python
-from circuit_manager import CircuitManager
-from registering_all_circuits_in_json import register_all_circuits
-
-# Initialize manager
-manager = CircuitManager(parameters_file="data/model_parameters_priors.csv")
-register_all_circuits(manager)
-
-# Create a circuit with pulsed plasmids (by name)
-toehold_circuit = manager.create_circuit(
-    "toehold",
-    use_pulses=True,
-    pulse_config={
-        'use_pulse': True,
-        'pulse_start': 5,
-        'pulse_end': 15,
-        'pulse_concentration': 5.0,
-        'base_concentration': 0.0
-    },
-    pulse_plasmids=["trigger3_plasmid"]  # Reference by name instead of index
-)
-
-# Simulate
-result, t_span = toehold_circuit.simulate(plot=True)
-```
-
-### Registering New Circuits with Named Plasmids
-
-```python
-# Define plasmids with names
-custom_plasmids = [
-    ("gfp_expression", None, None, [(True, "GFP")]),
-    ("star6_expression", None, None, [(False, "Star6")])
-]
-
-# Add to database
-manager.add_circuit(
-    name="my_custom_circuit",
-    plasmids=custom_plasmids,
-    default_parameters={"k_GFP_concentration": 1.5}
-)
-```
-
-### Accessing Plasmids by Name
-
-```python
-# Get a specific circuit
-circuit = manager.create_circuit("star")
-
-# Access a plasmid by name
-gfp_plasmid = circuit.get_plasmid_by_name("sense_gfp_plasmid")
-if gfp_plasmid:
-    print(f"Found plasmid: {gfp_plasmid}")
-```
-
-## Migrating Existing Circuits
-
-A migration script is provided to update existing JSON circuit files. This script will add names to all plasmids in the file.
-
-### How to Use the Migration Script
-
-```bash
-python migrate_circuits.py path/to/circuits.json --output path/to/updated_circuits.json
-```
-
-To overwrite the existing file:
-
-```bash
-python migrate_circuits.py path/to/circuits.json
-```
-
-The migration script:
-1. Loads the existing circuits JSON file
-2. Adds descriptive names to each plasmid based on its contents
-3. Saves the updated JSON file
-
-## Example Workflows
-
-### Basic Workflow with Named Plasmids
-
-```python
-# Initialize
-manager = CircuitManager(parameters_file="data/model_parameters_priors.csv")
-register_all_circuits(manager)
-
-# Create and simulate a circuit with named plasmid pulses
-circuit = manager.create_circuit(
-    "star_antistar_1", 
-    use_pulses=True,
-    pulse_config={
-        'use_pulse': True,
-        'pulse_start': 5,
-        'pulse_end': 15,
-        'pulse_concentration': 5.0,
-        'base_concentration': 0.0
-    },
-    pulse_plasmids=["star1_plasmid"]  # Pulse by name
-)
-
-result, t_span = circuit.simulate(plot=True)
-```
-
-### Parameter Sweep with Named Plasmids
-
-```python
-import numpy as np
-
-# Setup
-manager = CircuitManager(parameters_file="data/model_parameters_priors.csv")
-register_all_circuits(manager)
-
-# Define parameter values to sweep
-param_values = {
-    'k_prot_deg': np.linspace(0.05, 0.5, 5)  # Vary protein degradation rate
-}
-
-# Create circuit with named pulse plasmid
-circuit = manager.create_circuit(
-    "toehold",
-    use_pulses=True,
-    pulse_config={
-        'use_pulse': True,
-        'pulse_start': 5,
-        'pulse_end': 15,
-        'pulse_concentration': 5.0,
-        'base_concentration': 0.0
-    },
-    pulse_plasmids=["trigger3_plasmid"]  # Use name instead of index
-)
-
-# Run parameter sweep
-results, t_span = circuit.simulate(
-    t_span=np.linspace(0, 50, 5001),
-    param_values=param_values
-)
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Plasmid not found error**:
-   - Check that the plasmid name exactly matches what's in the circuit
-   - Use `circuit.plasmid_name_to_index` to see available plasmid names
-
-2. **Parameter errors with pulsed plasmids**:
-   - Ensure the correct plasmid names are specified in `pulse_plasmids`
-   - Remember that concentration parameters for pulsed plasmids are automatically removed
-
-3. **Migration issues**:
-   - If the migration script encounters errors, check the JSON file structure
-   - Make sure the JSON has a `circuits` key at the top level
-   - Make sure each circuit has a `plasmids` list with the expected format
-
 ### Backward Compatibility
 
 For backward compatibility, the system still supports the `pulse_indices` parameter. When both `pulse_indices` and `pulse_plasmids` are provided, both sets of plasmids will be pulsed.
-
-## Future Considerations
-
-1. **Fully Deprecate Index-Based API**:
-   - In a future version, the `pulse_indices` parameter may be deprecated
-   - All code should transition to using named plasmids
-
-2. **Enhanced Plasmid Class**:
-   - A proper Plasmid class could be introduced for more flexibility
-   - This would allow for additional plasmid metadata and methods
-
-3. **Circuit Visualization**:
-   - Named plasmids make it easier to create visual representations of circuits
-   - A future enhancement could include circuit diagrams with labeled plasmids

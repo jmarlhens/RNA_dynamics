@@ -1,207 +1,27 @@
-from likelihood_functions.config import CircuitConfig
+from datetime import datetime
+import pandas as pd
+import matplotlib.pyplot as plt
 from likelihood_functions.base import CircuitFitter
-from likelihood_functions.visualization import plot_all_simulation_results
 from likelihood_functions.utils import organize_results
+from likelihood_functions.visualization import plot_all_simulation_results
 from likelihood_functions.base import MCMCAdapter
 from likelihood_functions.mcmc_analysis import analyze_mcmc_results
-from utils.import_and_visualise_data import load_and_process_csv
-import pandas as pd
-from utils.GFP_calibration import fit_gfp_calibration, get_brightness_correction_factor
-import matplotlib.pyplot as plt
+from circuits.circuit_generation.circuit_manager import CircuitManager
+from likelihood_functions.circuit_utils import create_circuit_configs, setup_calibration
 
-# import cProfile
 
-# Parameters
-max_time = 360
-
-# Load data
-toehold_trigger_data, tspan_toehold = load_and_process_csv(
-    "../data/data_parameter_estimation/toehold_trigger.csv"
-)
-sense_star_data, tspan_star = load_and_process_csv(
-    "../data/data_parameter_estimation/sense_star.csv"
-)
-positive_control_data, tspan_positive_control = load_and_process_csv(
-    "../data/data_parameter_estimation/positive_control_sfGFP.csv"
-)
-cascade_data, tspan_cascade = load_and_process_csv(
-    "../data/data_parameter_estimation/cascade.csv"
-)
-cffl_type_1_data, tspan_cffl_type_1 = load_and_process_csv(
-    "../data/data_parameter_estimation/c1_ffl_and.csv"
-)
-
-# Create configs
-circuit_configs = [
-    CircuitConfig(
-        model="toehold_model",
-        name="Toehold/Trigger",
-        condition_params={
-            "To3 5 + Tr3 5": {
-                "k_Toehold3_GFP_concentration": 5,
-                "k_Trigger3_concentration": 5,
-            },
-            "To3 5 + Tr3 4": {
-                "k_Toehold3_GFP_concentration": 5,
-                "k_Trigger3_concentration": 4,
-            },
-            "To3 5 + Tr3 3": {
-                "k_Toehold3_GFP_concentration": 5,
-                "k_Trigger3_concentration": 3,
-            },
-            "To3 5 + Tr3 2": {
-                "k_Toehold3_GFP_concentration": 5,
-                "k_Trigger3_concentration": 2,
-            },
-            "To3 5 + Tr3 1": {
-                "k_Toehold3_GFP_concentration": 5,
-                "k_Trigger3_concentration": 1,
-            },
-            "To3 5": {"k_Toehold3_GFP_concentration": 5, "k_Trigger3_concentration": 0},
-        },
-        experimental_data=toehold_trigger_data,
-        tspan=tspan_toehold,
-        max_time=max_time,
-    ),
-    CircuitConfig(
-        model="sense_model",
-        name="Sense/Star",
-        condition_params={
-            "Se6 5 nM + St6 15 nM": {
-                "k_Sense6_GFP_concentration": 5,
-                "k_Star6_concentration": 15,
-            },
-            "Se6 5 nM + St6 10 nM": {
-                "k_Sense6_GFP_concentration": 5,
-                "k_Star6_concentration": 10,
-            },
-            "Se6 5 nM + St6 5 nM": {
-                "k_Sense6_GFP_concentration": 5,
-                "k_Star6_concentration": 5,
-            },
-            "Se6 5 nM + St6 3 nM": {
-                "k_Sense6_GFP_concentration": 5,
-                "k_Star6_concentration": 3,
-            },
-            "Se6 5 nM + St6 0 nM": {
-                "k_Sense6_GFP_concentration": 0,
-                "k_Star6_concentration": 0,
-            },
-        },
-        experimental_data=sense_star_data,
-        tspan=tspan_star,
-        max_time=max_time,
-    ),
-    CircuitConfig(
-        model="cascade_model",
-        name="Cascade",
-        condition_params={
-            "To3 3 nM + Se6Tr3P 5 nM + St6 15 nM": {
-                "k_Toehold3_GFP_concentration": 3,
-                "k_Sense6_Trigger3_concentration": 5,
-                "k_Star6_concentration": 15,
-            },
-            "To3 3 nM + Se6Tr3P 5 nM + St6 10 nM": {
-                "k_Toehold3_GFP_concentration": 3,
-                "k_Sense6_Trigger3_concentration": 5,
-                "k_Star6_concentration": 10,
-            },
-            "To3 3 nM + Se6Tr3P 5 nM + St6 5 nM": {
-                "k_Toehold3_GFP_concentration": 3,
-                "k_Sense6_Trigger3_concentration": 5,
-                "k_Star6_concentration": 5,
-            },
-            "To3 3 nM + Se6Tr3P 5 nM + St6 3 nM": {
-                "k_Toehold3_GFP_concentration": 3,
-                "k_Sense6_Trigger3_concentration": 5,
-                "k_Star6_concentration": 3,
-            },
-            "To3 3 nM + Se6Tr3P 5 nM + St6 0 nM": {
-                "k_Toehold3_GFP_concentration": 3,
-                "k_Sense6_Trigger3_concentration": 5,
-                "k_Star6_concentration": 0,
-            },
-        },
-        experimental_data=cascade_data,
-        tspan=tspan_cascade,
-        max_time=max_time,
-    ),
-    CircuitConfig(
-        model="cffl_type_1_model",
-        name="CFFL Type 1",
-        condition_params={
-            "15 nM": {
-                "k_Sense6_Trigger3_concentration": 5,
-                "k_Star6_concentration": 15,
-                "k_Sense6_Toehold3_GFP_concentration": 3,
-            },
-            "12 nM": {
-                "k_Sense6_Trigger3_concentration": 5,
-                "k_Star6_concentration": 12,
-                "k_Sense6_Toehold3_GFP_concentration": 3,
-            },
-            "10 nM": {
-                "k_Sense6_Trigger3_concentration": 5,
-                "k_Star6_concentration": 10,
-                "k_Sense6_Toehold3_GFP_concentration": 3,
-            },
-            "7 nM": {
-                "k_Sense6_Trigger3_concentration": 5,
-                "k_Star6_concentration": 7,
-                "k_Sense6_Toehold3_GFP_concentration": 3,
-            },
-            "5 nM": {
-                "k_Sense6_Trigger3_concentration": 5,
-                "k_Star6_concentration": 5,
-                "k_Sense6_Toehold3_GFP_concentration": 3,
-            },
-            "3 nM": {
-                "k_Sense6_Trigger3_concentration": 5,
-                "k_Star6_concentration": 3,
-                "k_Sense6_Toehold3_GFP_concentration": 3,
-            },
-            "0 nM": {
-                "k_Sense6_Trigger3_concentration": 5,
-                "k_Star6_concentration": 0,
-                "k_Sense6_Toehold3_GFP_concentration": 3,
-            },
-        },
-        experimental_data=cffl_type_1_data,
-        tspan=tspan_cffl_type_1,
-        max_time=max_time,
-    ),
-]
-
-if __name__ == "__main__":
-    # profiler = cProfile.Profile()
-
-    # Load your calibration data
-    data = pd.read_csv("../calibration_gfp/gfp_Calibration.csv")
-
-    # Fit the calibration curve
-    calibration_results = fit_gfp_calibration(
-        data,
-        concentration_col="GFP Concentration (nM)",
-        fluorescence_pattern="F.I. (a.u)",
-    )
-
-    # Get the correction factor for sfGFP
-    correction_factor, protein_info = get_brightness_correction_factor("avGFP", "sfGFP")
-
-    # Create calibration parameters dictionary
-    calibration_params = {
-        "slope": calibration_results["slope"],
-        "intercept": calibration_results["intercept"],
-        "brightness_correction": correction_factor,
-    }
-
-    # Load priors
-    priors = pd.read_csv("../data/prior/model_parameters_priors.csv")
-    priors = priors[priors["Parameter"] != "k_prot_deg"]
-    parameters_to_fit = priors.Parameter.tolist()
-    n_sets = 60
-
-    # Create fitter
+def fit_multiple_circuits(
+    circuit_configs,
+    parameters_to_fit,
+    priors,
+    calibration_params,
+    n_samples=2000,
+    n_walkers=10,
+    n_chains=6,
+    n_sets=60,
+):
+    """Fit multiple circuits simultaneously with shared parameters"""
+    # Create circuit fitter with all configs
     circuit_fitter = CircuitFitter(
         circuit_configs, parameters_to_fit, priors, calibration_params
     )
@@ -224,75 +44,49 @@ if __name__ == "__main__":
     # Calculate prior (takes log params)
     log_prior = circuit_fitter.calculate_log_prior(log_params)
 
-    # Calculate posterior (takes log params)
-    log_posterior = log_prior + log_likelihood["total"]
+    # # Calculate posterior (takes log params)
+    # log_posterior = log_prior + log_likelihood["total"]
 
     # Organize results
     results_df = organize_results(
         parameters_to_fit, log_params, log_likelihood, log_prior
     )
 
+    # Plot initial simulation results
     plot_all_simulation_results(sim_data, results_df, ll_quartile=20)
     plt.show()
 
-    # Plot results
-    # for i in range(min(n_sets, 6)):
-    #     fig = plot_simulation_results(sim_data, results_df, param_set_idx=i)
-
-    # Create the adapter
+    # Create MCMC adapter
     adapter = MCMCAdapter(circuit_fitter)
-
-    # Get initial parameters from prior means
     initial_parameters = adapter.get_initial_parameters()
 
-    # Setup parallel tempering
-    pt = adapter.setup_parallel_tempering(n_walkers=10, n_chains=6)
-
-    # profiler.enable()
-    # Run sampling with initial parameters from priors
-    parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(
+    # Setup and run parallel tempering
+    pt = adapter.setup_parallel_tempering(n_walkers=n_walkers, n_chains=n_chains)
+    parameters, priors_out, likelihoods, step_accepts, swap_accepts = pt.run(
         initial_parameters=initial_parameters,
-        n_samples=2000,
+        n_samples=n_samples,
         target_acceptance_ratio=0.4,
         adaptive_temperature=True,
     )
 
-    # profiler.disable()
-
-    # current_time = datetime.now()
-    # timestamp = current_time.strftime("%Y-%m-%d_%H-%M-%S")
-    # profiler.dump_stats(f"profiling_{timestamp}.prof")
-    # profiler.print_stats()
-
     # Analyze results
     results = analyze_mcmc_results(
         parameters=parameters,
-        priors=priors,
+        priors=priors_out,
         likelihoods=likelihoods,
         step_accepts=step_accepts,
         swap_accepts=swap_accepts,
         parameter_names=circuit_fitter.parameters_to_fit,
-        circuit_fitter=circuit_fitter,  # Pass the circuit_fitter instance
+        circuit_fitter=circuit_fitter,
     )
 
-    # Access individual components
-    best_params = results["best_parameters"]
-    stats = results["statistics"]
-    figures = results["figures"]
-
-    # Display figures
-    plt.show()
-
-    # simulate the best parameters
-    best_params = best_params["parameters"]
-
-    # Summarize results in a DataFrame
-    df = results["analyzer"].to_dataframe()
-
     # Save results
-    df.to_csv("results_2000_steps_norm_by_sample_points_no_GFP.csv", index=False)
+    df = results["analyzer"].to_dataframe()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"multi_circuit_results_{timestamp}.csv"
+    df.to_csv(filename, index=False)
 
-    # Distribution of likelihoods
+    # Plot distribution of likelihoods
     plt.figure(figsize=(10, 6))
     plt.hist(likelihoods.flatten(), color="blue", alpha=0.7)
     plt.xlabel("Log Likelihood")
@@ -302,26 +96,80 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.show()
 
-    # pick the 60 best parameters and simulate them and plot
-    df.likelihood  # likelihood
-    results["analyzer"].parameter_names  # parameters
+    # Pick best parameters and simulate again
+    best_params = df.sort_values(by="likelihood", ascending=False).head(1000)
+    best_params_values = best_params[results["analyzer"].parameter_names].values
 
-    sixty_best_parameters = df.sort_values(by="likelihood", ascending=False).head(1000)
-    # extract values of parameters
-    sixty_best_parameters_values = sixty_best_parameters[
-        results["analyzer"].parameter_names
-    ].values
-    sim_data = circuit_fitter.simulate_parameters(sixty_best_parameters_values)
-
-    # Calculate likelihood from simulation data
+    # Simulate with best parameters
+    sim_data = circuit_fitter.simulate_parameters(best_params_values)
     log_likelihood = circuit_fitter.calculate_likelihood_from_simulation(sim_data)
-
-    # Calculate prior (takes log params)
-    log_prior = circuit_fitter.calculate_log_prior(sixty_best_parameters_values)
-
+    log_prior = circuit_fitter.calculate_log_prior(best_params_values)
     results_df = organize_results(
-        parameters_to_fit, sixty_best_parameters_values, log_likelihood, log_prior
+        parameters_to_fit, best_params_values, log_likelihood, log_prior
     )
 
+    # Plot final results
+    plt.figure(figsize=(12, 8))
     plot_all_simulation_results(sim_data, results_df, ll_quartile=20)
     plt.show()
+
+    return results, df
+
+
+def main():
+    # Initialize CircuitManager with existing circuits file
+    circuit_manager = CircuitManager(
+        parameters_file="../data/prior/model_parameters_priors.csv",
+        json_file="../data/circuits/circuits.json",
+    )
+
+    # List available circuits
+    available_circuits = circuit_manager.list_circuits()
+    print(f"Available circuits: {available_circuits}")
+
+    # Define which circuits to fit together
+    circuits_to_fit = [
+        "trigger_antitrigger",
+        "toehold_trigger",
+        "sense_star_6",
+        "cascade",
+        "cffl_type_1",
+        "star_antistar_1",
+    ]
+
+    # Filter to only include available circuits
+    circuits_to_fit = [c for c in circuits_to_fit if c in available_circuits]
+
+    if not circuits_to_fit:
+        print("Error: None of the specified circuits are available.")
+        return
+
+    # Create circuit configurations
+    circuit_configs = create_circuit_configs(
+        circuit_manager, circuits_to_fit, min_time=30, max_time=210
+    )
+
+    # Load priors
+    priors = pd.read_csv("../data/prior/model_parameters_priors.csv")
+    priors = priors[priors["Parameter"] != "k_prot_deg"]
+    parameters_to_fit = priors.Parameter.tolist()
+
+    # Setup calibration
+    calibration_params = setup_calibration()
+
+    # Fit all circuits together
+    results, df = fit_multiple_circuits(
+        circuit_configs=circuit_configs,
+        parameters_to_fit=parameters_to_fit,
+        priors=priors,
+        calibration_params=calibration_params,
+        n_samples=1000,
+        n_walkers=10,
+        n_chains=6,
+        n_sets=60,
+    )
+    print("Completed multi-circuit parameter estimation")
+
+
+if __name__ == "__main__":
+    main()

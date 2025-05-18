@@ -268,6 +268,29 @@ def register_star_antistar_1(manager):
     )
 
 
+def register_trigger_antitrigger(manager):
+    """Register Trigger-AntiTrigger circuit with named plasmids"""
+    plasmids = [
+        ("gfp_plasmid", None, ("Toehold3", "Trigger3"), [(True, "GFP")]),
+        ("trigger3_plasmid", None, None, [(False, "Trigger3")]),
+        ("antitrigger3_plasmid", None, None, [(False, "aTrigger3")]),
+    ]
+
+    # Define binding between Star1 and aStar1
+    bindings = [("Trigger3", "aTrigger3")]
+
+    manager.add_circuit(
+        name="trigger_antitrigger",
+        plasmids=plasmids,
+        default_parameters={
+            "k_Trigger3_concentration": 1,  # Initial concentration of Trigger3
+            "k_aTrigger3_concentration": 1,  # Initial concentration of aTrigger3
+            "k_Toehold3_GFP_concentration": 1,  # Initial concentration of GFP
+        },
+        bindings=bindings,  # Add bindings
+    )
+
+
 def main():
     """Initialize the database with all circuits"""
     # You can specify the parameters file path here
@@ -276,34 +299,14 @@ def main():
     # Create a circuit manager and register all circuits
     manager = CircuitManager(parameters_file=parameters_file)
     register_star_antistar_1(manager)
-    register_all_circuits(manager)
+    # register_all_circuits(manager)
+    register_trigger_antitrigger(manager)
 
     # List all available circuits
     circuits = manager.list_circuits()
     print(f"Successfully registered {len(circuits)} circuits:")
     for circuit in circuits:
         print(f"  - {circuit}")
-
-    # Example: Load and simulate a circuit
-    example_circuit = "star_antistar_1"
-    if example_circuit in circuits:
-        # Example of using named plasmids for pulsing
-        circuit = manager.create_circuit(
-            example_circuit,
-            use_pulses=True,
-            pulse_config={
-                "use_pulse": True,
-                "pulse_start": 5,
-                "pulse_end": 15,
-                "pulse_concentration": 5.0,
-                "base_concentration": 0.0,
-            },
-            pulse_plasmids=["star1_plasmid"],  # Pulse by name instead of index
-        )
-        _ = circuit.simulate()
-        print(
-            f"Successfully simulated {example_circuit} circuit with pulse on star1_plasmid"
-        )
 
 
 if __name__ == "__main__":
