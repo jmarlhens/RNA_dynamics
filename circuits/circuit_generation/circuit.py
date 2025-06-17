@@ -142,7 +142,7 @@ class Circuit:
 
         # Load parameters from CSV
         parameters_df = pd.read_csv(parameters_file)
-        model_parameters = dict(zip(parameters_df["Parameter"], parameters_df["Value"]))
+        model_parameters = dict(zip(parameters_df["Parameter"], parameters_df["Mean"]))
 
         # Update with user-provided parameters
         model_parameters.update(self.user_parameters)

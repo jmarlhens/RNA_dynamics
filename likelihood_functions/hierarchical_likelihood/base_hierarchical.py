@@ -1,6 +1,7 @@
 import numpy as np
 from ..base import CircuitFitter
 from ..utils import prepare_combined_params
+from ..likelihood import calculate_likelihoods
 
 
 class HierarchicalCircuitFitter(CircuitFitter):
@@ -11,6 +12,10 @@ class HierarchicalCircuitFitter(CircuitFitter):
     - α: Global mean parameters
     - Σ: Covariance matrix for parameter variation
     - θ_c: Circuit-specific parameters drawn from N(α, Σ)
+
+    FORMULATION:
+    Prior     = p(α) · p(Σ)
+    Likelihood = ∏_c p(θ_c | α, Σ) · ∏_{i,j,k} p(Y_{i,j,k} | θ_i)
     """
 
     def __init__(
@@ -20,6 +25,7 @@ class HierarchicalCircuitFitter(CircuitFitter):
         model_parameters_priors,
         calibration_data,
         sigma_0_squared=0.01,
+        individual_circuit_posterior_results=None,
     ):
         """Initialize with support for hierarchical structure"""
         super().__init__(
@@ -36,8 +42,12 @@ class HierarchicalCircuitFitter(CircuitFitter):
         # Setup hyperparameters α and Σ
         self._setup_hyperparameters()
 
-        # Setup heteroscedastic noise model with configurable parameter
+        # Setup homoscedastic noise model with configurable parameter
         self.sigma_0_squared = sigma_0_squared
+
+    # =========================================================================
+    # UNCHANGED UTILITY FUNCTIONS
+    # =========================================================================
 
     def _setup_parameter_indices(self):
         """Setup indices for different parameter groups"""
@@ -59,7 +69,7 @@ class HierarchicalCircuitFitter(CircuitFitter):
             self.n_theta_params + self.n_alpha_params + self.n_sigma_params
         )
 
-    def _setup_hyperparameters(self):
+    def _setup_hyperparameters(self, individual_circuit_posterior_results=None):
         """Initialize hyperparameters for hierarchical model"""
         # α (global mean vector for parameters)
         self.alpha = np.array(
@@ -74,38 +84,41 @@ class HierarchicalCircuitFitter(CircuitFitter):
         # Hyperpriors
         # For α: N(μ_α, Σ_α)
         self.mu_alpha = self.alpha.copy()
-        self.sigma_alpha = 2.0 * np.eye(self.n_parameters)
+        self.sigma_alpha = np.diag(
+            [self.log_stds[param] ** 2 for param in self.parameters_to_fit]
+        )
+        self.sigma_alpha_inv = np.linalg.inv(self.sigma_alpha)
 
-        # For Σ: Inverse-Wishart(ν, Ψ)
-        self.nu = self.n_parameters + 1
-        self.psi = np.eye(self.n_parameters)
+        # For Σ: Inverse-Wishart(ν, Ψ) - MODIFIED SECTION
+        if individual_circuit_posterior_results is not None:
+            estimated_wishart_hyperparameters = (
+                self._estimate_wishart_hyperparameters_from_individual_posteriors(
+                    individual_circuit_posterior_results
+                )
+            )
+            self.nu = estimated_wishart_hyperparameters["degrees_of_freedom_nu"]
+            self.psi = estimated_wishart_hyperparameters["scale_matrix_psi"]
 
-    def _setup_noise_model(self):
-        """Setup heteroscedastic noise model"""
-        # Base variance parameter (could be fitted)
-        self.sigma_0_squared = 0.01
+            print(
+                f"Estimated ν={self.nu:.1f}, Ψ condition number={np.linalg.cond(self.psi):.2f}"
+            )
+        else:
+            # Original hardcoded values
+            self.nu = self.n_parameters - 6
+            self.psi = 4 * np.eye(self.n_parameters)
 
-    # Matrix utility methods
     def _flatten_covariance(self, cov_matrix):
         """Convert covariance matrix to flattened lower triangle"""
-        n = cov_matrix.shape[0]
-        flat_values = []
-        for i in range(n):
-            for j in range(i + 1):  # Lower triangle including diagonal
-                flat_values.append(cov_matrix[i, j])
+        flat_values = cov_matrix[np.tril_indices(cov_matrix.shape[0])]
         return np.array(flat_values)
 
     def _unflatten_covariance(self, flat_values):
         """Reconstruct symmetric covariance matrix from flattened values"""
         n = self.n_parameters
         cov_matrix = np.zeros((n, n))
-        idx = 0
-        for i in range(n):
-            for j in range(i + 1):
-                cov_matrix[i, j] = flat_values[idx]
-                if i != j:
-                    cov_matrix[j, i] = flat_values[idx]  # Symmetry
-                idx += 1
+        indices = np.tril_indices(n)
+        cov_matrix[indices] = flat_values
+        cov_matrix[(indices[1], indices[0])] = flat_values  # Symmetry
         return cov_matrix
 
     def _ensure_positive_definite(self, matrix):
@@ -124,7 +137,6 @@ class HierarchicalCircuitFitter(CircuitFitter):
 
         return matrix
 
-    # Parameter generation and manipulation
     def generate_hierarchical_parameters(self, n_sets=20):
         """
         Generate parameter sets for the hierarchical model
@@ -133,17 +145,13 @@ class HierarchicalCircuitFitter(CircuitFitter):
         # Initialize parameters array
         params = np.zeros((n_sets, self.n_total_params))
 
-        # Generate circuit-specific θ parameters
-        for c in range(self.n_circuits):
-            # For each circuit, sample from N(α, Σ)
-            circuit_params = np.random.multivariate_normal(
-                mean=self.alpha, cov=self.sigma, size=n_sets
-            )
+        # Generate all circuit-specific θ parameters at once
+        circuit_params = np.random.multivariate_normal(
+            mean=self.alpha, cov=self.sigma, size=(n_sets, self.n_circuits)
+        )
 
-            # Store in parameters array
-            start_idx = c * self.n_parameters
-            end_idx = (c + 1) * self.n_parameters
-            params[:, start_idx:end_idx] = circuit_params
+        # Reshape and store in parameters array
+        params[:, : self.n_theta_params] = circuit_params.reshape(n_sets, -1)
 
         # Set α parameters (global means)
         params[:, self.alpha_start_idx : self.alpha_start_idx + self.n_alpha_params] = (
@@ -185,11 +193,19 @@ class HierarchicalCircuitFitter(CircuitFitter):
 
         return theta_params, alpha_params, sigma_matrices
 
-    # Prior, likelihood, and posterior calculation
-    def calculate_hierarchical_prior(self, params):
+    # =========================================================================
+    # CORRECTED PRIOR CALCULATION (HYPERPARAMETERS ONLY)
+    # =========================================================================
+
+    def calculate_hyperparameter_prior(self, params):
         """
-        Calculate hierarchical prior:
-        p(θ, α, Σ) = p(α) · p(Σ) · ∏_c p(θ_c | α, Σ)
+        Calculate prior ONLY on hyperparameters: p(α, Σ) = p(α) · p(Σ)
+
+        Returns:
+            dict with separate components:
+            - 'log_prior_alpha': log p(α) for each sample
+            - 'log_prior_sigma': log p(Σ) for each sample
+            - 'total': sum of both components
         """
         # Split parameters
         theta_params, alpha_params, sigma_matrices = self.split_hierarchical_parameters(
@@ -197,55 +213,299 @@ class HierarchicalCircuitFitter(CircuitFitter):
         )
 
         n_samples = params.shape[0]
-        log_prior = np.zeros(n_samples)
+        log_prior_alpha = np.zeros(n_samples)
+        log_prior_sigma = np.zeros(n_samples)
 
         for i in range(n_samples):
             # 1. Prior on α: p(α) = N(μ_α, Σ_α)
             alpha_diff = alpha_params[i] - self.mu_alpha
             try:
-                sigma_alpha_inv = np.linalg.inv(self.sigma_alpha)
-                log_prior_alpha = -0.5 * np.dot(
-                    alpha_diff, np.dot(sigma_alpha_inv, alpha_diff)
+                log_prior_alpha[i] = -0.5 * np.dot(
+                    alpha_diff, np.dot(self.sigma_alpha_inv, alpha_diff)
                 )
-                log_prior_alpha -= 0.5 * self.n_parameters * np.log(2 * np.pi)
-                log_prior_alpha -= 0.5 * np.log(np.linalg.det(self.sigma_alpha))
+                log_prior_alpha[i] -= 0.5 * self.n_parameters * np.log(2 * np.pi)
+                log_prior_alpha[i] -= 0.5 * np.log(np.linalg.det(self.sigma_alpha))
             except np.linalg.LinAlgError:
-                log_prior_alpha = -np.inf
+                log_prior_alpha[i] = -np.inf
 
             # 2. Prior on Σ: p(Σ) = InvWishart(ν, Ψ)
             try:
                 sigma_inv = np.linalg.inv(sigma_matrices[i])
                 log_det_sigma = np.log(np.linalg.det(sigma_matrices[i]))
 
-                log_prior_sigma = (
+                log_prior_sigma[i] = (
                     -0.5 * (self.nu + self.n_parameters + 1) * log_det_sigma
                 )
-                log_prior_sigma -= 0.5 * np.trace(np.dot(self.psi, sigma_inv))
-            # Normalization constant omitted for simplicity
+                log_prior_sigma[i] -= 0.5 * np.trace(np.dot(self.psi, sigma_inv))
             except np.linalg.LinAlgError:
-                log_prior_sigma = -np.inf
+                log_prior_sigma[i] = -np.inf
 
-            # 3. Prior on θ (circuit-specific parameters): p(θ_c | α, Σ)
-            log_prior_theta = 0
+        return {
+            "log_prior_alpha": log_prior_alpha,
+            "log_prior_sigma": log_prior_sigma,
+            "total": log_prior_alpha + log_prior_sigma,
+        }
+
+    def calculate_hierarchical_prior(self, params):
+        return self.calculate_hyperparameter_prior(params)["total"]
+
+    # =========================================================================
+    # NEW: CIRCUIT PARAMETER LIKELIHOOD
+    # =========================================================================
+
+    def calculate_circuit_parameter_likelihood(self, params):
+        """
+        Calculate likelihood of circuit parameters given hyperparameters:
+        ∏_{C_i} P(θ_{C_i} | α, Σ)
+
+        Returns:
+            dict with:
+            - 'log_likelihood_per_circuit': array of shape (n_samples, n_circuits)
+            - 'total': sum across all circuits for each sample
+        """
+        # Split parameters
+        theta_params, alpha_params, sigma_matrices = self.split_hierarchical_parameters(
+            params
+        )
+
+        n_samples = params.shape[0]
+        log_likelihood_per_circuit = np.zeros((n_samples, self.n_circuits))
+
+        for sample_idx in range(n_samples):
             try:
-                sigma_inv = np.linalg.inv(sigma_matrices[i])
-                log_det_sigma = np.log(np.linalg.det(sigma_matrices[i]))
+                sigma_inv = np.linalg.inv(sigma_matrices[sample_idx])
+                log_det_sigma = np.log(np.linalg.det(sigma_matrices[sample_idx]))
 
-                for c in range(self.n_circuits):
-                    theta_diff = theta_params[i, c] - alpha_params[i]
-                    circuit_log_prior = -0.5 * np.dot(
+                for circuit_idx in range(self.n_circuits):
+                    theta_diff = (
+                        theta_params[sample_idx, circuit_idx] - alpha_params[sample_idx]
+                    )
+
+                    circuit_log_likelihood = -0.5 * np.dot(
                         theta_diff, np.dot(sigma_inv, theta_diff)
                     )
-                    circuit_log_prior -= 0.5 * self.n_parameters * np.log(2 * np.pi)
-                    circuit_log_prior -= 0.5 * log_det_sigma
-                    log_prior_theta += circuit_log_prior
+                    circuit_log_likelihood -= (
+                        0.5 * self.n_parameters * np.log(2 * np.pi)
+                    )
+                    circuit_log_likelihood -= 0.5 * log_det_sigma
+
+                    log_likelihood_per_circuit[sample_idx, circuit_idx] = (
+                        circuit_log_likelihood
+                    )
+
             except np.linalg.LinAlgError:
-                log_prior_theta = -np.inf
+                log_likelihood_per_circuit[sample_idx, :] = -np.inf
 
-            # Combine all priors
-            log_prior[i] = log_prior_alpha + log_prior_sigma + log_prior_theta
+        return {
+            "log_likelihood_per_circuit": log_likelihood_per_circuit,
+            "total": np.sum(log_likelihood_per_circuit, axis=1),
+        }
 
-        return log_prior
+    # =========================================================================
+    # NEW: DATA LIKELIHOOD
+    # =========================================================================
+
+    def calculate_data_likelihood(self, params):
+        """
+        Calculate likelihood of experimental data given circuit parameters:
+        ∏_{C_i, c_j, r_k} P(Y_{C_i,c_j,r_k} | θ_{C_i})
+
+        Returns:
+            dict with:
+            - 'log_likelihood_per_circuit': dict[sample_idx][circuit_name] = circuit likelihood
+            - 'log_likelihood_per_condition': detailed breakdown by condition
+            - 'total': total data likelihood for each sample
+        """
+        # Simulate with hierarchical parameters
+        simulation_results = self.simulate_hierarchical_parameters(params)
+
+        n_samples = params.shape[0]
+        total_log_likelihood = np.zeros(n_samples)
+
+        # Store detailed results
+        sample_circuit_likelihoods = {}
+        sample_condition_likelihoods = {}
+
+        for sample_idx in range(n_samples):
+            sample_results = simulation_results[sample_idx]
+            circuit_likelihoods = {}
+            condition_likelihoods = {}
+
+            sample_total = 0
+
+            # Process each circuit
+            for circuit_idx, circuit_results in sample_results.items():
+                config = self.configs[circuit_idx]
+                circuit_name = config.name
+
+                circuit_total = 0
+                circuit_conditions = {}
+
+                # Process each condition
+                for condition_name, _ in config.condition_params.items():
+                    # Get simulation results for this condition
+                    condition_mask = (
+                        circuit_results["combined_params"]["condition"]
+                        == condition_name
+                    )
+                    sim_indices = circuit_results["combined_params"].index[
+                        condition_mask
+                    ]
+
+                    # Get cached experimental data
+                    cached_data = self.experimental_data_cache[circuit_name][
+                        condition_name
+                    ]
+                    exp_means, exp_vars = cached_data["means"], cached_data["vars"]
+
+                    # Get simulation values
+                    sim_values = np.array(
+                        [
+                            circuit_results["simulation_results"].observables[i][
+                                "obs_Protein_GFP"
+                            ]
+                            for i in sim_indices
+                        ]
+                    )
+
+                    # Calculate likelihood
+                    condition_log_likelihood = calculate_likelihoods(
+                        sim_values, exp_means, exp_vars
+                    )
+
+                    circuit_conditions[condition_name] = condition_log_likelihood
+                    circuit_total += condition_log_likelihood
+
+                circuit_likelihoods[circuit_name] = circuit_total
+                condition_likelihoods[circuit_name] = circuit_conditions
+                sample_total += circuit_total
+
+            sample_circuit_likelihoods[sample_idx] = circuit_likelihoods
+            sample_condition_likelihoods[sample_idx] = condition_likelihoods
+            total_log_likelihood[sample_idx] = sample_total
+
+        return {
+            "log_likelihood_per_circuit": sample_circuit_likelihoods,
+            "log_likelihood_per_condition": sample_condition_likelihoods,
+            "total": total_log_likelihood,
+        }
+
+    # =========================================================================
+    # CORRECTED: COMBINED LIKELIHOOD
+    # =========================================================================
+
+    def calculate_hierarchical_likelihood(self, params):
+        """
+        Calculate complete likelihood:
+        ∏_{C_i} P(θ_{C_i} | α, Σ) · ∏_{C_i, c_j, r_k} P(Y_{C_i,c_j,r_k} | θ_{C_i})
+
+        Returns:
+            dict with separate components and total
+        """
+        # Calculate circuit parameter likelihood
+        circuit_param_results = self.calculate_circuit_parameter_likelihood(params)
+
+        # Calculate data likelihood
+        data_results = self.calculate_data_likelihood(params)
+
+        # Combine
+        total_likelihood = circuit_param_results["total"] + data_results["total"]
+
+        return {
+            "circuit_parameter_likelihood": circuit_param_results,
+            "data_likelihood": data_results,
+            "total": total_likelihood,
+        }
+
+    # =========================================================================
+    # CORRECTED: POSTERIOR CALCULATION
+    # =========================================================================
+
+    def calculate_hierarchical_posterior(self, params):
+        """
+        Calculate joint posterior: p(θ, α, Σ | Y)
+        = p(α, Σ) · ∏_{C_i} p(θ_{C_i} | α, Σ) · ∏_{C_i, c_j, r_k} p(Y_{C_i,c_j,r_k} | θ_{C_i})
+
+        Returns:
+            dict with all components separated and combined
+        """
+        # Calculate hyperparameter prior
+        prior_results = self.calculate_hyperparameter_prior(params)
+
+        # Calculate full likelihood
+        likelihood_results = self.calculate_hierarchical_likelihood(params)
+
+        # Calculate posterior
+        log_posterior = prior_results["total"] + likelihood_results["total"]
+
+        return {
+            "log_posterior": log_posterior,
+            "prior_components": prior_results,
+            "likelihood_components": likelihood_results,
+            "log_prior_total": prior_results["total"],
+            "log_likelihood_total": likelihood_results["total"],
+        }
+
+    # =========================================================================
+    # CONVENIENCE FUNCTIONS FOR ACCESSING SPECIFIC COMPONENTS
+    # =========================================================================
+
+    def get_alpha_prior(self, params):
+        """Get just the α prior component"""
+        results = self.calculate_hyperparameter_prior(params)
+        return results["log_prior_alpha"]
+
+    def get_sigma_prior(self, params):
+        """Get just the Σ prior component"""
+        results = self.calculate_hyperparameter_prior(params)
+        return results["log_prior_sigma"]
+
+    def get_circuit_parameter_likelihood(self, params):
+        """Get just the circuit parameter likelihood component"""
+        results = self.calculate_circuit_parameter_likelihood(params)
+        return results["total"]
+
+    def get_data_likelihood(self, params):
+        """Get just the data likelihood component"""
+        results = self.calculate_data_likelihood(params)
+        return results["total"]
+
+    def get_total_prior(self, params):
+        """Get total prior: p(α) + p(Σ)"""
+        results = self.calculate_hyperparameter_prior(params)
+        return results["total"]
+
+    def get_total_likelihood(self, params):
+        """Get total likelihood: circuit params + data"""
+        results = self.calculate_hierarchical_likelihood(params)
+        return results["total"]
+
+    def debug_hierarchical_components(self, params):
+        """
+        Debug function to see all components separately
+        """
+        results = self.calculate_hierarchical_posterior(params)
+
+        print("=== HIERARCHICAL MODEL COMPONENTS ===")
+        print(f"α Prior: {results['prior_components']['log_prior_alpha']}")
+        print(f"Σ Prior: {results['prior_components']['log_prior_sigma']}")
+        print(f"Total Prior: {results['log_prior_total']}")
+        print()
+        print(
+            f"Circuit Parameter Likelihood: {results['likelihood_components']['circuit_parameter_likelihood']['total']}"
+        )
+        print(
+            f"Data Likelihood: {results['likelihood_components']['data_likelihood']['total']}"
+        )
+        print(f"Total Likelihood: {results['log_likelihood_total']}")
+        print()
+        print(f"Posterior: {results['log_posterior']}")
+
+        return results
+
+    # =========================================================================
+    # UNCHANGED SIMULATION FUNCTIONS
+    # =========================================================================
 
     def simulate_hierarchical_parameters(self, params):
         """
@@ -299,108 +559,85 @@ class HierarchicalCircuitFitter(CircuitFitter):
 
         return results
 
-    def calculate_hierarchical_likelihood(self, params):
+    def simulate_single_circuit(self, circuit_idx: int, log_params: np.ndarray) -> dict:
         """
-        Calculate likelihood using circuit-specific parameters
-        Each circuit gets its own θ parameters
+        Simulate a single circuit with given parameters
+
+        Args:
+            circuit_idx: Index of the circuit to simulate
+            log_params: Array of shape (n_samples, n_params) in log space
+
+        Returns:
+            Dictionary with simulation results for the single circuit
         """
-        # Simulate with hierarchical parameters
-        simulation_results = self.simulate_hierarchical_parameters(params)
+        # Get the specific config
+        config = self.configs[circuit_idx]
 
-        # Initialize likelihood arrays
-        n_samples = params.shape[0]
-        total_log_likelihood = np.zeros(n_samples)
-        circuit_likelihoods = {}
+        # Convert to linear space for simulation
+        linear_params = self.log_to_linear_params(log_params, self.parameters_to_fit)
 
-        # Process each sample
-        for sample_idx in range(n_samples):
-            sample_results = simulation_results[sample_idx]
-            sample_circuit_likelihoods = {}
+        # Prepare combined params for all conditions of this circuit
+        combined_params_df = prepare_combined_params(
+            linear_params, config.condition_params
+        )
 
-            # Process each circuit
-            for circuit_idx, circuit_results in sample_results.items():
-                config = self.configs[circuit_idx]
-                circuit_name = config.name
-
-                # Initialize likelihoods for this circuit
-                circuit_total = 0
-                condition_likelihoods = {}
-
-                # Process each condition
-                for condition_name, _ in config.condition_params.items():
-                    # Get simulation results for this condition
-                    condition_mask = (
-                        circuit_results["combined_params"]["condition"]
-                        == condition_name
-                    )
-                    sim_indices = circuit_results["combined_params"].index[
-                        condition_mask
-                    ]
-
-                    # Get cached experimental data
-                    cached_data = self.experimental_data_cache[circuit_name][
-                        condition_name
-                    ]
-                    exp_means, exp_vars = cached_data["means"], cached_data["vars"]
-
-                    # Get simulation values
-                    sim_values = np.array(
-                        [
-                            circuit_results["simulation_results"].observables[i][
-                                "obs_Protein_GFP"
-                            ]
-                            for i in sim_indices
-                        ]
-                    )
-
-                    # Calculate likelihood with heteroscedastic noise
-                    log_likelihood = self.calculate_heteroscedastic_likelihood(
-                        sim_values, exp_means, exp_vars
-                    )
-
-                    condition_likelihoods[condition_name] = log_likelihood
-                    circuit_total += log_likelihood
-
-                sample_circuit_likelihoods[circuit_name] = {
-                    "total": circuit_total,
-                    "conditions": condition_likelihoods,
-                }
-                total_log_likelihood[sample_idx] += circuit_total
-
-            circuit_likelihoods[sample_idx] = sample_circuit_likelihoods
-
-        return {"total": total_log_likelihood, "circuits": circuit_likelihoods}
-
-    def calculate_heteroscedastic_likelihood(self, sim_values, exp_means, exp_vars):
-        """
-        Calculate likelihood with heteroscedastic noise model:
-        σ²(y) = σ₀² · y
-        """
-        # Calculate heteroscedastic variance
-        hetero_vars = self.sigma_0_squared * np.maximum(sim_values, 1e-6)
-
-        # Calculate residuals
-        residuals = sim_values - exp_means
-
-        # Calculate log likelihood
-        n_points = exp_means.shape[1]  # Number of time points
-        return -0.5 * np.sum((residuals**2) / hetero_vars, axis=1) / n_points
-
-    def calculate_hierarchical_posterior(self, params):
-        """Calculate joint posterior: p(θ, α, Σ | Y)"""
-        # Calculate prior
-        log_prior = self.calculate_hierarchical_prior(params)
-
-        # Calculate likelihood
-        likelihood_results = self.calculate_hierarchical_likelihood(params)
-        log_likelihood = likelihood_results["total"]
-
-        # Calculate posterior
-        log_posterior = log_prior + log_likelihood
+        # Simulate only this circuit
+        simulator = self.simulators[config.name]
+        simulation_results = simulator.run(
+            param_values=combined_params_df.drop(
+                ["param_set_idx", "condition"], axis=1
+            ),
+        )
 
         return {
-            "log_posterior": log_posterior,
-            "log_prior": log_prior,
-            "log_likelihood": log_likelihood,
-            "likelihood_details": likelihood_results,
+            "combined_params": combined_params_df,
+            "simulation_results": simulation_results,
+            "config": config,
         }
+
+    def _estimate_wishart_hyperparameters_from_individual_posteriors(
+        self, individual_circuit_posterior_results
+    ):
+        """Estimate inverse-Wishart hyperparameters from individual circuit posterior means"""
+        circuit_posterior_parameter_means = []
+
+        for (
+            circuit_name,
+            circuit_mcmc_dataframe,
+        ) in individual_circuit_posterior_results.items():
+            filtered_circuit_posterior = self._apply_mcmc_filtering(
+                circuit_mcmc_dataframe
+            )
+            circuit_mean_parameters = (
+                filtered_circuit_posterior[self.parameters_to_fit].mean().values
+            )
+            circuit_posterior_parameter_means.append(circuit_mean_parameters)
+
+        empirical_between_circuit_covariance = np.cov(
+            np.array(circuit_posterior_parameter_means).T
+        )
+
+        degrees_of_freedom_nu = self.n_parameters + 5  # Moderate prior strength
+        scale_matrix_psi = empirical_between_circuit_covariance * (
+            degrees_of_freedom_nu - self.n_parameters - 1
+        )
+
+        return {
+            "degrees_of_freedom_nu": degrees_of_freedom_nu,
+            "scale_matrix_psi": scale_matrix_psi,
+        }
+
+    def _apply_mcmc_filtering(
+        self, circuit_mcmc_dataframe, burn_in_fraction=0.5, target_chain_index=0
+    ):
+        """Apply burn-in and chain filtering to individual circuit MCMC results"""
+        from likelihood_functions.hierarchical_likelihood.mcmc_analysis_hierarchical import (
+            process_mcmc_data,
+        )
+
+        processed_mcmc_data = process_mcmc_data(
+            circuit_mcmc_dataframe,
+            burn_in=burn_in_fraction,
+            chain_idx=target_chain_index,
+        )
+        return processed_mcmc_data["processed_data"]

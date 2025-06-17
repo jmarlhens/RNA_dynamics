@@ -1,4 +1,4 @@
-Parameter,Value,log10stddev
+Parameter,Mean,log10stddev
 k_tx,20,1
 K_tx,10,1
 k_rna_deg,0.00078,1

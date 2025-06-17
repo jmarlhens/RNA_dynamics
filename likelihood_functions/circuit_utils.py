@@ -74,7 +74,7 @@ def create_circuit_configs(
 def setup_calibration():
     """Setup GFP calibration parameters"""
     # Load calibration data
-    data = pd.read_csv("../utils/calibration_gfp/gfp_Calibration.csv")
+    data = pd.read_csv("../../utils/calibration_gfp/gfp_Calibration.csv")
 
     # Fit the calibration curve
     calibration_results = fit_gfp_calibration(

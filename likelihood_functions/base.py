@@ -6,7 +6,9 @@ from .utils import prepare_experimental_data, prepare_combined_params
 
 
 class CircuitFitter:
-    def __init__(self, configs, parameters_to_fit, model_parameters_priors, calibration_data):
+    def __init__(
+        self, configs, parameters_to_fit, model_parameters_priors, calibration_data
+    ):
         """
         Initialize CircuitFitter with caching of experimental data
 
@@ -27,7 +29,7 @@ class CircuitFitter:
         self._setup_priors()
         self._validate_configs()
         self._setup_simulators()
-        self._cache_experimental_data()  # New initialization step
+        self._cache_experimental_data()
 
     def _cache_experimental_data(self):
         """Pre-calculate and cache experimental data means and variances"""
@@ -35,17 +37,18 @@ class CircuitFitter:
             config_cache = {}
             for condition_name, _ in config.condition_params.items():
                 condition_data = config.experimental_data[
-                    config.experimental_data['condition'] == condition_name
-                    ]
+                    config.experimental_data["condition"] == condition_name
+                ]
 
                 if len(condition_data) == 0:
-                    raise ValueError(f"No experimental data found for condition: {condition_name}")
+                    raise ValueError(
+                        f"No experimental data found for condition: {condition_name}"
+                    )
 
-                _, exp_means, exp_vars = prepare_experimental_data(condition_data, config.tspan)
-                config_cache[condition_name] = {
-                    'means': exp_means,
-                    'vars': exp_vars
-                }
+                _, exp_means, exp_vars = prepare_experimental_data(
+                    condition_data, config.tspan
+                )
+                config_cache[condition_name] = {"means": exp_means, "vars": exp_vars}
             self.experimental_data_cache[config.name] = config_cache
 
     def _validate_configs(self):
@@ -65,12 +68,10 @@ class CircuitFitter:
         #     self.simulators[config.name] = simulator
 
         from pysb.simulator import ScipyOdeSimulator
+
         for config in self.configs:
             simulator = ScipyOdeSimulator(
-                config.model,
-                config.tspan,
-                compiler='cython',
-                cleanup=True
+                config.model, config.tspan, compiler="cython", cleanup=True
             )
             self.simulators[config.name] = simulator
 
@@ -80,18 +81,20 @@ class CircuitFitter:
         self.log_stds = {}
         for param_name in self.parameters_to_fit:
             prior_row = self.model_parameters_priors[
-                self.model_parameters_priors['Parameter'] == param_name
-                ].iloc[0]
-            self.log_means[param_name] = np.log10(prior_row['Value'])
-            self.log_stds[param_name] = prior_row['log10stddev']
+                self.model_parameters_priors["Parameter"] == param_name
+            ].iloc[0]
+            self.log_means[param_name] = np.log10(prior_row["Mean"])
+            self.log_stds[param_name] = prior_row["log10stddev"]
 
     @staticmethod
     def log_to_linear_params(log_params: np.ndarray, param_names: list) -> pd.DataFrame:
         """Convert parameters from log space to linear space."""
-        linear_params = 10 ** log_params
+        linear_params = 10**log_params
         if log_params.ndim == 1:
             return pd.DataFrame([linear_params], columns=param_names)
-        return pd.DataFrame(linear_params, columns=param_names, index=range(len(log_params)))
+        return pd.DataFrame(
+            linear_params, columns=param_names, index=range(len(log_params))
+        )
 
     @staticmethod
     def linear_to_log_params(linear_params: pd.DataFrame) -> np.ndarray:
@@ -134,20 +137,21 @@ class CircuitFitter:
 
         for i, config in enumerate(self.configs):
             combined_params_df = prepare_combined_params(
-                linear_params,
-                config.condition_params
+                linear_params, config.condition_params
             )
 
             # simulator = ScipyOdeSimulator(config.model, config.tspan, compiler='cython', cleanup=True)
             simulator = self.simulators[config.name]
             simulation_results = simulator.run(
-                param_values=combined_params_df.drop(['param_set_idx', 'condition'], axis=1),
+                param_values=combined_params_df.drop(
+                    ["param_set_idx", "condition"], axis=1
+                ),
             )
 
             results[i] = {
-                'combined_params': combined_params_df,
-                'simulation_results': simulation_results,
-                'config': config
+                "combined_params": combined_params_df,
+                "simulation_results": simulation_results,
+                "config": config,
             }
 
         return results
@@ -202,7 +206,9 @@ class CircuitFitter:
     def calculate_likelihood_from_simulation(self, simulation_data: dict) -> dict:
         """Calculate log likelihood from pre-computed simulation data using cached experimental data"""
         first_config_data = simulation_data[0]
-        n_param_sets = len(first_config_data['combined_params']['param_set_idx'].unique())
+        n_param_sets = len(
+            first_config_data["combined_params"]["param_set_idx"].unique()
+        )
         total_log_likelihood = np.zeros(n_param_sets)
         circuit_likelihoods = {}
 
@@ -213,33 +219,32 @@ class CircuitFitter:
             condition_likelihoods = {}
 
             for condition_name, _ in config.condition_params.items():
-                condition_mask = data['combined_params']['condition'] == condition_name
-                sim_indices = data['combined_params'].index[condition_mask]
+                condition_mask = data["combined_params"]["condition"] == condition_name
+                sim_indices = data["combined_params"].index[condition_mask]
                 # param_set_indices = data['combined_params'].loc[condition_mask, 'param_set_idx']
 
                 # Get cached experimental data
                 cached_data = self.experimental_data_cache[circuit_name][condition_name]
-                exp_means, exp_vars = cached_data['means'], cached_data['vars']
+                exp_means, exp_vars = cached_data["means"], cached_data["vars"]
 
-                sim_values = np.array([
-                    data['simulation_results'].observables[i]['obs_Protein_GFP']
-                    for i in sim_indices
-                ])
+                sim_values = np.array(
+                    [
+                        data["simulation_results"].observables[i]["obs_Protein_GFP"]
+                        for i in sim_indices
+                    ]
+                )
 
                 log_likelihoods = calculate_likelihoods(sim_values, exp_means, exp_vars)
                 condition_likelihoods[condition_name] = log_likelihoods
                 circuit_total += log_likelihoods
 
             circuit_likelihoods[circuit_name] = {
-                'total': circuit_total,
-                'conditions': condition_likelihoods
+                "total": circuit_total,
+                "conditions": condition_likelihoods,
             }
             total_log_likelihood += circuit_total
 
-        return {
-            'total': total_log_likelihood,
-            'circuits': circuit_likelihoods
-        }
+        return {"total": total_log_likelihood, "circuits": circuit_likelihoods}
 
     def calculate_log_likelihood(self, log_params: np.ndarray) -> dict:
         """
@@ -299,7 +304,7 @@ class CircuitFitter:
         prior_data = self.calculate_log_prior(log_params)
         likelihood_data = self.calculate_log_likelihood(log_params)
 
-        return prior_data['total'] + likelihood_data['total']
+        return prior_data["total"] + likelihood_data["total"]
 
 
 class MCMCAdapter:
@@ -331,7 +336,7 @@ class MCMCAdapter:
 
             # Calculate likelihood and reshape back
             likelihood_dict = self.circuit_fitter.calculate_log_likelihood(params_2d)
-            return likelihood_dict['total'].reshape(original_shape[:-1])
+            return likelihood_dict["total"].reshape(original_shape[:-1])
 
         return log_likelihood
 
@@ -370,5 +375,5 @@ class MCMCAdapter:
             log_prior=self.get_log_prior_function(),
             n_dim=len(self.circuit_fitter.parameters_to_fit),
             n_walkers=n_walkers,
-            n_chains=n_chains
+            n_chains=n_chains,
         )

@@ -253,4 +253,4 @@ class CircuitManager:
 
         # Load parameters from CSV
         parameters_df = pd.read_csv(parameters_file)
-        return dict(zip(parameters_df["Parameter"], parameters_df["Value"]))
+        return dict(zip(parameters_df["Parameter"], parameters_df["Mean"]))
