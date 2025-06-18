@@ -87,10 +87,11 @@ class ParallelTempering(OptimizationAlgorithm):
             ##################################
             # Adaptive Proposal Distribution #
             ##################################
-            if adaptive_proposal_distribution and iN > 100 and iN % 10 == 0:
+            if adaptive_proposal_distribution and iN >= 100 and iN % 10 == 0:
                 # Considers Windowed average of the last 100 steps
-                acc_rate_deviation = step_accepts[max(iN - 1000 + 1, 0):iN + 1] - target_acceptance_ratio
-                scaling_params = np.exp((np.mean(acc_rate_deviation, axis=0)))
+                acc_rate_deviation = np.mean(step_accepts[max(iN - 100 + 1, 0):iN + 1],
+                                             axis=0) - target_acceptance_ratio
+                scaling_params = np.exp(0.5 * acc_rate_deviation)
                 self.variance = self.variance * np.expand_dims(scaling_params, axis=-1)
 
             ###############################
@@ -129,13 +130,20 @@ class ParallelTempering(OptimizationAlgorithm):
 
         proposal_likelihood = self.log_likelihood(proposal)
         proposal_prior = self.log_prior(proposal)
-        proposal_prob = self.beta * proposal_likelihood + proposal_prior
+        proposal_tempered_likelihood = self.beta * proposal_likelihood
+        # proposal_tempered_likelihood[np.isnan(proposal_tempered_likelihood)] = -np.inf
+        proposal_tempered_likelihood[np.tile(self.beta, (proposal_tempered_likelihood.shape[0], 1)) == 0] = 0
+        proposal_prob = proposal_tempered_likelihood + proposal_prior
 
         # likelihood = self.log_likelihood(params)
         # prior = self.log_prior(params)
-        prob = self.beta * likelihood + prior
+        tempered_likelihood = self.beta * likelihood
+        # tempered_likelihood[np.isnan(tempered_likelihood)] = -np.inf
+        tempered_likelihood[np.tile(self.beta, (tempered_likelihood.shape[0], 1)) == 0] = 0
+        prob = tempered_likelihood + prior
 
         log_diff = proposal_prob - prob
+        log_diff[proposal_prob == prob] = 0
         diff = np.exp(log_diff)
         u = np.random.uniform(size=(self.n_walkers, self.n_chains))
         accept = u < diff
@@ -190,9 +198,9 @@ def log_smile_adapt(params):
     return np.log(val)
 
 
-if __name__ == '__main__':
+def test_smile():
     n_walkers = 10
-    n_chains = 6
+    n_chains = 10
     n_samples = 10 ** 5
     target_acceptance_ratio = 0.4
     log_likelihood = log_smile_adapt
@@ -211,6 +219,7 @@ if __name__ == '__main__':
     print("Completed Sampling")
 
     R_hat = convergence_test(parameters[int(len(parameters) / 2):])
+
     print(f"Potential Scale Reduction: {R_hat}")
 
     # R_hat value below 1.2 are favorable
@@ -243,3 +252,87 @@ if __name__ == '__main__':
     #     ax.plot(parameters[:, :, iC, 0].reshape(-1), parameters[:, :, iC, 1].reshape(-1), alpha=0.1)
     #     ax.scatter(parameters[:, :, iC, 0].reshape(-1), parameters[:, :, iC, 1].reshape(-1), alpha=0.1)
     # plt.show()
+
+
+def sampling_test():
+    from scipy.stats import beta
+    from numpy.lib.stride_tricks import sliding_window_view
+
+    target_acceptance_ratio = 0.4
+
+    def log_prior(params):
+        prior = np.all(np.logical_and(params > -1, params < 1), axis=-1)
+        return np.log(prior * 1)
+
+    beta_a, beta_b = 2.3 / 2, 0.6
+
+    def log_likelihood(params):
+        # likelihood = np.ones(shape=params.shape[:-1])
+        # likelihood = np.sum(np.exp(- np.power(params, 2) / 0.1), axis=-1)
+        likelihood = beta.pdf(params, beta_a, beta_b)
+        likelihood = np.sum(likelihood, axis=-1)
+        return np.log(likelihood)
+
+    init_params = np.array([0])
+
+    n_walkers = 5
+    n_chains = 10
+    n_samples = 10000
+
+    pt = ParallelTempering(log_likelihood=log_likelihood, log_prior=log_prior, n_dim=len(init_params),
+                           n_walkers=n_walkers,
+                           n_chains=n_chains)
+    parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=init_params,
+                                                                         n_samples=n_samples,
+                                                                         target_acceptance_ratio=target_acceptance_ratio,
+                                                                         adaptive_temperature=True)
+    best_index = np.unravel_index(np.argmax(likelihoods), likelihoods.shape)
+    params = np.exp(parameters[*best_index])
+    posterior_samples = parameters[len(parameters) // 2:, :, 0]
+    posterior_samples = posterior_samples.reshape(-1, posterior_samples.shape[-1])
+
+
+
+    bins = np.linspace(-2, 2, 100)
+    fig, ax = plt.subplots()
+
+    ax.hist(posterior_samples[:, 0], bins=bins, alpha=0.5)
+    samples = beta.rvs(beta_a, beta_b, size=(n_samples * n_walkers) // 2)
+    ax.hist(samples, bins=bins, alpha=0.5)
+
+    plt.show()
+
+    step_accepts_sliding_window = np.transpose(sliding_window_view(step_accepts[:, :, :], 100, axis=0), axes=(0, 3, 1, 2))
+    step_accepts_avg = np.mean(step_accepts_sliding_window, axis=1)
+
+    swap_accepts_sliding_window = np.transpose(sliding_window_view(swap_accepts, 100, axis=0),
+                                               axes=(0, 3, 1, 2))
+    swap_accepts_avg = np.mean(swap_accepts_sliding_window, axis=1)
+
+
+    for iWalker in range(n_walkers):
+        fig, axes = plt.subplots(ncols=2)
+
+        for iChain in range(step_accepts_avg.shape[-1]):
+            axes[0].plot(np.arange(2) * (len(step_accepts_avg) - 1), np.ones(2) * target_acceptance_ratio  + (n_chains - iChain - 1), "k--", alpha=0.5)
+            axes[0].plot(np.arange(len(step_accepts_avg)), step_accepts_avg[:, iWalker, iChain] + (n_chains - iChain - 1), label=iChain, alpha=1)
+
+        for iChain in range(swap_accepts_avg.shape[-1]):
+            axes[1].plot(np.arange(2) * (len(swap_accepts_avg) - 1), np.ones(2) * 0  + (n_chains - iChain - 1), "r--", alpha=0.5)
+            axes[1].plot(np.arange(len(swap_accepts_avg)), swap_accepts_avg[:, iWalker, iChain] + (n_chains - iChain - 1) , label=iChain, alpha=1)
+
+        ylim = axes[0].get_ylim()
+        axes[1].set_ylim(ylim)
+        axes[0].legend()
+        axes[1].legend()
+        plt.show()
+
+
+
+    for samps in [posterior_samples, samples]:
+        print(f"Mean {np.mean(samps)}, Variance {np.var(samps)}")
+
+
+if __name__ == '__main__':
+    sampling_test()
+    pass
