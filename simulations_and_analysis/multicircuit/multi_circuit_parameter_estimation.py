@@ -2,10 +2,10 @@ from datetime import datetime
 import pandas as pd
 import matplotlib.pyplot as plt
 from likelihood_functions.base import CircuitFitter
-from likelihood_functions.utils import organize_results
-from likelihood_functions.visualization import plot_all_simulation_results
+from utils.process_experimental_data import organize_results
+from analysis_and_figures.visualization import plot_all_simulation_results
 from likelihood_functions.base import MCMCAdapter
-from likelihood_functions.mcmc_analysis import analyze_mcmc_results
+from analysis_and_figures.mcmc_analysis import analyze_mcmc_results
 from circuits.circuit_generation.circuit_manager import CircuitManager
 from likelihood_functions.circuit_utils import create_circuit_configs, setup_calibration
 

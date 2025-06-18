@@ -2,12 +2,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
-from likelihood_functions.visualization import plot_simulation_results
-from .utils import organize_results
+from analysis_and_figures.visualization import plot_simulation_results
+from utils.process_experimental_data import organize_results
 
 
 class MCMCAnalysis:
-    def __init__(self, parameters, priors, likelihoods, step_accepts, swap_accepts, parameter_names, circuit_fitter):
+    def __init__(
+        self,
+        parameters,
+        priors,
+        likelihoods,
+        step_accepts,
+        swap_accepts,
+        parameter_names,
+        circuit_fitter,
+    ):
         """
         Analyze MCMC results from parallel tempering
 
@@ -59,13 +68,15 @@ class MCMCAnalysis:
         chains = np.arange(self.n_chains)
 
         # Create meshgrid for all combinations
-        iter_grid, walker_grid, chain_grid = np.meshgrid(iterations, walkers, chains, indexing='ij')
+        iter_grid, walker_grid, chain_grid = np.meshgrid(
+            iterations, walkers, chains, indexing="ij"
+        )
 
         # Create dictionary to store data
         data = {
-            'iteration': iter_grid.flatten(),
-            'walker': walker_grid.flatten(),
-            'chain': chain_grid.flatten(),
+            "iteration": iter_grid.flatten(),
+            "walker": walker_grid.flatten(),
+            "chain": chain_grid.flatten(),
         }
 
         # Add parameters
@@ -73,12 +84,12 @@ class MCMCAnalysis:
             data[param_name] = self.parameters[..., i].flatten()
 
         # Add likelihood, prior, posterior
-        data['likelihood'] = self.likelihoods.flatten()
-        data['prior'] = self.priors.flatten()
-        data['posterior'] = self.likelihoods.flatten() + self.priors.flatten()
+        data["likelihood"] = self.likelihoods.flatten()
+        data["prior"] = self.priors.flatten()
+        data["posterior"] = self.likelihoods.flatten() + self.priors.flatten()
 
         # Add step acceptance
-        data['step_accepted'] = self.step_accepts.flatten()
+        data["step_accepted"] = self.step_accepts.flatten()
 
         # Create DataFrame
         return pd.DataFrame(data)
@@ -91,10 +102,10 @@ class MCMCAnalysis:
         best_params = self.parameters[max_idx[0], max_idx[1], max_idx[2], :]
 
         return {
-            'parameters': dict(zip(self.parameter_names, best_params)),
-            'likelihood': self.likelihoods[max_idx],
-            'prior': self.priors[max_idx],
-            'posterior': posterior[max_idx]
+            "parameters": dict(zip(self.parameter_names, best_params)),
+            "likelihood": self.likelihoods[max_idx],
+            "prior": self.priors[max_idx],
+            "posterior": posterior[max_idx],
         }
 
     def plot_traces(self, chain_idx=0):
@@ -106,7 +117,7 @@ class MCMCAnalysis:
             for walker in range(self.n_walkers):
                 ax.plot(self.parameters[:, walker, chain_idx, i], alpha=0.5)
             ax.set_ylabel(param_name)
-            ax.set_xlabel('Sample')
+            ax.set_xlabel("Sample")
 
         plt.tight_layout()
         return fig
@@ -118,13 +129,15 @@ class MCMCAnalysis:
         params = self.parameters[burn_samples:, :, :, :]
 
         # Create subplots for each parameter
-        fig, axes = plt.subplots(len(self.parameter_names), 1, figsize=(12, 3 * len(self.parameter_names)))
+        fig, axes = plt.subplots(
+            len(self.parameter_names), 1, figsize=(12, 3 * len(self.parameter_names))
+        )
 
         for i, (param_name, ax) in enumerate(zip(self.parameter_names, axes)):
             # Plot distribution for each chain
             for chain in range(self.n_chains):
                 chain_data = params[:, :, chain, i].flatten()
-                sns.kdeplot(chain_data, ax=ax, label=f'Chain {chain}')
+                sns.kdeplot(chain_data, ax=ax, label=f"Chain {chain}")
             ax.set_xlabel(param_name)
             ax.legend()
 
@@ -137,17 +150,17 @@ class MCMCAnalysis:
 
         # Plot step acceptance rates
         step_rates = np.mean(self.step_accepts, axis=0)  # Average over samples
-        sns.heatmap(step_rates, ax=ax1, cmap='viridis')
-        ax1.set_title('Step Acceptance Rates')
-        ax1.set_xlabel('Chain')
-        ax1.set_ylabel('Walker')
+        sns.heatmap(step_rates, ax=ax1, cmap="viridis")
+        ax1.set_title("Step Acceptance Rates")
+        ax1.set_xlabel("Chain")
+        ax1.set_ylabel("Walker")
 
         # Plot swap acceptance rates
         swap_rates = np.mean(self.swap_accepts, axis=0)  # Average over samples
-        sns.heatmap(swap_rates, ax=ax2, cmap='viridis')
-        ax2.set_title('Swap Acceptance Rates')
-        ax2.set_xlabel('Chain Pair')
-        ax2.set_ylabel('Walker')
+        sns.heatmap(swap_rates, ax=ax2, cmap="viridis")
+        ax2.set_title("Swap Acceptance Rates")
+        ax2.set_xlabel("Chain Pair")
+        ax2.set_ylabel("Walker")
 
         plt.tight_layout()
         return fig
@@ -163,12 +176,12 @@ class MCMCAnalysis:
             param_samples = params[:, :, :, i].flatten()
 
             stats_dict[param_name] = {
-                'mean': np.mean(param_samples),
-                'median': np.median(param_samples),
-                'std': np.std(param_samples),
-                'percentile_5': np.percentile(param_samples, 5),
-                'percentile_95': np.percentile(param_samples, 95),
-                'effective_sample_size': self._compute_ess(param_samples)
+                "mean": np.mean(param_samples),
+                "median": np.median(param_samples),
+                "std": np.std(param_samples),
+                "percentile_5": np.percentile(param_samples, 5),
+                "percentile_95": np.percentile(param_samples, 95),
+                "effective_sample_size": self._compute_ess(param_samples),
             }
 
         return stats_dict
@@ -179,7 +192,9 @@ class MCMCAnalysis:
         if n <= 1:
             return n
 
-        acf = np.correlate(samples - np.mean(samples), samples - np.mean(samples), mode='full')[n - 1:]
+        acf = np.correlate(
+            samples - np.mean(samples), samples - np.mean(samples), mode="full"
+        )[n - 1 :]
         acf = acf / acf[0]
 
         # Find where autocorrelation drops below 0.05
@@ -216,7 +231,9 @@ class MCMCAnalysis:
         else:
             # Only use specified temperature chain
             flat_posterior = posterior[:, :, temperature_idx].reshape(-1)
-            flat_params = self.parameters[:, :, temperature_idx].reshape(-1, self.n_params)
+            flat_params = self.parameters[:, :, temperature_idx].reshape(
+                -1, self.n_params
+            )
 
         # Get indices of best parameter sets
         best_indices = np.argsort(flat_posterior)[-n_best:]
@@ -228,38 +245,54 @@ class MCMCAnalysis:
         sim_data = self.circuit_fitter.simulate_parameters(best_params)
 
         # Calculate likelihoods and priors for these parameters
-        likelihood_data = self.circuit_fitter.calculate_likelihood_from_simulation(sim_data)
+        likelihood_data = self.circuit_fitter.calculate_likelihood_from_simulation(
+            sim_data
+        )
         prior_data = self.circuit_fitter.calculate_log_prior(best_params)
 
         # Organize results into DataFrame
         results_df = organize_results(
-            self.parameter_names,
-            best_params,
-            likelihood_data,
-            prior_data
+            self.parameter_names, best_params, likelihood_data, prior_data
         )
 
         # Plot results for each parameter set
         figs = []
         for i in range(n_best):
             fig = plot_simulation_results(sim_data, results_df, param_set_idx=i)
-            fig.suptitle(f'Simulation for Parameter Set {i + 1}\nPosterior: {flat_posterior[best_indices[i]]:.2f}')
+            fig.suptitle(
+                f"Simulation for Parameter Set {i + 1}\nPosterior: {flat_posterior[best_indices[i]]:.2f}"
+            )
             figs.append(fig)
 
         return figs, best_params
 
 
-def analyze_mcmc_results(parameters, priors, likelihoods, step_accepts, swap_accepts, parameter_names, circuit_fitter):
+def analyze_mcmc_results(
+    parameters,
+    priors,
+    likelihoods,
+    step_accepts,
+    swap_accepts,
+    parameter_names,
+    circuit_fitter,
+):
     """
     Convenience function to create analyzer and generate all plots
     """
-    analyzer = MCMCAnalysis(parameters, priors, likelihoods, step_accepts,
-                            swap_accepts, parameter_names, circuit_fitter)
+    analyzer = MCMCAnalysis(
+        parameters,
+        priors,
+        likelihoods,
+        step_accepts,
+        swap_accepts,
+        parameter_names,
+        circuit_fitter,
+    )
 
     # Get best parameters
     best_params = analyzer.get_best_parameters()
     print("\nBest Parameters Found:")
-    for param, value in best_params['parameters'].items():
+    for param, value in best_params["parameters"].items():
         print(f"{param}: {value:.3e}")
     print(f"Log Likelihood: {best_params['likelihood']:.3f}")
     print(f"Log Prior: {best_params['prior']:.3f}")
@@ -282,14 +315,14 @@ def analyze_mcmc_results(parameters, priors, likelihoods, step_accepts, swap_acc
     sim_figs, best_params_array = analyzer.plot_simulations(n_best=5)
 
     return {
-        'analyzer': analyzer,
-        'best_parameters': best_params,
-        'statistics': stats,
-        'figures': {
-            'traces': trace_fig,
-            'distributions': dist_fig,
+        "analyzer": analyzer,
+        "best_parameters": best_params,
+        "statistics": stats,
+        "figures": {
+            "traces": trace_fig,
+            "distributions": dist_fig,
             # 'acceptance_rates': accept_fig,
-            'simulations': sim_figs
+            "simulations": sim_figs,
         },
-        'best_parameters_array': best_params_array
+        "best_parameters_array": best_params_array,
     }

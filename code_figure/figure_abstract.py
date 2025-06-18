@@ -9,7 +9,7 @@ from likelihood_functions.circuit_utils import create_circuit_configs, setup_cal
 from likelihood_functions.hierarchical_likelihood.base_hierarchical import (
     HierarchicalCircuitFitter,
 )
-from likelihood_functions.hierarchical_likelihood.mcmc_analysis_hierarchical import (
+from analysis_and_figures.mcmc_analysis_hierarchical import (
     process_mcmc_data,
 )
 

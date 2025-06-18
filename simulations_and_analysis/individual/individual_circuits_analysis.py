@@ -6,13 +6,13 @@ import os
 import glob
 import pandas as pd
 import numpy as np
-from likelihood_functions.hierarchical_likelihood.hierarchical_pairplot_analysis import (
+from analysis_and_figures.hierarchical_pairplot_analysis import (
     create_hierarchical_histogram_grid,
 )
-from likelihood_functions.hierarchical_likelihood.hierarchical_pairplot_analysis import (
+from analysis_and_figures.hierarchical_pairplot_analysis import (
     create_circuit_prior_comparison_pairplot,
 )
-from likelihood_functions.hierarchical_likelihood.mcmc_analysis_hierarchical import (
+from analysis_and_figures.mcmc_analysis_hierarchical import (
     process_mcmc_data,
 )
 
@@ -47,7 +47,7 @@ def convert_individual_to_theta_format(
     fitted_parameter_names,
     target_circuit_names,
     burn_in_fraction=0.8,
-    post_burnin_samples_per_circuit=1000,
+    post_burnin_samples_per_circuit=3000,
 ):
     """Convert individual circuit DataFrames to hierarchical θ format with chain 0 + burn-in filtering"""
     theta_formatted_samples = []
@@ -84,7 +84,7 @@ def convert_individual_to_theta_format(
         circuit_theta_parameters["sample_id"] = range(len(circuit_theta_parameters))
         circuit_theta_parameters["type"] = "Circuit"
         circuit_theta_parameters["circuit"] = circuit_name
-        circuit_theta_parameters["color_group"] = f"Circuit - {circuit_name}"
+        circuit_theta_parameters["Circuit"] = circuit_name
 
         theta_formatted_samples.append(circuit_theta_parameters)
 
@@ -108,7 +108,7 @@ def generate_prior_mean_markers(prior_parameters_filepath, fitted_parameter_name
             prior_mean_markers[parameter_name] = [np.nan]
 
     prior_mean_markers.update(
-        {"type": ["Prior"], "circuit": ["Prior"], "color_group": ["Prior"]}
+        {"type": ["Prior"], "circuit": ["Prior"], "Circuit": ["Prior"]}
     )
 
     return pd.DataFrame(prior_mean_markers)
@@ -133,7 +133,7 @@ def generate_prior_mean_coordinates(prior_parameters_filepath, fitted_parameter_
             prior_mean_coordinates[parameter_name] = [np.nan]
 
     prior_mean_coordinates.update(
-        {"type": ["Prior"], "circuit": ["Prior"], "color_group": ["Prior"]}
+        {"type": ["Prior"], "circuit": ["Prior"], "Circuit": ["Prior"]}
     )
 
     return pd.DataFrame(prior_mean_coordinates)
@@ -178,7 +178,7 @@ def execute_individual_to_hierarchical_comparison(
     )
 
     print(f"Comparison dataset: {len(circuit_prior_comparison_dataset)} samples")
-    print(f"Data groups: {circuit_prior_comparison_dataset['color_group'].unique()}")
+    print(f"Data groups: {circuit_prior_comparison_dataset['Circuit'].unique()}")
 
     # Generate visualizations using NEW functi
 
@@ -191,6 +191,8 @@ def execute_individual_to_hierarchical_comparison(
         circuit_prior_comparison_dataset,
         fitted_parameter_names,
         output_visualization_directory,
+        diagonal_visualization_type="kde",
+        offdiagonal_visualization_type="kde",
     )
 
     return circuit_prior_comparison_dataset

@@ -7,10 +7,10 @@ from likelihood_functions.hierarchical_likelihood.base_hierarchical import (
 from datetime import datetime
 from circuits.circuit_generation.circuit_manager import CircuitManager
 from likelihood_functions.circuit_utils import create_circuit_configs, setup_calibration
-from likelihood_functions.hierarchical_likelihood.visualization import (
+from analysis_and_figures.visualization_hierarchical import (
     plot_hierarchical_results,
 )
-from likelihood_functions.hierarchical_likelihood.mcmc_analysis_hierarchical import (
+from analysis_and_figures.mcmc_analysis_hierarchical import (
     analyze_hierarchical_mcmc_results,
 )
 from simulations_and_analysis.hierarchical.hierarchical_model_diagnostics import (

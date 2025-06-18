@@ -524,6 +524,99 @@
           "aTrigger3"
         ]
       ]
+    },
+    "constitutive": {
+      "plasmids": [
+        {
+          "name": "gfp_plasmid",
+          "tx_control": null,
+          "tl_control": null,
+          "cds": [
+            [
+              true,
+              "GFP"
+            ]
+          ]
+        },
+        {
+          "name": "sense6_trigger3_plasmid",
+          "tx_control": null,
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "Sense6"
+            ],
+            [
+              false,
+              "Trigger3"
+            ]
+          ]
+        },
+        {
+          "name": "star6_plasmid",
+          "tx_control": null,
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "Star6"
+            ]
+          ]
+        }
+      ],
+      "default_parameters": {
+        "k_GFP_concentration": 1,
+        "k_Sense6_Trigger3_concentration": 0,
+        "k_Star6_concentration": 0
+      },
+      "bindings": []
+    },
+    "constitutive sfGFP": {
+      "plasmids": [
+        {
+          "name": "gfp_plasmid",
+          "tx_control": null,
+          "tl_control": null,
+          "cds": [
+            [
+              true,
+              "GFP"
+            ]
+          ]
+        },
+        {
+          "name": "sense6_trigger3_plasmid",
+          "tx_control": [
+            "Sense6",
+            "Star6"
+          ],
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "Trigger3"
+            ]
+          ]
+        },
+        {
+          "name": "star6_plasmid",
+          "tx_control": null,
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "Star6"
+            ]
+          ]
+        }
+      ],
+      "default_parameters": {
+        "k_GFP_concentration": 1,
+        "k_Sense6_Trigger3_concentration": 0,
+        "k_Star6_concentration": 0
+      },
+      "bindings": []
     }
   }
 }

@@ -63,7 +63,7 @@ def analyze_hierarchical_results(
     print("STEP 1: MCMC PROCESSING & DIAGNOSTICS")
     print("=" * 50)
 
-    from likelihood_functions.hierarchical_likelihood.mcmc_analysis_hierarchical import (
+    from analysis_and_figures.mcmc_analysis_hierarchical import (
         process_mcmc_data,
         calculate_mcmc_diagnostics_from_dataframe,
     )
@@ -108,7 +108,7 @@ def analyze_hierarchical_results(
     print("STEP 3: PARAMETER CORRELATIONS")
     print("=" * 50)
 
-    from likelihood_functions.hierarchical_likelihood.hierarchical_pairplot_analysis import (
+    from analysis_and_figures.hierarchical_pairplot_analysis import (
         prepare_hierarchical_pairplot_data_processed,
         create_hierarchical_pairplot,
         create_hierarchical_histogram_grid,
@@ -128,7 +128,7 @@ def analyze_hierarchical_results(
     print("STEP 4: POSTERIOR SIMULATIONS")
     print("=" * 50)
 
-    from likelihood_functions.hierarchical_likelihood.visualization import (
+    from analysis_and_figures.visualization_hierarchical import (
         simulate_hierarchical_posterior_theta_random,
         simulate_hierarchical_posterior_theta_best,
         plot_hierarchical_posterior_theta_only,

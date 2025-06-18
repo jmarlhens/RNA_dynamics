@@ -11,10 +11,23 @@ DATA_FILES = {
     "toehold_trigger": "../../data/data_parameter_estimation/toehold_trigger.csv",
     "cffl_type_1": "../../data/data_parameter_estimation/c1_ffl_and.csv",
     "star_antistar_1": "../../data/data_parameter_estimation/star_antistar.csv",
+    "constitutive sfGFP": "../../data/data_parameter_estimation/positive_control_sfGFP.csv",
 }
 
 # Circuit condition parameters
 CIRCUIT_CONDITIONS = {
+    "constitutive sfGFP": {
+        "sfGFP 3 nM": {
+            "k_sfGFP_concentration": 3,
+            "k_Sense6_Trigger3_concentration": 0,
+            "k_Star6_concentration": 0,
+        },
+        "sfGFP 3 nM + Se6Tr3 5 nM + St6 15 nM": {
+            "k_sfGFP_concentration": 3,
+            "k_Sense6_Trigger3_concentration": 5,
+            "k_Star6_concentration": 15,
+        },
+    },
     "trigger_antitrigger": {
         "To3 3 nM + Tr3 5 nM": {
             "k_Toehold3_GFP_concentration": 3,

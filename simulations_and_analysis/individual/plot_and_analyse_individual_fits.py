@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from likelihood_functions.config import CircuitConfig
 from likelihood_functions.base import CircuitFitter
-from likelihood_functions.utils import organize_results
-from likelihood_functions.visualization import plot_all_simulation_results
+from utils.process_experimental_data import organize_results
+from analysis_and_figures.visualization import plot_all_simulation_results
 from utils.import_and_visualise_data import load_and_process_csv
 from utils.GFP_calibration import fit_gfp_calibration, get_brightness_correction_factor
 from circuits.circuit_generation.circuit_manager import CircuitManager

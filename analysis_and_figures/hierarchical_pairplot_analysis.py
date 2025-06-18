@@ -26,9 +26,9 @@ def create_circuit_prior_comparison_pairplot(
 
     # Adaptive plot_kws based on visualization type
     if offdiagonal_visualization_type == "scatter":
-        offdiagonal_plot_parameters = {"alpha": 0.6, "s": 15, "edgecolor": "none"}
+        offdiagonal_plot_parameters = {"alpha": 0.8, "s": 12, "edgecolor": "none"}
     elif offdiagonal_visualization_type == "kde":
-        offdiagonal_plot_parameters = {"alpha": 0.6, "levels": 5}
+        offdiagonal_plot_parameters = {"alpha": 0.6, "levels": 5, "bw_adjust": 3.0}
     else:
         offdiagonal_plot_parameters = {"alpha": 0.6}
 
@@ -41,7 +41,7 @@ def create_circuit_prior_comparison_pairplot(
             "linewidth": 0.5,
         }
     elif diagonal_visualization_type == "kde":
-        diagonal_plot_parameters = {"alpha": 0.7, "linewidth": 2}
+        diagonal_plot_parameters = {"alpha": 0.7, "linewidth": 2, "bw_adjust": 3.0}
     else:
         diagonal_plot_parameters = {"alpha": 0.7}
 
@@ -50,7 +50,7 @@ def create_circuit_prior_comparison_pairplot(
     pairplot_figure = sns.pairplot(
         data=circuit_posterior_samples,
         vars=fitted_parameter_names,
-        hue="color_group",
+        hue="Circuit",
         diag_kind=diagonal_visualization_type,
         kind=offdiagonal_visualization_type,
         plot_kws=offdiagonal_plot_parameters,
@@ -171,7 +171,7 @@ def prepare_hierarchical_pairplot_data_processed(
 
     # Combine all data
     pairplot_df = pd.concat([global_df] + circuit_dfs, ignore_index=True)
-    pairplot_df["color_group"] = pairplot_df["type"] + " - " + pairplot_df["circuit"]
+    pairplot_df["Circuit"] = pairplot_df["type"] + " - " + pairplot_df["circuit"]
 
     print(
         f"Created pairplot data with {len(pairplot_df)} rows ({len(df_sample)} samples × {1 + len(circuit_names)} parameter sets)"
@@ -188,7 +188,7 @@ def create_hierarchical_pairplot(pairplot_df, param_names, output_folder):
     g = sns.pairplot(
         data=pairplot_df,
         vars=param_names,
-        hue="color_group",
+        hue="Circuit",
         diag_kind="kde",
         plot_kws={"alpha": 0.6, "s": 15, "edgecolor": "none"},
         # diag_kws={'alpha': 0.7, 'bins': 25, 'edgecolor': 'black', 'linewidth': 0.5}
@@ -226,15 +226,13 @@ def create_hierarchical_histogram_grid(
     # Separate data types
     circuit_posterior_data = pairplot_dataset[pairplot_dataset["type"] == "Circuit"]
     prior_mean_coordinates = pairplot_dataset[pairplot_dataset["type"] == "Prior"]
-    global_alpha_data = pairplot_dataset[
-        pairplot_dataset["type"] == "Global"
-    ]  # May be empty
+    global_alpha_data = pairplot_dataset[pairplot_dataset["type"] == "Global"]
 
     # Set up grid layout
-    n_cols = 5
+    n_cols = 4
     n_rows = int(np.ceil(len(parameter_names_list) / n_cols))
 
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 6 * n_rows))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 4 * n_rows))
 
     # Flatten axes array for easier indexing
     if n_rows == 1:
@@ -248,60 +246,76 @@ def create_hierarchical_histogram_grid(
         # Get all circuit data for this parameter to calculate shared bins
         all_circuit_parameter_values = circuit_posterior_data[parameter_name].dropna()
 
-        if len(all_circuit_parameter_values) > 0:
-            # Calculate shared bins
-            # shared_histogram_bins = np.histogram_bin_edges(
-            #     all_circuit_parameter_values, bins=25
-            # )
+        # Only show legend on first parameter
+        legend = False
+        if parameter_name == parameter_names_list[0]:
+            legend = True
 
-            # Plot histogram with hue for different circuits
-            # sns.histplot(
-            #     data=circuit_posterior_data,
-            #     x=parameter_name,
-            #     hue='color_group',
-            #     bins=shared_histogram_bins,
-            #     alpha=0.7,
-            #     edgecolor='black',
-            #     linewidth=0.5,
-            #     ax=subplot_axis
-            # )
+        if len(all_circuit_parameter_values) > 0:
+            # Plot KDE with hue for different circuits
             sns.kdeplot(
                 data=circuit_posterior_data,
                 x=parameter_name,
-                hue="color_group",
+                hue="Circuit",
                 fill=True,
                 common_norm=False,
                 alpha=0.3,
                 linewidth=1.5,
                 bw_adjust=3.0,
                 ax=subplot_axis,
+                legend=legend,
             )
 
-            # Add prior mean as vertical line
+            # Add prior mean as vertical line (only add label on second parameter)
             if len(prior_mean_coordinates) > 0:
                 prior_parameter_mean = prior_mean_coordinates[parameter_name].iloc[0]
                 if not np.isnan(prior_parameter_mean):
+                    line_label = (
+                        "Prior Mean"
+                        if parameter_name == parameter_names_list[1]
+                        else None
+                    )
                     subplot_axis.axvline(
                         prior_parameter_mean,
                         color="red",
                         linestyle="--",
                         linewidth=3,
-                        label="Prior Mean",
+                        label=line_label,
                         zorder=10,
                     )
 
-            # Add global alpha if exists
+            # Add global alpha if exists (only add label on second parameter)
             if len(global_alpha_data) > 0:
                 alpha_parameter_mean = global_alpha_data[parameter_name].iloc[0]
                 if not np.isnan(alpha_parameter_mean):
+                    line_label = (
+                        "Global α"
+                        if parameter_name == parameter_names_list[1]
+                        else None
+                    )
                     subplot_axis.axvline(
                         alpha_parameter_mean,
                         color="orange",
                         linestyle="-",
                         linewidth=3,
-                        label="Global α",
+                        label=line_label,
                         zorder=10,
                     )
+
+        if legend:
+            # Add legend for KDEs
+            plt.setp(
+                subplot_axis.get_legend().get_texts(), fontsize="8"
+            )  # for legend text
+
+        # Handle legend for second parameter (prior/alpha lines)
+        if parameter_name == parameter_names_list[1]:
+            # Remove KDE legend and show only vertical line legends
+            legend = subplot_axis.get_legend()
+            if legend:
+                legend.remove()
+            # The vertical lines with labels will automatically create a legend
+            subplot_axis.legend(loc="upper right", fontsize=8, framealpha=0.9)
 
         # Customize subplot
         subplot_axis.set_title(f"{parameter_name}", fontsize=12, fontweight="bold")
@@ -309,58 +323,19 @@ def create_hierarchical_histogram_grid(
         subplot_axis.set_ylabel("Frequency")
         subplot_axis.grid(True, alpha=0.3)
 
-        # Add legend only to first subplot with prior/alpha lines
-        if parameter_index == 0:
-            subplot_axis.legend(bbox_to_anchor=(1.05, 1), loc="upper left", fontsize=8)
-        else:
-            # Remove circuit legend from other subplots but keep prior/alpha legend
-            legend_handles = subplot_axis.get_legend_handles_labels()
-            if legend_handles[0]:  # If legend exists
-                circuit_legend = subplot_axis.get_legend()
-                if circuit_legend:
-                    circuit_legend.remove()
-
-                # Re-add only prior/alpha lines if they exist
-                legend_elements = []
-                if len(prior_mean_coordinates) > 0:
-                    legend_elements.append(
-                        plt.Line2D(
-                            [0],
-                            [0],
-                            color="red",
-                            linestyle="--",
-                            linewidth=3,
-                            label="Prior Mean",
-                        )
-                    )
-                if len(global_alpha_data) > 0:
-                    legend_elements.append(
-                        plt.Line2D(
-                            [0],
-                            [0],
-                            color="orange",
-                            linestyle="-",
-                            linewidth=3,
-                            label="Global α",
-                        )
-                    )
-                if legend_elements:
-                    subplot_axis.legend(handles=legend_elements, fontsize=8)
-
     # Hide empty subplots
     for subplot_index in range(len(parameter_names_list), len(axes)):
         axes[subplot_index].set_visible(False)
 
-    # Set main title
+    # Set main title with proper spacing
     fig.suptitle(
-        "Parameter Distributions: Circuits vs Priors\n"
-        + "Red dashed: Prior means, Distributions: Circuit posteriors",
-        fontsize=16,
-        y=0.98,
+        "Parameter Distributions: Circuits vs Priors",
+        fontsize=24,
+        y=0.98,  # Move title up slightly to avoid overlap
     )
 
     # Adjust layout
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.tight_layout(rect=[0, 0, 1, 0.98])  # Leave space for title
 
     # Save figure
     histogram_grid_filepath = os.path.join(
@@ -404,7 +379,7 @@ def convert_individual_to_theta_format(
         formatted_circuit_data.rename(columns=theta_columns, inplace=True)
         formatted_circuit_data["type"] = "Circuit"
         formatted_circuit_data["circuit"] = circuit_name
-        formatted_circuit_data["color_group"] = f"Circuit - {circuit_name}"
+        formatted_circuit_data["Circuit"] = f"Circuit - {circuit_name}"
 
         theta_formatted_data.append(formatted_circuit_data)
 
@@ -439,7 +414,7 @@ def estimate_global_alpha_means(
             },
             "type": "Global",
             "circuit": "Global",
-            "color_group": "Global - Alpha",
+            "Circuit": "Global - Alpha",
         }
     )
 
@@ -471,7 +446,7 @@ def add_prior_samples_to_comparison(
         {
             "type": ["Prior"] * n_prior_samples,
             "circuit": ["Prior"] * n_prior_samples,
-            "color_group": ["Prior"] * n_prior_samples,
+            "Circuit": ["Prior"] * n_prior_samples,
         }
     )
 

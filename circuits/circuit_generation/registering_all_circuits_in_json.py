@@ -291,6 +291,25 @@ def register_trigger_antitrigger(manager):
     )
 
 
+def register_constitutive_circuit(manager):
+    """Register Constitutive circuit with named plasmids"""
+    plasmids = [
+        ("gfp_plasmid", None, None, [(True, "GFP")]),
+        ("sense6_trigger3_plasmid", ("Sense6", "Star6"), None, [(False, "Trigger3")]),
+        ("star6_plasmid", None, None, [(False, "Star6")]),
+    ]
+
+    manager.add_circuit(
+        name="constitutive sfGFP",
+        plasmids=plasmids,
+        default_parameters={
+            "k_GFP_concentration": 1,
+            "k_Sense6_Trigger3_concentration": 0,
+            "k_Star6_concentration": 0,
+        },
+    )
+
+
 def main():
     """Initialize the database with all circuits"""
     # You can specify the parameters file path here
@@ -298,9 +317,10 @@ def main():
 
     # Create a circuit manager and register all circuits
     manager = CircuitManager(parameters_file=parameters_file)
-    register_star_antistar_1(manager)
+    # register_star_antistar_1(manager)
     # register_all_circuits(manager)
-    register_trigger_antitrigger(manager)
+    # register_trigger_antitrigger(manager)
+    register_constitutive_circuit(manager)
 
     # List all available circuits
     circuits = manager.list_circuits()

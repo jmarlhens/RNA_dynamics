@@ -3,10 +3,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from likelihood_functions.config import CircuitConfig
 from likelihood_functions.base import CircuitFitter
-from likelihood_functions.utils import organize_results
-from likelihood_functions.visualization import plot_all_simulation_results
+from utils.process_experimental_data import organize_results
+from analysis_and_figures.visualization import plot_all_simulation_results
 from likelihood_functions.base import MCMCAdapter
-from likelihood_functions.mcmc_analysis import analyze_mcmc_results
+from analysis_and_figures.mcmc_analysis import analyze_mcmc_results
 from utils.import_and_visualise_data import load_and_process_csv
 from utils.GFP_calibration import fit_gfp_calibration, get_brightness_correction_factor
 from circuits.circuit_generation.circuit_manager import CircuitManager
@@ -104,7 +104,7 @@ def fit_single_circuit(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     # Only replace invalid filename characters but preserve case
     safe_circuit_name = circuit_name.replace("/", "_")
-    filename = f"../data/fit_data/individual_circuits/results_prior_updated_{safe_circuit_name}_{timestamp}.csv"
+    filename = f"../../data/fit_data/individual_circuits/results_prior_updated_{safe_circuit_name}_{timestamp}.csv"
     df.to_csv(filename, index=False)
 
     # Plot and save best fit results
@@ -163,15 +163,8 @@ def main():
     priors = priors[priors["Parameter"] != "k_prot_deg"]
 
     # Fit each circuit individually
-    # You can specify which circuits to fit
-    # circuits_to_fit = ["star", "cascade", "cffl_type_1", "toehold"]
-    # circuits_to_fit = ["toehold_trigger", "cffl_type_1", "star_antistar_1"]
     circuits_to_fit = [
-        "cffl_type_1",
-        "sense_star_6",
-        "cascade",
-    ]
-    circuits_to_fit = [
+        "constitutive sfGFP",
         "toehold_trigger",
         "star_antistar_1",
         "trigger_antitrigger",
@@ -179,7 +172,6 @@ def main():
         "cascade",
         "cffl_type_1",
     ]
-    # circuits_to_fit = ["sense_star_6"]
 
     for circuit_name in circuits_to_fit:
         if circuit_name in available_circuits:

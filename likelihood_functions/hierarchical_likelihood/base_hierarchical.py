@@ -1,6 +1,6 @@
 import numpy as np
 from ..base import CircuitFitter
-from ..utils import prepare_combined_params
+from utils.process_experimental_data import prepare_combined_params
 from ..likelihood import calculate_likelihoods
 
 
@@ -631,7 +631,7 @@ class HierarchicalCircuitFitter(CircuitFitter):
         self, circuit_mcmc_dataframe, burn_in_fraction=0.5, target_chain_index=0
     ):
         """Apply burn-in and chain filtering to individual circuit MCMC results"""
-        from likelihood_functions.hierarchical_likelihood.mcmc_analysis_hierarchical import (
+        from analysis_and_figures.mcmc_analysis_hierarchical import (
             process_mcmc_data,
         )
 

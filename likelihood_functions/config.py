@@ -2,7 +2,10 @@ import pandas as pd
 import numpy as np
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
-from .utils import process_background_fluorescence, apply_time_constraints
+from utils.process_experimental_data import (
+    process_background_fluorescence,
+    apply_time_constraints,
+)
 from utils.GFP_calibration import convert_au_to_nm
 
 

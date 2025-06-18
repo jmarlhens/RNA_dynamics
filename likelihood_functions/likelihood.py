@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from typing import Any
-from .utils import prepare_experimental_data
+from utils.process_experimental_data import prepare_experimental_data
 
 
 def compute_condition_likelihood(
