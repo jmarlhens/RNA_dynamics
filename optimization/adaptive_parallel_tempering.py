@@ -125,7 +125,7 @@ class ParallelTempering(OptimizationAlgorithm):
         return parameters, priors, likelihoods, step_accepts, swap_accepts
 
     def step(self, params, prior, likelihood, index):
-        move = np.random.normal(loc=0, scale=self.variance)
+        move = np.random.normal(loc=0, scale=np.sqrt(self.variance))
         proposal = params + move
 
         proposal_likelihood = self.log_likelihood(proposal)
@@ -270,13 +270,17 @@ def sampling_test():
         # likelihood = np.ones(shape=params.shape[:-1])
         # likelihood = np.sum(np.exp(- np.power(params, 2) / 0.1), axis=-1)
         likelihood = beta.pdf(params, beta_a, beta_b)
+        # likelihood = 0
+        # for x in np.linspace(-0.5, 0.5, 4):
+        #     likelihood += np.abs(x) * np.exp(- np.power(params - x, 2) / 0.001)
+
         likelihood = np.sum(likelihood, axis=-1)
         return np.log(likelihood)
 
     init_params = np.array([0])
 
     n_walkers = 5
-    n_chains = 10
+    n_chains = 5
     n_samples = 10000
 
     pt = ParallelTempering(log_likelihood=log_likelihood, log_prior=log_prior, n_dim=len(init_params),
@@ -290,6 +294,8 @@ def sampling_test():
     params = np.exp(parameters[*best_index])
     posterior_samples = parameters[len(parameters) // 2:, :, 0]
     posterior_samples = posterior_samples.reshape(-1, posterior_samples.shape[-1])
+
+    R_hat = convergence_test(parameters[int(len(parameters) / 2):])
 
 
 
@@ -305,8 +311,7 @@ def sampling_test():
     step_accepts_sliding_window = np.transpose(sliding_window_view(step_accepts[:, :, :], 100, axis=0), axes=(0, 3, 1, 2))
     step_accepts_avg = np.mean(step_accepts_sliding_window, axis=1)
 
-    swap_accepts_sliding_window = np.transpose(sliding_window_view(swap_accepts, 100, axis=0),
-                                               axes=(0, 3, 1, 2))
+    swap_accepts_sliding_window = np.transpose(sliding_window_view(swap_accepts, 50, axis=0), axes=(0, 3, 1, 2))
     swap_accepts_avg = np.mean(swap_accepts_sliding_window, axis=1)
 
 
@@ -334,5 +339,6 @@ def sampling_test():
 
 
 if __name__ == '__main__':
-    sampling_test()
+    test_smile()
+    # sampling_test()
     pass

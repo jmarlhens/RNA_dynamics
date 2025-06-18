@@ -1,3 +1,6 @@
+import numpy as np
+from matplotlib import pyplot as plt
+
 from likelihood_functions.hierarchical_likelihood.mcmc_adaption import (
     HierarchicalMCMCAdapter,
 )
@@ -134,6 +137,35 @@ def fit_hierarchical_multiple_circuits(
     # print(f"Posterior comparison plot saved to: {save_path}")
     #
     # return results, comparison_results
+
+    from numpy.lib.stride_tricks import sliding_window_view
+    step_accepts_sliding_window = np.transpose(sliding_window_view(step_accepts[:, :, :], 100, axis=0),
+                                               axes=(0, 3, 1, 2))
+    step_accepts_avg = np.mean(step_accepts_sliding_window, axis=1)
+
+    swap_accepts_sliding_window = np.transpose(sliding_window_view(swap_accepts, 10, axis=0), axes=(0, 3, 1, 2))
+    swap_accepts_avg = np.mean(swap_accepts_sliding_window, axis=1)
+
+    for iWalker in range(n_walkers):
+        fig, axes = plt.subplots(ncols=2)
+
+        for iChain in range(step_accepts_avg.shape[-1]):
+            axes[0].plot(np.arange(2) * (len(step_accepts_avg) - 1),
+                         np.ones(2) * 0.4 + (n_chains - iChain - 1), "k--", alpha=0.5)
+            axes[0].plot(np.arange(len(step_accepts_avg)),
+                         step_accepts_avg[:, iWalker, iChain] + (n_chains - iChain - 1), label=iChain, alpha=1)
+
+        for iChain in range(swap_accepts_avg.shape[-1]):
+            axes[1].plot(np.arange(2) * (len(swap_accepts_avg) - 1), np.ones(2) * 0 + (n_chains - iChain - 1), "r--",
+                         alpha=0.5)
+            axes[1].plot(np.arange(len(swap_accepts_avg)),
+                         swap_accepts_avg[:, iWalker, iChain] + (n_chains - iChain - 1), label=iChain, alpha=1)
+
+        ylim = axes[0].get_ylim()
+        axes[1].set_ylim(ylim)
+        axes[0].legend()
+        axes[1].legend()
+        plt.show()
 
 
 if __name__ == "__main__":
