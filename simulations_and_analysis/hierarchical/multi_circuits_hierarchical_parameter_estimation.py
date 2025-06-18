@@ -16,11 +16,6 @@ from analysis_and_figures.visualization_hierarchical import (
 from analysis_and_figures.mcmc_analysis_hierarchical import (
     analyze_hierarchical_mcmc_results,
 )
-from simulations_and_analysis.hierarchical.hierarchical_model_diagnostics import (
-    analyze_individual_fits_main,
-    extract_best_circuit_parameters,
-    construct_hierarchical_parameters,
-)
 from simulations_and_analysis.individual.individual_circuits_analysis import (
     load_individual_circuit_results,
 )
@@ -58,15 +53,15 @@ def fit_hierarchical_multiple_circuits(
     adapter = HierarchicalMCMCAdapter(hierarchical_fitter)
     initial_parameters = adapter.get_initial_parameters()
 
-    # Get best results from individual fits
-    individual_results = analyze_individual_fits_main(parameters_to_fit, n_best=100)
-    best_circuit_params = extract_best_circuit_parameters(
-        individual_results["best_fits"], hierarchical_fitter.parameters_to_fit
-    )
-    individual_params, alpha, sigma = construct_hierarchical_parameters(
-        best_circuit_params, hierarchical_fitter
-    )
-    initial_parameters = individual_params
+    # # Get best results from individual fits
+    # individual_results = analyze_individual_fits_main(parameters_to_fit, n_best=100)
+    # best_circuit_params = extract_best_circuit_parameters(
+    #     individual_results["best_fits"], hierarchical_fitter.parameters_to_fit
+    # )
+    # individual_params, alpha, sigma = construct_hierarchical_parameters(
+    #     best_circuit_params, hierarchical_fitter
+    # )
+    # initial_parameters = individual_params
 
     # individual_params.shape
     # Out[2]: (350,)
@@ -217,7 +212,7 @@ if __name__ == "__main__":
         parameters_to_fit,
         priors,
         calibration_params,
-        n_samples=400,
+        n_samples=10,
         n_walkers=12,
         n_chains=8,
     )

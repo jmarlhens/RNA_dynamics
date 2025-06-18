@@ -15,7 +15,7 @@ from data.circuits.circuit_configs import get_circuit_conditions, get_data_file
 
 def setup_calibration():
     """Set up GFP calibration parameters"""
-    data = pd.read_csv("../utils/calibration_gfp/gfp_Calibration.csv")
+    data = pd.read_csv("../../utils/calibration_gfp/gfp_Calibration.csv")
     calibration_results = fit_gfp_calibration(
         data,
         concentration_col="GFP Concentration (nM)",
@@ -226,7 +226,7 @@ def plot_fits(results, save_dir=".", n_samples=400, max_time=None, min_time=None
 def main():
     """Main function to load and plot all results"""
     # Create output directory for plots
-    output_dir = "../../figures/analysis_plots"
+    output_dir = "../../figures/circuits_single_fits_sim"
     os.makedirs(output_dir, exist_ok=True)
 
     # Load all results

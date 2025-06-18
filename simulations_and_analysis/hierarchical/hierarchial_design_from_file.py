@@ -182,7 +182,7 @@ def main():
         "../../data/fit_data/hierarchical/hierarchical_results_20250608_110254.csv"
     )
     results_file = (
-        "../../data/fit_data/hierarchical/hierarchical_results_20250610_132320.csv"
+        "../../data/fit_data/hierarchical/hierarchical_results_20250618_132334.csv"
     )
     output_folder = None  # Will auto-generate based on timestamp
     burn_in = 0.5
@@ -195,7 +195,7 @@ def main():
             + "_"
             + results_file.split("_")[-1].replace(".csv", "")
         )
-        output_folder = f"../figures/hierarchical_results_{timestamp}"
+        output_folder = f"../../figures/hierarchical_results_{timestamp}"
 
     # Check if results file exists
     if not os.path.exists(results_file):

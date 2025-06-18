@@ -8,8 +8,8 @@ import pandas as pd
 import numpy as np
 from analysis_and_figures.hierarchical_pairplot_analysis import (
     create_hierarchical_histogram_grid,
-)
-from analysis_and_figures.hierarchical_pairplot_analysis import (
+    create_circuit_correlation_matrices,
+    create_circuit_correlation_summary,
     create_circuit_prior_comparison_pairplot,
 )
 from analysis_and_figures.mcmc_analysis_hierarchical import (
@@ -18,7 +18,7 @@ from analysis_and_figures.mcmc_analysis_hierarchical import (
 
 
 def load_individual_circuit_results(
-    individual_results_directory="../../data/fit_data/individual_circuits",
+    individual_results_directory="../../data/fit_data/individual_circuits/prior_updated",
 ):
     """Load individual circuit MCMC results from CSV files"""
     individual_circuit_fits = {}
@@ -115,27 +115,25 @@ def generate_prior_mean_markers(prior_parameters_filepath, fitted_parameter_name
 
 
 def generate_prior_mean_coordinates(prior_parameters_filepath, fitted_parameter_names):
-    """Generate single prior mean coordinates (no distributions)"""
+    """Return a single-row DataFrame that contains
+    • log10(μ) for each fitted parameter
+    • log10(σ) in columns named "<param>_log10stdv"
+    • bookkeeping columns: type / circuit / Circuit
+    """
     prior_parameter_specifications = pd.read_csv(prior_parameters_filepath)
+
     prior_mean_coordinates = {"sample_id": [0]}
 
-    for _, prior_specification_row in prior_parameter_specifications.iterrows():
-        if prior_specification_row["Parameter"] in fitted_parameter_names:
-            parameter_name = prior_specification_row["Parameter"]
-            log10_mean = np.log10(
-                prior_specification_row["Mean"]
-            )  # FIXED: Convert to log10
-            prior_mean_coordinates[parameter_name] = [log10_mean]
-
-    # Fill missing parameters with NaN
-    for parameter_name in fitted_parameter_names:
-        if parameter_name not in prior_mean_coordinates:
-            prior_mean_coordinates[parameter_name] = [np.nan]
+    for _, row in prior_parameter_specifications.iterrows():
+        p = row["Parameter"]
+        if p in fitted_parameter_names:
+            prior_mean_coordinates[p] = [np.log10(row["Mean"])]
+            # NEW — keep the 1 σ that’s already provided in log10 space
+            prior_mean_coordinates[f"{p}_log10stdev"] = [row["log10stddev"]]
 
     prior_mean_coordinates.update(
         {"type": ["Prior"], "circuit": ["Prior"], "Circuit": ["Prior"]}
     )
-
     return pd.DataFrame(prior_mean_coordinates)
 
 
@@ -162,9 +160,16 @@ def execute_individual_to_hierarchical_comparison(
 
     print(f"Target circuits for analysis: {target_circuit_names}")
 
+    # Filter to target circuits only
+    filtered_individual_fits = {
+        name: data
+        for name, data in individual_circuit_fits.items()
+        if name in target_circuit_names
+    }
+
     # Convert to θ format (circuit-specific parameters only)
     theta_formatted_data = convert_individual_to_theta_format(
-        individual_circuit_fits, fitted_parameter_names, target_circuit_names
+        filtered_individual_fits, fitted_parameter_names, target_circuit_names
     )
 
     # Generate prior mean coordinates (single points)
@@ -180,31 +185,66 @@ def execute_individual_to_hierarchical_comparison(
     print(f"Comparison dataset: {len(circuit_prior_comparison_dataset)} samples")
     print(f"Data groups: {circuit_prior_comparison_dataset['Circuit'].unique()}")
 
-    # Generate visualizations using NEW functi
+    # Generate visualizations
 
+    print("Creating histogram grid...")
+    # Ridgeline with labels padded & legend on second pane
     create_hierarchical_histogram_grid(
         circuit_prior_comparison_dataset,
         fitted_parameter_names,
-        output_visualization_directory,
+        output_visualization_directory + "/ridgeline_posterior_single_fits.png",
+        plot_kind="ridge",
+        ridge_offset=1.1,
+        ridge_label_pad=-0.0,  # more whitespace left of labels
     )
+
+    # KDE grid with truly shared y-limits and legend on pane #2
+    create_hierarchical_histogram_grid(
+        circuit_prior_comparison_dataset,
+        fitted_parameter_names,
+        output_visualization_directory + "/kde_grid.png",
+        plot_kind="kde",
+        share_y=True,  # global density scale
+        legend_on_idx=1,  # legend lives in second subplot
+    )
+
+    print("Creating pairplot...")
     create_circuit_prior_comparison_pairplot(
         circuit_prior_comparison_dataset,
         fitted_parameter_names,
-        output_visualization_directory,
+        output_visualization_directory + "/pairplot.png",
         diagonal_visualization_type="kde",
-        offdiagonal_visualization_type="kde",
+        offdiagonal_visualization_type="scatter",
     )
 
-    return circuit_prior_comparison_dataset
+    # NEW: Create correlation matrices for each circuit
+    print("Creating correlation matrices...")
+    correlation_matrices = create_circuit_correlation_matrices(
+        filtered_individual_fits, fitted_parameter_names, output_visualization_directory
+    )
+
+    # Create correlation summary comparison
+    print("Creating correlation summary...")
+    correlation_summary = create_circuit_correlation_summary(
+        correlation_matrices, output_visualization_directory
+    )
+
+    return {
+        "comparison_dataset": circuit_prior_comparison_dataset,
+        "correlation_matrices": correlation_matrices,
+        "correlation_summary": correlation_summary,
+    }
 
 
 def main():
     """Execute individual circuits hierarchical comparison analysis"""
-
+    subfolder = "/prior_updated"
     # Configuration
-    individual_results_directory = "../../data/fit_data/individual_circuits"
-    prior_parameters_filepath = "../../data/prior/model_parameters_priors.csv"
-    output_visualization_directory = "../../figures/individual_hierarchical_comparison"
+    individual_results_directory = "../../data/fit_data/individual_circuits" + subfolder
+    prior_parameters_filepath = "../../data/prior/model_parameters_priors_updated.csv"
+    output_visualization_directory = (
+        "../../figures/individual_hierarchical_comparison" + subfolder
+    )
 
     # Load parameter specifications
     prior_parameters = pd.read_csv(prior_parameters_filepath)
