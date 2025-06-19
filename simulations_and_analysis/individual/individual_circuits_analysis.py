@@ -238,7 +238,7 @@ def execute_individual_to_hierarchical_comparison(
 
 def main():
     """Execute individual circuits hierarchical comparison analysis"""
-    subfolder = "/prior_updated"
+    subfolder = "/model_updated"
     # Configuration
     individual_results_directory = "../../data/fit_data/individual_circuits" + subfolder
     prior_parameters_filepath = "../../data/prior/model_parameters_priors_updated.csv"

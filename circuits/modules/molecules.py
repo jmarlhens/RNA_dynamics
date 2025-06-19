@@ -28,21 +28,25 @@ class RNA(MyMonomer):
     def __init__(self, sequence_name: str, model: Model):
         name = RNA.sequence_name_to_name(sequence_name)
         # Separate binding sites for sense (STAR regulation) and toehold (Toehold regulation)
-        super().__init__(name=name, sites=["b", "sense", "toehold", "state"],
-                         site_states={
-                             "state": {"full", "partial", "init"},
-                         })
+        super().__init__(
+            name=name,
+            sites=["b", "sense", "toehold", "state"],
+            site_states={
+                "state": {"full", "partial", "init"},
+            },
+        )
 
         self.sequence_name = sequence_name
 
-        k_rna_deg = model.parameters["k_rna_deg"]
-
-        # Add degradation rule for the RNA
-        rule_name_degradation = f'RNA_degradation_{self.name}'
-        degradation_rule = Rule(rule_name_degradation, self() >> None, k_rna_deg)
-
-        # Add the degradation rule to the model
-        model.add_component(degradation_rule)
+        # Add degradation later
+        # k_rna_deg = model.parameters["k_rna_deg"]
+        #
+        # # Add degradation rule for the RNA
+        # rule_name_degradation = f'RNA_degradation_{self.name}'
+        # degradation_rule = Rule(rule_name_degradation, self() >> None, k_rna_deg)
+        #
+        # # Add the degradation rule to the model
+        # model.add_component(degradation_rule)
 
 
 class Protein(MyMonomer):
@@ -50,19 +54,24 @@ class Protein(MyMonomer):
 
     def __init__(self, sequence_name: str, model: Model):
         name = Protein.sequence_name_to_name(sequence_name)
-        super().__init__(name=name, sites=["state"],
-                         site_states={"state": {"mature", "immature"}})
+        super().__init__(
+            name=name, sites=["state"], site_states={"state": {"mature", "immature"}}
+        )
 
         self.sequence_name = sequence_name
 
         self.k_mat = model.parameters["k_mat"]
         self.k_prot_deg = model.parameters["k_prot_deg"]
 
-        rule_name_maturation = f'maturation_{self.name}'
-        rule_name_degradation = f'Protein_degradation_{self.name}'
+        rule_name_maturation = f"maturation_{self.name}"
+        rule_name_degradation = f"Protein_degradation_{self.name}"
 
         # Define maturation and degradation rules for the protein
-        maturation_rule = Rule(rule_name_maturation, self(state="immature") >> self(state="mature"), self.k_mat)
+        maturation_rule = Rule(
+            rule_name_maturation,
+            self(state="immature") >> self(state="mature"),
+            self.k_mat,
+        )
         degradation_rule = Rule(rule_name_degradation, self() >> None, self.k_prot_deg)
 
         # Add rules to the model

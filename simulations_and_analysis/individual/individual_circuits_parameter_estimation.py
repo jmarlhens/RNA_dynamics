@@ -43,7 +43,7 @@ def fit_single_circuit(
     priors,
     min_time=30,
     max_time=210,
-    n_samples=1000,
+    n_samples=100,
     n_walkers=12,
     n_chains=8,
 ):
