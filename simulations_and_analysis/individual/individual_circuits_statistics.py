@@ -8,9 +8,11 @@ import pandas as pd
 import numpy as np
 from analysis_and_figures.hierarchical_pairplot_analysis import (
     create_hierarchical_histogram_grid,
-    create_circuit_correlation_matrices,
-    create_circuit_correlation_summary,
     create_circuit_prior_comparison_pairplot,
+)
+from analysis_and_figures.correlation_plots import (
+    create_circuit_correlation_summary,
+    create_circuit_correlation_matrices,
 )
 from analysis_and_figures.mcmc_analysis_hierarchical import (
     process_mcmc_data,
@@ -245,6 +247,7 @@ def execute_individual_to_hierarchical_comparison(
 def main():
     """Execute individual circuits hierarchical comparison analysis"""
     subfolder = "/rnase_competition"
+    subfolder = "/10000_steps_updated"
     # Configuration
     individual_results_directory = "../../data/fit_data/individual_circuits" + subfolder
     prior_parameters_filepath = "../../data/prior/model_parameters_priors_updated.csv"

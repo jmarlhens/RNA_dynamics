@@ -3,7 +3,7 @@ from likelihood_functions.hierarchical_likelihood.base_hierarchical import (
 )
 from circuits.circuit_generation.circuit_manager import CircuitManager
 from likelihood_functions.circuit_utils import create_circuit_configs, setup_calibration
-from simulations_and_analysis.individual.individual_circuits_analysis import (
+from simulations_and_analysis.individual.individual_circuits_statistics import (
     load_individual_circuit_results,
 )
 from likelihood_functions.hierarchical_likelihood.mcmc_adaption import (

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from likelihood_functions.config import CircuitConfig
 from likelihood_functions.base import CircuitFitter
 from utils.process_experimental_data import organize_results
-from analysis_and_figures.simulation import plot_all_simulation_results
+from analysis_and_figures.plots_simulation import plot_all_simulation_results
 from likelihood_functions.base import MCMCAdapter
 from analysis_and_figures.mcmc_analysis import analyze_mcmc_results
 from utils.import_and_visualise_data import load_and_process_csv

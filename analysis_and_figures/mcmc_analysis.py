@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
-from analysis_and_figures.simulation import plot_simulation_results
+from analysis_and_figures.plots_simulation import plot_simulation_results
 from utils.process_experimental_data import organize_results
 
 

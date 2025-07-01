@@ -15,7 +15,7 @@ from analysis_and_figures.visualization_hierarchical import (
 from analysis_and_figures.mcmc_analysis_hierarchical import (
     analyze_hierarchical_mcmc_results,
 )
-from simulations_and_analysis.individual.individual_circuits_analysis import (
+from simulations_and_analysis.individual.individual_circuits_statistics import (
     load_individual_circuit_results,
 )
 
