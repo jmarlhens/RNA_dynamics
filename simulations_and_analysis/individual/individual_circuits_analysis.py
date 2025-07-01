@@ -46,8 +46,8 @@ def convert_individual_to_theta_format(
     individual_circuit_mcmc_results,
     fitted_parameter_names,
     target_circuit_names,
-    burn_in_fraction=0.8,
-    post_burnin_samples_per_circuit=3000,
+    burn_in_fraction=0.5,
+    post_burnin_samples_per_circuit=30000,
 ):
     """Convert individual circuit DataFrames to hierarchical θ format with chain 0 + burn-in filtering"""
     theta_formatted_samples = []
@@ -87,6 +87,12 @@ def convert_individual_to_theta_format(
         circuit_theta_parameters["Circuit"] = circuit_name
 
         theta_formatted_samples.append(circuit_theta_parameters)
+
+    # remove some parameters: k_rna_km and k_rna_deg
+    theta_formatted_samples = [
+        df.drop(columns=["k_rna_km", "k_rna_deg"], errors="ignore")
+        for df in theta_formatted_samples
+    ]
 
     return pd.concat(theta_formatted_samples, ignore_index=True)
 
@@ -238,7 +244,7 @@ def execute_individual_to_hierarchical_comparison(
 
 def main():
     """Execute individual circuits hierarchical comparison analysis"""
-    subfolder = "/model_updated"
+    subfolder = "/rnase_competition"
     # Configuration
     individual_results_directory = "../../data/fit_data/individual_circuits" + subfolder
     prior_parameters_filepath = "../../data/prior/model_parameters_priors_updated.csv"
@@ -251,6 +257,11 @@ def main():
     fitted_parameter_names = prior_parameters[
         prior_parameters["Parameter"] != "k_prot_deg"
     ]["Parameter"].tolist()
+
+    # also remove rna deg and rna km
+    fitted_parameter_names = [
+        p for p in fitted_parameter_names if p not in ["k_rna_deg", "k_rna_km"]
+    ]
 
     print(f"Fitted parameters: {fitted_parameter_names}")
 

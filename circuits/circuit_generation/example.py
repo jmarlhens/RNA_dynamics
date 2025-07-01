@@ -224,5 +224,68 @@ def compare_parameters_with_both_kinetics_toehold():
     return result_mm
 
 
+def simulate_constitutive_gfp():
+    # Create circuit manager and visualizer
+    manager = CircuitManager(
+        parameters_file="../../data/prior/model_parameters_priors_updated.csv"
+    )
+    visualizer = CircuitVisualizer()
+
+    const_circuit = manager.create_circuit(
+        "constitutive sfGFP", kinetics_type=KineticsType.MICHAELIS_MENTEN
+    )
+
+    # Example: create and simulate a GFP circuit with Michaelis-Menten kinetics (default)
+    result_mm, t_span = const_circuit.simulate(print_rules=True)
+
+    # plot the results
+    visualizer.plot_simulation_results(
+        result_mm, f"{const_circuit.name} (Michaelis-Menten)", t_span
+    )
+
+    # change parameter
+    # Define parameter values to compare
+    param_values = {"k_Star6_concentration": [0, 1, 2, 5, 10, 20, 50]}
+
+    # Run simulations with different Star6 concentrations
+    result_mm, _ = const_circuit.simulate(t_span=t_span, param_values=param_values)
+    # Plot parameter comparisons
+    visualizer.plot_parameter_comparison(
+        result_mm,
+        t_span,
+        "obs_Protein_GFP",
+        param_values,
+        "k_Star6_concentration",
+        rna_observable_name="obs_total_RNA_Star6",
+        title="Effect of Star6 Concentration (Michaelis-Menten)",
+        ylabel="GFP Concentration",
+    )
+    visualizer.plot_parameter_comparison(
+        result_mm,
+        t_span,
+        "obs_Protein_GFP",
+        param_values,
+        "k_Star6_concentration",
+        rna_observable_name="obs_total_RNA_GFP",
+        title="Effect of Star6 Concentration (Michaelis-Menten)",
+        ylabel="GFP Concentration",
+    )
+
+    # def plot_parameter_comparison(
+    #         self,
+    #         result,
+    #         t_span,
+    #         observable,
+    #         param_values,
+    #         param_name,
+    #         rna_observable_name=None,
+    #         title=None,
+    #         xlabel="Time",
+    #         ylabel=None,
+    # ):
+
+    return result_mm
+
+
 if __name__ == "__main__":
-    main()
+    simulate_constitutive_gfp()

@@ -205,6 +205,7 @@ class CircuitVisualizer:
         observable,
         param_values,
         param_name,
+        rna_observable_name=None,
         title=None,
         xlabel="Time",
         ylabel=None,
@@ -222,6 +223,8 @@ class CircuitVisualizer:
             Name of the observable to plot
         param_values : dict or list
             Values of the parameter being varied
+        rna_observable_name : str, optional
+            Name of the RNA observable to plot (if applicable)
         param_name : str
             Name of the parameter being varied
         title : str, optional
@@ -236,7 +239,14 @@ class CircuitVisualizer:
         fig : matplotlib Figure
             The generated figure
         """
-        fig, ax = plt.subplots(figsize=(8, 6))
+        # Create a new figure
+        # Create subplots conditionally
+        if rna_observable_name:
+            fig, (ax_protein, ax_rna) = plt.subplots(
+                2, 1, figsize=(8, 10), gridspec_kw={"height_ratios": [2, 2]}
+            )
+        else:
+            fig, ax_protein = plt.subplots(figsize=(8, 6))
 
         # Extract parameter values to display in legend
         if isinstance(param_values, dict):
@@ -258,23 +268,23 @@ class CircuitVisualizer:
                 if i < n_sims:  # Ensure we don't go out of bounds
                     sim_data = result.observables[i][observable]
                     color = cmap(norm(value))
-                    ax.plot(
+                    ax_protein.plot(
                         t_span, sim_data, color=color, label=f"{param_name}={value}"
                     )
         else:
             # Single simulation case - just plot it
-            ax.plot(
+            ax_rna.plot(
                 t_span,
                 result.observables[observable],
                 label=CircuitVisualizer._get_display_name(observable),
             )
 
         # Set labels and title
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(
+        ax_protein.set_xlabel(xlabel)
+        ax_protein.set_ylabel(
             ylabel if ylabel else CircuitVisualizer._get_display_name(observable)
         )
-        ax.set_title(
+        ax_protein.set_title(
             title
             if title
             else f"Effect of {param_name} on {CircuitVisualizer._get_display_name(observable)}"
@@ -284,12 +294,52 @@ class CircuitVisualizer:
         if len(values) > 10:
             sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
             sm.set_array([])
-            cbar = plt.colorbar(sm, ax=ax)
+            cbar = plt.colorbar(sm, ax=ax_protein)
             cbar.set_label(param_name)
         else:
-            ax.legend()
+            ax_protein.legend()
 
-        ax.grid(True)
+        ax_protein.grid(True)
+
+        # After protein plotting section, add RNA plotting:
+        if rna_observable_name:
+            # Validate RNA observable exists
+            if isinstance(result.observables, list):
+                available_obs = result.observables[0].dtype.names
+            else:
+                available_obs = result.observables.dtype.names
+
+            if rna_observable_name not in available_obs:
+                print(f"Warning: {rna_observable_name} not found in observables")
+                print(
+                    f"Available RNA observables: {[obs for obs in available_obs if 'RNA' in obs]}"
+                )
+            else:
+                # Plot RNA with same logic as proteins
+                if isinstance(result.observables, list):
+                    for i, value in enumerate(values):
+                        if i < len(result.observables):
+                            rna_data = result.observables[i][rna_observable_name]
+                            color = cmap(norm(value))
+                            ax_rna.plot(
+                                t_span,
+                                rna_data,
+                                color=color,
+                                label=f"{param_name}={value}",
+                            )
+                else:
+                    ax_rna.plot(
+                        t_span,
+                        result.observables[rna_observable_name],
+                        label=rna_observable_name,
+                    )
+
+                ax_rna.set_xlabel(xlabel)
+                ax_rna.set_ylabel("RNA Concentration")
+                ax_rna.set_title(f"RNA: {rna_observable_name}")
+                ax_rna.legend()
+                ax_rna.grid(True)
+
         plt.tight_layout()
         plt.show()
 

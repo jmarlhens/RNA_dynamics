@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from likelihood_functions.config import CircuitConfig
 from likelihood_functions.base import CircuitFitter
 from utils.process_experimental_data import organize_results
-from analysis_and_figures.visualization import plot_all_simulation_results
+from analysis_and_figures.simulation import plot_all_simulation_results
 from likelihood_functions.base import MCMCAdapter
 from analysis_and_figures.mcmc_analysis import analyze_mcmc_results
 from utils.import_and_visualise_data import load_and_process_csv
@@ -43,7 +43,7 @@ def fit_single_circuit(
     priors,
     min_time=30,
     max_time=210,
-    n_samples=100,
+    n_samples=10000,
     n_walkers=12,
     n_chains=8,
 ):
@@ -59,7 +59,7 @@ def fit_single_circuit(
 
     # Create circuit configuration with single model
     circuit_config = CircuitConfig(
-        model=circuit.model,  # Now passing a single PySB model
+        model=circuit.model,
         name=circuit_name,
         condition_params=condition_params,
         experimental_data=experimental_data,

@@ -1,4 +1,4 @@
-from pysb import Model, Parameter, Observable, Rule, Expression
+from pysb import Model, Parameter, Observable, Rule
 from circuits.modules.star import STAR
 from circuits.modules.base_modules import (
     TranscriptionFactory,
@@ -272,7 +272,7 @@ def generate_observables(model):
     """
     for monomer in model.monomers:
         if "RNA" in monomer.name:
-            desired_state = "full"
+            # desired_state = "full"
             obs_name = "obs_" + monomer.name
             # Observable(obs_name, monomer(state=desired_state))
             # to solve
@@ -283,14 +283,11 @@ def generate_observables(model):
 
 
 def setup_rna_mm_degradation(model: Model):
-    """Create shared Michaelis-Menten degradation for all RNA species"""
-
     rna_monomers = [m for m in model.monomers if m.name.startswith("RNA_")]
 
-    if not rna_monomers:
-        return
+    # # Debug: print what RNAs exist
+    # print(f"Found RNA monomers: {[m.name for m in rna_monomers]}")
 
-    # Build the sum of all RNA concentrations using actual observables
     rna_observables = []
     for rna in rna_monomers:
         obs_name = f"obs_total_{rna.name}"
@@ -298,20 +295,35 @@ def setup_rna_mm_degradation(model: Model):
             Observable(obs_name, rna())
         rna_observables.append(model.observables[obs_name])
 
-    # Create the denominator sum
-    rna_total_concentration = sum(rna_observables)
+    # rna_total_concentration = sum(rna_observables)
 
-    # Create MM rate expression: k_rna_deg / (k_rna_km + sum(RNAs))
-    mm_degradation_rate = model.parameters["k_rna_deg"] / (
-        model.parameters["k_rna_km"] + rna_total_concentration
-    )
+    # Debug: check the sum construction
+    # print(f"Individual observables: {rna_observables}")
+    # print(f"Sum result: {rna_total_concentration}")
+    # print(f"Sum type: {type(rna_total_concentration)}")
 
-    Expression("rna_mm_degradation_rate", mm_degradation_rate)
+    # # Create the denominator sum
+    # rna_total_concentration = sum(rna_observables)
+    #
+    # # Create MM rate expression: k_rna_deg / (k_rna_km + sum(RNAs))
+    # mm_degradation_rate = model.parameters["k_rna_deg"] / (
+    #     model.parameters["k_rna_km"] + rna_total_concentration
+    # )
+    #
+    # #
+    # Expression("rna_mm_degradation_rate", mm_degradation_rate)
 
     # Create degradation rules using the shared expression
     for rna in rna_monomers:
-        rule_name = f"RNA_MM_degradation_{rna.name}"
-        degradation_rule = Rule(
-            rule_name, rna() >> None, model.expressions["rna_mm_degradation_rate"]
+        # rule_name = f"RNA_MM_degradation_{rna.name}"
+        # degradation_rule = Rule(
+        #     rule_name, rna() >> None, model.expressions["rna_mm_degradation_rate"]
+        # )
+        # model.add_component(degradation_rule)
+
+        # add also a constant degradation rule
+        constant_rule_name = f"RNA_constant_degradation_{rna.name}"
+        constant_degradation_rule = Rule(
+            constant_rule_name, rna() >> None, model.parameters["k_rna_deg"]
         )
-        model.add_component(degradation_rule)
+        model.add_component(constant_degradation_rule)

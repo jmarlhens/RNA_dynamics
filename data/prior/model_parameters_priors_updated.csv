@@ -1,8 +1,9 @@
 Parameter,Mean,log10stddev
 k_tx,90.0,1
 K_tx,15.0,1
-k_rna_deg,0.00078,1
-k_rna_km,0.01,4
+k_rna_deg_cst,0.00078,4
+k_rna_deg,0.00078,4
+k_rna_km,100.0,4
 k_tl,16.1,2
 K_tl,65.8,2
 k_prot_deg,0.0,1

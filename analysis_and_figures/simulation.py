@@ -246,3 +246,220 @@ def plot_all_simulation_results(
         plt.savefig(save_path, bbox_inches="tight", dpi=300)
 
     return fig
+
+
+def plot_simulation_statistical_summaries(
+    simulation_data_dict,
+    likelihood_results_dataframe,
+    save_path=None,
+    max_time_cutoff=None,
+    min_time_cutoff=None,
+    summary_type="median_iqr",  # 'median_iqr' or 'mean_std'
+    ribbon_alpha=0.25,
+):
+    """
+    Plot statistical summaries of simulation trajectories instead of individual traces
+
+    Parameters
+    ----------
+    simulation_data_dict : dict
+        Dictionary mapping circuit indices to simulation data
+    likelihood_results_dataframe : pd.DataFrame
+        Results dataframe with likelihood information
+    save_path : str, optional
+        Path to save the figure
+    max_time_cutoff : float, optional
+        Maximum time to display
+    min_time_cutoff : float, optional
+        Minimum time to display
+    summary_type : str
+        'median_iqr' for median with 25th-75th percentiles
+        'mean_std' for mean with standard deviation
+    ribbon_alpha : float
+        Transparency of error ribbons (0-1)
+    """
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    import numpy as np
+
+    # Determine grid layout
+    n_circuits = len(simulation_data_dict)
+    n_cols = min(3, n_circuits)
+    n_rows = (n_circuits + n_cols - 1) // n_cols
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 4 * n_rows))
+    if n_circuits == 1:
+        axes = [axes]
+    elif n_rows == 1:
+        axes = axes
+    else:
+        axes = axes.flatten()
+
+    # Extract and reshape all trajectory data
+    trajectory_data_list = []
+
+    for circuit_idx, circuit_data in simulation_data_dict.items():
+        circuit_config = circuit_data["config"]
+        combined_parameters = circuit_data["combined_params"]
+        simulation_results = circuit_data["simulation_results"]
+        time_points = circuit_config.tspan
+
+        # Apply time filtering
+        if min_time_cutoff is not None:
+            time_mask = time_points >= min_time_cutoff
+            time_points = time_points[time_mask]
+        if max_time_cutoff is not None:
+            time_mask = time_points <= max_time_cutoff
+            time_points = time_points[time_mask]
+
+        # Extract trajectories for each condition
+        for condition_name in circuit_config.condition_params.keys():
+            condition_mask = combined_parameters["condition"] == condition_name
+            condition_indices = combined_parameters.index[condition_mask]
+
+            for idx in condition_indices:
+                trajectory = simulation_results.observables[idx]["obs_Protein_GFP"]
+
+                # Apply time filtering to trajectory
+                if min_time_cutoff is not None or max_time_cutoff is not None:
+                    original_time = circuit_config.tspan
+                    if min_time_cutoff is not None:
+                        start_idx = np.where(original_time >= min_time_cutoff)[0][0]
+                    else:
+                        start_idx = 0
+                    if max_time_cutoff is not None:
+                        end_idx = np.where(original_time <= max_time_cutoff)[0][-1] + 1
+                    else:
+                        end_idx = len(trajectory)
+                    trajectory = trajectory[start_idx:end_idx]
+
+                # Create trajectory dataframe
+                trajectory_df = pd.DataFrame(
+                    {
+                        "time": time_points,
+                        "protein_concentration": trajectory,
+                        "circuit": circuit_config.name,
+                        "condition": condition_name,
+                        "circuit_idx": circuit_idx,
+                        "simulation_idx": idx,
+                    }
+                )
+                trajectory_data_list.append(trajectory_df)
+
+    # Combine all trajectory data
+    all_trajectories_df = pd.concat(trajectory_data_list, ignore_index=True)
+
+    # Calculate statistical summaries
+    if summary_type == "median_iqr":
+        summary_stats = (
+            all_trajectories_df.groupby(["circuit", "condition", "time"])[
+                "protein_concentration"
+            ]
+            .agg(
+                [
+                    ("median", "median"),
+                    ("q25", lambda x: np.percentile(x, 25)),
+                    ("q75", lambda x: np.percentile(x, 75)),
+                ]
+            )
+            .reset_index()
+        )
+        summary_stats["lower"] = summary_stats["q25"]
+        summary_stats["upper"] = summary_stats["q75"]
+        summary_stats["central"] = summary_stats["median"]
+
+    elif summary_type == "mean_std":
+        summary_stats = (
+            all_trajectories_df.groupby(["circuit", "condition", "time"])[
+                "protein_concentration"
+            ]
+            .agg([("mean", "mean"), ("std", "std")])
+            .reset_index()
+        )
+        summary_stats["lower"] = summary_stats["mean"] - summary_stats["std"]
+        summary_stats["upper"] = summary_stats["mean"] + summary_stats["std"]
+        summary_stats["central"] = summary_stats["mean"]
+
+    else:
+        raise ValueError(
+            f"Unknown summary_type: {summary_type}. Use 'median_iqr' or 'mean_std'"
+        )
+
+    # Plot each circuit
+    for circuit_idx, circuit_data in simulation_data_dict.items():
+        ax = axes[circuit_idx]
+        circuit_config = circuit_data["config"]
+        circuit_name = circuit_config.name
+
+        # Filter summary data for this circuit
+        circuit_summary = summary_stats[summary_stats["circuit"] == circuit_name]
+
+        # Get condition colors
+        condition_names = list(circuit_config.condition_params.keys())
+        colors = plt.cm.Set1(np.linspace(0, 1, len(condition_names)))
+
+        # Plot each condition
+        for condition_idx, condition_name in enumerate(condition_names):
+            condition_data = circuit_summary[
+                circuit_summary["condition"] == condition_name
+            ]
+            color = colors[condition_idx]
+
+            # Plot central line
+            ax.plot(
+                condition_data["time"],
+                condition_data["central"],
+                color=color,
+                linewidth=2,
+                label=condition_name,
+            )
+
+            # Plot ribbon
+            ax.fill_between(
+                condition_data["time"],
+                condition_data["lower"],
+                condition_data["upper"],
+                alpha=ribbon_alpha,
+                color=color,
+            )
+
+            # Add experimental data if available
+            experimental_data = circuit_config.experimental_data
+            condition_exp_data = experimental_data[
+                experimental_data["condition"] == condition_name
+            ]
+
+            if len(condition_exp_data) > 0:
+                ax.scatter(
+                    condition_exp_data["time"],
+                    condition_exp_data["fluorescence"],
+                    color=color,
+                    alpha=0.7,
+                    s=15,
+                    marker="o",
+                    edgecolors="black",
+                    linewidth=0.5,
+                )
+
+        # Format subplot
+        ax.set_xlabel("Time (min)")
+        ax.set_ylabel("Protein Concentration (nM)")
+        ax.set_title(f"{circuit_name}")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+    # Hide unused subplots
+    for idx in range(n_circuits, len(axes)):
+        axes[idx].set_visible(False)
+
+    # Add overall title with summary type
+    summary_label = "Median ± IQR" if summary_type == "median_iqr" else "Mean ± Std"
+    fig.suptitle(f"Circuit Simulation Summaries ({summary_label})", fontsize=16, y=0.98)
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+        print(f"Statistical summary plot saved: {save_path}")
+
+    plt.show()

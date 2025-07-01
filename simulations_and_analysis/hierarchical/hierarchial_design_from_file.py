@@ -9,8 +9,10 @@ from likelihood_functions.hierarchical_likelihood.base_hierarchical import (
 
 def setup_hierarchical_model(circuits_to_fit):
     """Setup the hierarchical model components"""
+    model_parameters_priors_file = "../../data/prior/model_parameters_priors.csv"
+
     circuit_manager = CircuitManager(
-        parameters_file="../../data/prior/model_parameters_priors.csv",
+        parameters_file=model_parameters_priors_file,
         json_file="../../data/circuits/circuits.json",
     )
 
@@ -21,7 +23,7 @@ def setup_hierarchical_model(circuits_to_fit):
         circuit_manager, circuits_to_fit, min_time=30, max_time=210
     )
 
-    priors = pd.read_csv("../../data/prior/model_parameters_priors.csv")
+    priors = pd.read_csv(model_parameters_priors_file)
     priors = priors[priors["Parameter"] != "k_prot_deg"]
     parameters_to_fit = priors.Parameter.tolist()
 
@@ -182,7 +184,7 @@ def main():
         "../../data/fit_data/hierarchical/hierarchical_results_20250608_110254.csv"
     )
     results_file = (
-        "../../data/fit_data/hierarchical/hierarchical_results_20250618_132334.csv"
+        "../../data/fit_data/hierarchical/hierarchical_results_20250628_234739.csv"
     )
     output_folder = None  # Will auto-generate based on timestamp
     burn_in = 0.5

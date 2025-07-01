@@ -1,6 +1,5 @@
-import numpy as np
-from matplotlib import pyplot as plt
-
+# import numpy as np
+# from matplotlib import pyplot as plt
 from likelihood_functions.hierarchical_likelihood.mcmc_adaption import (
     HierarchicalMCMCAdapter,
 )
@@ -22,7 +21,7 @@ from simulations_and_analysis.individual.individual_circuits_analysis import (
 
 
 def fit_hierarchical_multiple_circuits(
-    circuit_configs,
+    circuit_configurations,
     parameters_to_fit,
     priors,
     calibration_params,
@@ -41,11 +40,11 @@ def fit_hierarchical_multiple_circuits(
     print("Setting up hierarchical model...")
     # Create hierarchical circuit fitter
     hierarchical_fitter = HierarchicalCircuitFitter(
-        circuit_configs,
+        circuit_configurations,
         parameters_to_fit,
         priors,
         calibration_params,
-        individual_circuit_posterior_results=individual_circuit_posterior_results,
+        # individual_circuit_posterior_results=individual_circuit_posterior_results,
     )
 
     print("Generating initial parameters...")
@@ -102,65 +101,6 @@ def fit_hierarchical_multiple_circuits(
 
     # REPLACE THE OLD COMPARISON SECTION WITH THIS:
     print("Generating posterior comparison simulations...")
-    # from likelihood_functions.hierarchical_likelihood.visualization import (
-    #     simulate_hierarchical_comparison_posterior_sampling,
-    #     plot_hierarchical_posterior_comparison,
-    # )
-    #
-    # # Sample from posterior and create comparison
-    # comparison_results = simulate_hierarchical_comparison_posterior_sampling(
-    #     hierarchical_fitter,
-    #     results,
-    #     n_samples=100,  # Number of posterior samples to use
-    #     burn_in=0.3  # Remove first 30% as burn-in
-    # )
-    #
-    # # Create the posterior comparison plot
-    # print("Creating posterior comparison plot...")
-    # # Ensure figures directory exists
-    # os.makedirs("../figures/analysis_plots", exist_ok=True)
-    #
-    # fig = plot_hierarchical_posterior_comparison(
-    #     hierarchical_fitter, comparison_results
-    # )
-    #
-    # # Save the plot
-    # save_path = f"../figures/analysis_plots/hierarchical_posterior_comparison_{timestamp}.png"
-    # fig.savefig(save_path, dpi=300, bbox_inches="tight")
-    # plt.close(fig)
-    #
-    # print(f"Posterior comparison plot saved to: {save_path}")
-    #
-    # return results, comparison_results
-
-    from numpy.lib.stride_tricks import sliding_window_view
-    step_accepts_sliding_window = np.transpose(sliding_window_view(step_accepts[:, :, :], 100, axis=0),
-                                               axes=(0, 3, 1, 2))
-    step_accepts_avg = np.mean(step_accepts_sliding_window, axis=1)
-
-    swap_accepts_sliding_window = np.transpose(sliding_window_view(swap_accepts, 10, axis=0), axes=(0, 3, 1, 2))
-    swap_accepts_avg = np.mean(swap_accepts_sliding_window, axis=1)
-
-    for iWalker in range(n_walkers):
-        fig, axes = plt.subplots(ncols=2)
-
-        for iChain in range(step_accepts_avg.shape[-1]):
-            axes[0].plot(np.arange(2) * (len(step_accepts_avg) - 1),
-                         np.ones(2) * 0.4 + (n_chains - iChain - 1), "k--", alpha=0.5)
-            axes[0].plot(np.arange(len(step_accepts_avg)),
-                         step_accepts_avg[:, iWalker, iChain] + (n_chains - iChain - 1), label=iChain, alpha=1)
-
-        for iChain in range(swap_accepts_avg.shape[-1]):
-            axes[1].plot(np.arange(2) * (len(swap_accepts_avg) - 1), np.ones(2) * 0 + (n_chains - iChain - 1), "r--",
-                         alpha=0.5)
-            axes[1].plot(np.arange(len(swap_accepts_avg)),
-                         swap_accepts_avg[:, iWalker, iChain] + (n_chains - iChain - 1), label=iChain, alpha=1)
-
-        ylim = axes[0].get_ylim()
-        axes[1].set_ylim(ylim)
-        axes[0].legend()
-        axes[1].legend()
-        plt.show()
 
 
 if __name__ == "__main__":
@@ -212,7 +152,7 @@ if __name__ == "__main__":
         parameters_to_fit,
         priors,
         calibration_params,
-        n_samples=10,
+        n_samples=10000,
         n_walkers=12,
         n_chains=8,
     )

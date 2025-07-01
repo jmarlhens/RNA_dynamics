@@ -23,12 +23,12 @@ class HierarchicalMCMCAdapter(MCMCAdapter):
             original_shape = params.shape
             params_2d = params.reshape(-1, original_shape[-1])
 
-            # Calculate likelihood
-            likelihood_results = (
-                self.hierarchical_fitter.calculate_hierarchical_likelihood(params_2d)
+            # Calculate likelihood using correct method name
+            likelihood_results = self.hierarchical_fitter.calculate_data_likelihood(
+                params_2d
             )
 
-            # Reshape back to original shape
+            # Extract numpy array directly (no dictionary overhead)
             return likelihood_results["total"].reshape(original_shape[:-1])
 
         return log_likelihood
@@ -42,9 +42,9 @@ class HierarchicalMCMCAdapter(MCMCAdapter):
             params_2d = params.reshape(-1, original_shape[-1])
 
             # Calculate prior
-            prior_values = self.hierarchical_fitter.calculate_hierarchical_prior(
+            prior_values = self.hierarchical_fitter.calculate_hyperparameter_prior(
                 params_2d
-            )
+            )["total"]
 
             # Reshape back to original shape
             return prior_values.reshape(original_shape[:-1])

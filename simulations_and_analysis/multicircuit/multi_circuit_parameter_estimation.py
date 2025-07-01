@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from likelihood_functions.base import CircuitFitter
 from utils.process_experimental_data import organize_results
-from analysis_and_figures.visualization import plot_all_simulation_results
+from analysis_and_figures.simulation import plot_all_simulation_results
 from likelihood_functions.base import MCMCAdapter
 from analysis_and_figures.mcmc_analysis import analyze_mcmc_results
 from circuits.circuit_generation.circuit_manager import CircuitManager

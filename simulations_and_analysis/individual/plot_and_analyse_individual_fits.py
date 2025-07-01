@@ -6,11 +6,13 @@ import seaborn as sns
 from likelihood_functions.config import CircuitConfig
 from likelihood_functions.base import CircuitFitter
 from utils.process_experimental_data import organize_results
-from analysis_and_figures.visualization import plot_all_simulation_results
+from analysis_and_figures.simulation import plot_all_simulation_results
 from utils.import_and_visualise_data import load_and_process_csv
 from utils.GFP_calibration import fit_gfp_calibration, get_brightness_correction_factor
 from circuits.circuit_generation.circuit_manager import CircuitManager
 from data.circuits.circuit_configs import get_circuit_conditions, get_data_file
+from analysis_and_figures.mcmc_analysis_hierarchical import process_mcmc_data
+from analysis_and_figures.simulation import plot_simulation_statistical_summaries
 
 
 def setup_calibration():
@@ -156,8 +158,15 @@ def process_and_plot_params(
     plt.close()
 
 
-def plot_fits(results, save_dir=".", n_samples=400, max_time=None, min_time=None):
-    """Plot fits for each circuit using both best and random samples"""
+def plot_fits(
+    mcmc_results_by_circuit, save_dir=".", n_samples=400, max_time=None, min_time=None
+):
+    """Plot fits for each circuit using both best and random samples
+
+    Generates:
+    - Individual plots per circuit (existing functionality)
+    - Combined multi-circuit figures (new functionality)
+    """
     # Initialize CircuitManager and load requirements
     circuit_manager = CircuitManager(
         parameters_file="../../data/prior/model_parameters_priors.csv",
@@ -167,39 +176,73 @@ def plot_fits(results, save_dir=".", n_samples=400, max_time=None, min_time=None
     priors = priors[priors["Parameter"] != "k_prot_deg"]
     parameters_to_fit = priors.Parameter.tolist()
 
-    for circuit_name, df in results.items():
+    # Storage for combined plotting
+    combined_simulation_data_best = {}
+    combined_simulation_data_random = {}
+    combined_results_dataframes_best = []
+    combined_results_dataframes_random = []
+
+    for circuit_idx, (circuit_name, mcmc_raw_samples) in enumerate(
+        mcmc_results_by_circuit.items()
+    ):
         print(f"Processing circuit {circuit_name}")
 
         # Get circuit data and setup
-        conditions = get_circuit_conditions(circuit_name)
-        data_file = get_data_file(circuit_name)
-        exp_data, tspan = load_and_process_csv(data_file)
+        circuit_conditions = get_circuit_conditions(circuit_name)
+        experimental_data_file = get_data_file(circuit_name)
+        experimental_data, time_span = load_and_process_csv(experimental_data_file)
 
         # Create circuit and configuration
-        first_condition = list(conditions.keys())[0]
-        circuit = circuit_manager.create_circuit(
-            circuit_name, parameters=conditions[first_condition]
+        first_condition = list(circuit_conditions.keys())[0]
+        circuit_instance = circuit_manager.create_circuit(
+            circuit_name, parameters=circuit_conditions[first_condition]
         )
-        config = CircuitConfig(
-            model=circuit.model,
+        circuit_config = CircuitConfig(
+            model=circuit_instance.model,
             name=circuit_name,
-            condition_params=conditions,
-            experimental_data=exp_data,
-            tspan=tspan,
+            condition_params=circuit_conditions,
+            experimental_data=experimental_data,
+            tspan=time_span,
             max_time=max_time,
             min_time=min_time,
         )
 
         # Create fitter
-        calibration_params = setup_calibration()
+        calibration_parameters = setup_calibration()
         circuit_fitter = CircuitFitter(
-            [config], parameters_to_fit, priors, calibration_params
+            [circuit_config], parameters_to_fit, priors, calibration_parameters
         )
 
-        # BEST PARAMETERS: Select, simulate and plot
-        best_params = df.sort_values(by="likelihood", ascending=False).head(n_samples)
+        # Apply burn-in filtering (same as individual_circuits_analysis.py)
+        mcmc_processed_result = process_mcmc_data(
+            mcmc_raw_samples, burn_in=0.4, chain_idx=0
+        )
+        mcmc_filtered_samples = mcmc_processed_result["processed_data"]
+
+        print(
+            f"{circuit_name}: {len(mcmc_raw_samples)} → {len(mcmc_filtered_samples)} samples after burn-in"
+        )
+
+        # Sample from filtered data
+        mcmc_final_samples = (
+            mcmc_filtered_samples.sample(n=n_samples, random_state=42)
+            if len(mcmc_filtered_samples) > n_samples
+            else mcmc_filtered_samples.copy()
+        )
+
+        # Best likelihood from filtered samples
+        best_likelihood_samples = mcmc_final_samples.sort_values(
+            by="likelihood", ascending=False
+        )
+
+        # Random samples from filtered pool
+        random_filtered_samples = mcmc_final_samples.sample(
+            n=min(n_samples, len(mcmc_final_samples)), random_state=42
+        )
+
+        # INDIVIDUAL PLOTS
         process_and_plot_params(
-            best_params,
+            best_likelihood_samples,
             "best",
             circuit_name,
             circuit_fitter,
@@ -209,10 +252,8 @@ def plot_fits(results, save_dir=".", n_samples=400, max_time=None, min_time=None
             min_time=min_time,
         )
 
-        # RANDOM PARAMETERS: Select, simulate and plot
-        random_params = df.sample(n=n_samples)
         process_and_plot_params(
-            random_params,
+            random_filtered_samples,
             "random",
             circuit_name,
             circuit_fitter,
@@ -222,20 +263,166 @@ def plot_fits(results, save_dir=".", n_samples=400, max_time=None, min_time=None
             min_time=min_time,
         )
 
+        # COMBINED PLOTS DATA COLLECTION (new functionality)
+        # Extract parameter values for best/random samples
+        best_log_parameters = best_likelihood_samples[parameters_to_fit].values
+        random_log_parameters = random_filtered_samples[parameters_to_fit].values
+
+        # Simulate both parameter sets
+        best_simulation_results = circuit_fitter.simulate_parameters(
+            best_log_parameters
+        )
+        random_simulation_results = circuit_fitter.simulate_parameters(
+            random_log_parameters
+        )
+
+        # DEBUG: Complete structure inspection
+        # Extract single circuit data (CircuitFitter with [single_config] returns {0: circuit_data})
+        best_single_circuit_data = best_simulation_results[0]
+        # random_single_circuit_data = random_simulation_results[0]
+
+        # DEBUG: Verify extracted data structure
+        print(
+            f"DEBUG {circuit_name} - best_single_circuit_data keys: {list(best_single_circuit_data.keys())}"
+        )
+        print(
+            f"DEBUG {circuit_name} - best_single_circuit_data['combined_params'] type: {type(best_single_circuit_data['combined_params'])}"
+        )
+
+        # Store for combined plotting with proper multi-circuit indexing
+        combined_simulation_data_best[circuit_idx] = {
+            "config": circuit_config,
+            "combined_params": best_single_circuit_data["combined_params"],
+            "simulation_results": best_single_circuit_data["simulation_results"],
+        }
+
+        # DEBUG: Verify stored structure
+        print(
+            f"DEBUG {circuit_name} - stored structure keys: {list(combined_simulation_data_best[circuit_idx].keys())}"
+        )
+
+        # Calculate likelihoods for combined plotting
+        best_log_likelihoods = circuit_fitter.calculate_likelihood_from_simulation(
+            best_simulation_results
+        )
+        random_log_likelihoods = circuit_fitter.calculate_likelihood_from_simulation(
+            random_simulation_results
+        )
+
+        best_log_priors = circuit_fitter.calculate_log_prior(best_log_parameters)
+        random_log_priors = circuit_fitter.calculate_log_prior(random_log_parameters)
+
+        # Organize results for combined plotting
+        best_results_dataframe = organize_results(
+            parameters_to_fit,
+            10**best_log_parameters,
+            best_log_likelihoods,
+            best_log_priors,
+        )
+        random_results_dataframe = organize_results(
+            parameters_to_fit,
+            10**random_log_parameters,
+            random_log_likelihoods,
+            random_log_priors,
+        )
+
+        # FIXED: Extract and store with explicit variable isolation
+        best_circuit_data = best_simulation_results[0]
+        random_circuit_data = random_simulation_results[0]
+
+        # Store with explicit dictionary construction
+        combined_simulation_data_best[circuit_idx] = {
+            "config": circuit_config,
+            "combined_params": best_circuit_data["combined_params"].copy(),
+            "simulation_results": best_circuit_data["simulation_results"],
+        }
+        combined_simulation_data_random[circuit_idx] = {
+            "config": circuit_config,
+            "combined_params": random_circuit_data["combined_params"].copy(),
+            "simulation_results": random_circuit_data["simulation_results"],
+        }
+
+        combined_results_dataframes_best.append(best_results_dataframe)
+        combined_results_dataframes_random.append(random_results_dataframe)
+
+    # GENERATE COMBINED FIGURES (new functionality)
+    combined_best_results = pd.concat(
+        combined_results_dataframes_best, ignore_index=True
+    )
+    combined_random_results = pd.concat(
+        combined_results_dataframes_random, ignore_index=True
+    )
+
+    # DEBUG: Verify final combined structure
+    print(
+        f"DEBUG - combined_simulation_data_best keys: {list(combined_simulation_data_best.keys())}"
+    )
+    for idx in combined_simulation_data_best.keys():
+        print(
+            f"DEBUG - circuit {idx} keys: {list(combined_simulation_data_best[idx].keys())}"
+        )
+        if "config" in combined_simulation_data_best[idx]:
+            print(
+                f"DEBUG - circuit {idx} config.name: {combined_simulation_data_best[idx]['config'].name}"
+            )
+
+    print("Generating combined best fits figure...")
+    plot_all_simulation_results(
+        combined_simulation_data_best, combined_best_results, ll_quartile=20
+    )
+
+    # save the figure here
+    plt.savefig(
+        os.path.join(save_dir, "all_circuits_best_fits.png"),
+        bbox_inches="tight",
+        dpi=300,
+    )
+    plt.close()
+
+    # Replace individual trajectory plots with statistical summaries
+    plot_simulation_statistical_summaries(
+        combined_simulation_data_best,
+        combined_best_results,
+        save_path=os.path.join(save_dir, "all_circuits_summary_ribbons.png"),
+        max_time_cutoff=130,
+        min_time_cutoff=30,
+        summary_type="median_iqr",  # or 'mean_std'
+    )
+
+    print("Generating combined random fits figure...")
+    plot_all_simulation_results(
+        combined_simulation_data_random, combined_random_results, ll_quartile=20
+    )
+
+    # save the figure here
+    plt.savefig(
+        os.path.join(save_dir, "all_circuits_random_fits.png"),
+        bbox_inches="tight",
+        dpi=300,
+    )
+    plt.close()
+
 
 def main():
     """Main function to load and plot all results"""
-    # Create output directory for plots
-    output_dir = "../../figures/circuits_single_fits_sim"
-    os.makedirs(output_dir, exist_ok=True)
+    """Execute individual circuits hierarchical comparison analysis"""
+    subfolder = "/10000_steps_updated"
+    # Configuration
+    individual_results_directory = "../../data/fit_data/individual_circuits" + subfolder
+    # prior_parameters_filepath = "../../data/prior/model_parameters_priors_updated.csv"
+    output_visualization_directory = (
+        "../../figures/individual_hierarchical_comparison" + subfolder
+    )
 
     # Load all results
-    results = load_circuit_results()
+    results = load_circuit_results(individual_results_directory)
 
     # Generate plots
-    plot_parameter_distributions(results, output_dir)
-    plot_likelihood_distributions(results, output_dir)
-    plot_fits(results, output_dir, n_samples=40, max_time=130, min_time=30)
+    # plot_parameter_distributions(results, output_visualization_directory)
+    # plot_likelihood_distributions(results, output_visualization_directory)
+    plot_fits(
+        results, output_visualization_directory, n_samples=30, max_time=130, min_time=30
+    )
 
 
 if __name__ == "__main__":
