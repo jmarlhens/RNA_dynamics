@@ -9,7 +9,7 @@ from optimization.optimization_algorithm import OptimizationAlgorithm
 
 class ParallelTempering(OptimizationAlgorithm):
 
-    def __init__(self, log_likelihood, log_prior, n_dim, n_walkers=1, n_chains=10):
+    def __init__(self, log_likelihood, log_prior, n_dim, n_walkers=1, n_chains=10, proposal_function=None):
         self.log_likelihood = log_likelihood
         self.log_prior = log_prior
         self.n_dim = n_dim
@@ -17,12 +17,35 @@ class ParallelTempering(OptimizationAlgorithm):
         self.n_walkers = n_walkers
         self.n_chains = n_chains
 
+        if proposal_function is None:
+            def adaptive_proposal(prev_state=None, radius=None):
+
+                if prev_state is None:
+                    if radius is None:
+                        radius = 0.1
+                    state = radius * np.random.randn(n_dim)
+
+                else:
+                    state = np.array(prev_state)
+                    if radius is None:
+                        radius = 0.1 * np.ones(state.shape)
+
+                    move = np.random.normal(loc=0,
+                                            scale=radius)  # The size is implicitly defined via the shape of radius
+                    state = state + move
+
+                return state
+
+            proposal_function = adaptive_proposal
+
+        self.proposal_function = proposal_function
+
         swap_mask = np.zeros(shape=(n_walkers, int(np.ceil(n_chains / 2) * 2)), dtype=bool)
         swap_mask[:, ::2] = 1
         self.swap_mask = swap_mask
         pass
 
-    def run(self, initial_parameters, n_samples=10 ** 3, target_acceptance_ratio=None,
+    def run(self, initial_parameters=None, n_samples=10 ** 3, target_acceptance_ratio=None,
             adaptive_temperature=True):
         # Variance -> Will be adapted per chain, how to adapt per parameter (e.g. one could use gradient evaluation once in a while to choose variance in dependence to current gradient
         # ? How to adapt number of chains dynamically so that also there a desired acceptance rate is achieved?
@@ -30,7 +53,11 @@ class ParallelTempering(OptimizationAlgorithm):
         n_walkers = self.n_walkers
         n_chains = self.n_chains
 
-        initial_parameters = np.array(initial_parameters)
+        if initial_parameters is None:
+            initial_parameters = self.proposal_function()
+        else:
+            initial_parameters = np.array(initial_parameters)
+
         self.temperatures = np.power(2, np.arange(self.n_chains), dtype=float)
 
         if adaptive_temperature and n_chains <= 2:
@@ -125,8 +152,10 @@ class ParallelTempering(OptimizationAlgorithm):
         return parameters, priors, likelihoods, step_accepts, swap_accepts
 
     def step(self, params, prior, likelihood, index):
-        move = np.random.normal(loc=0, scale=np.sqrt(self.variance))
-        proposal = params + move
+        # move = np.random.normal(loc=0, scale=np.sqrt(self.variance))
+        # proposal = params + move
+
+        proposal = self.proposal_function(prev_state=params, radius=np.sqrt(self.variance))
 
         proposal_likelihood = self.log_likelihood(proposal)
         proposal_prior = self.log_prior(proposal)
@@ -199,9 +228,10 @@ def log_smile_adapt(params):
 
 
 def test_smile():
-    n_walkers = 10
+    n_dim = 2
+    n_walkers = 4
     n_chains = 10
-    n_samples = 10 ** 5
+    n_samples = 10 ** 4
     target_acceptance_ratio = 0.4
     log_likelihood = log_smile_adapt
 
@@ -211,8 +241,35 @@ def test_smile():
     def log_prior(params):
         return np.log(np.all(np.logical_and(params <= 2, params >= -2), axis=-1) * 1)
 
-    pt = ParallelTempering(log_likelihood=log_likelihood, log_prior=log_prior, n_dim=2, n_walkers=n_walkers,
-                           n_chains=n_chains)
+    class AdaptiveProposal:
+        def __init__(self, func=None):
+            if func is None:
+                func = lambda x: np.random.normal(loc=x ** 2)
+            self.func = func
+
+        def __call__(self, prev_state=None, radius=None):
+            if prev_state is None:
+                state = self.radius * np.random.randn(n_dim)
+            else:
+                state = np.array(prev_state)
+                if radius is None:
+                    radius = 0.1 * np.ones(state.shape)
+
+                move = np.random.normal(loc=0, scale=radius)  # The size is implicitly defined via the shape of radius
+                state = state + move
+
+                if len(state.shape) > 1:
+                    state[..., 1:] = self.func(state[..., 0:1])
+                else:
+                    state[1] = self.func(state[0])
+
+            return state
+
+    proposal_function = AdaptiveProposal(func=lambda x: np.random.normal(loc=x ** 2))
+
+    pt = ParallelTempering(log_likelihood=log_likelihood, log_prior=log_prior,
+                           n_dim=n_dim, n_walkers=n_walkers, n_chains=n_chains,
+                           proposal_function=proposal_function)
     parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=[0, 0], n_samples=n_samples,
                                                                          target_acceptance_ratio=target_acceptance_ratio,
                                                                          adaptive_temperature=adaptive_temperature)
@@ -297,8 +354,6 @@ def sampling_test():
 
     R_hat = convergence_test(parameters[int(len(parameters) / 2):])
 
-
-
     bins = np.linspace(-2, 2, 100)
     fig, ax = plt.subplots()
 
@@ -308,31 +363,33 @@ def sampling_test():
 
     plt.show()
 
-    step_accepts_sliding_window = np.transpose(sliding_window_view(step_accepts[:, :, :], 100, axis=0), axes=(0, 3, 1, 2))
+    step_accepts_sliding_window = np.transpose(sliding_window_view(step_accepts[:, :, :], 100, axis=0),
+                                               axes=(0, 3, 1, 2))
     step_accepts_avg = np.mean(step_accepts_sliding_window, axis=1)
 
     swap_accepts_sliding_window = np.transpose(sliding_window_view(swap_accepts, 50, axis=0), axes=(0, 3, 1, 2))
     swap_accepts_avg = np.mean(swap_accepts_sliding_window, axis=1)
 
-
     for iWalker in range(n_walkers):
         fig, axes = plt.subplots(ncols=2)
 
         for iChain in range(step_accepts_avg.shape[-1]):
-            axes[0].plot(np.arange(2) * (len(step_accepts_avg) - 1), np.ones(2) * target_acceptance_ratio  + (n_chains - iChain - 1), "k--", alpha=0.5)
-            axes[0].plot(np.arange(len(step_accepts_avg)), step_accepts_avg[:, iWalker, iChain] + (n_chains - iChain - 1), label=iChain, alpha=1)
+            axes[0].plot(np.arange(2) * (len(step_accepts_avg) - 1),
+                         np.ones(2) * target_acceptance_ratio + (n_chains - iChain - 1), "k--", alpha=0.5)
+            axes[0].plot(np.arange(len(step_accepts_avg)),
+                         step_accepts_avg[:, iWalker, iChain] + (n_chains - iChain - 1), label=iChain, alpha=1)
 
         for iChain in range(swap_accepts_avg.shape[-1]):
-            axes[1].plot(np.arange(2) * (len(swap_accepts_avg) - 1), np.ones(2) * 0  + (n_chains - iChain - 1), "r--", alpha=0.5)
-            axes[1].plot(np.arange(len(swap_accepts_avg)), swap_accepts_avg[:, iWalker, iChain] + (n_chains - iChain - 1) , label=iChain, alpha=1)
+            axes[1].plot(np.arange(2) * (len(swap_accepts_avg) - 1), np.ones(2) * 0 + (n_chains - iChain - 1), "r--",
+                         alpha=0.5)
+            axes[1].plot(np.arange(len(swap_accepts_avg)),
+                         swap_accepts_avg[:, iWalker, iChain] + (n_chains - iChain - 1), label=iChain, alpha=1)
 
         ylim = axes[0].get_ylim()
         axes[1].set_ylim(ylim)
         axes[0].legend()
         axes[1].legend()
         plt.show()
-
-
 
     for samps in [posterior_samples, samples]:
         print(f"Mean {np.mean(samps)}, Variance {np.var(samps)}")
