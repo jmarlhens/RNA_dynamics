@@ -617,6 +617,256 @@
         "k_Star6_concentration": 0
       },
       "bindings": []
+    },
+    "incoherent_ffl_1": {
+      "plasmids": [
+        {
+          "name": "star6_trigger3_plasmid",
+          "tx_control": null,
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "Star6"
+            ]
+          ]
+        },
+        {
+          "name": "sense6_atrigger3_plasmid",
+          "tx_control": [
+            "Sense6",
+            "Star6"
+          ],
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "aTrigger3"
+            ]
+          ]
+        },
+        {
+          "name": "toehold3_gfp_plasmid",
+          "tx_control": null,
+          "tl_control": [
+            "Toehold3",
+            "Trigger3"
+          ],
+          "cds": [
+            [
+              true,
+              "GFP"
+            ]
+          ]
+        }
+      ],
+      "default_parameters": {
+        "k_Star6_Trigger3_concentration": 1,
+        "k_Sense6_aTrigger3_concentration": 1,
+        "k_Toehold3_GFP_concentration": 1
+      },
+      "bindings": [
+        [
+          "Trigger3",
+          "aTrigger3"
+        ]
+      ]
+    },
+    "or_gate_cascade": {
+      "plasmids": [
+        {
+          "name": "star6_plasmid",
+          "tx_control": null,
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "Star6"
+            ]
+          ]
+        },
+        {
+          "name": "sense6_trigger3_plasmid",
+          "tx_control": [
+            "Sense6",
+            "Star6"
+          ],
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "Trigger3"
+            ]
+          ]
+        },
+        {
+          "name": "toehold3_gfp_plasmid",
+          "tx_control": null,
+          "tl_control": [
+            "Toehold3",
+            "Trigger3"
+          ],
+          "cds": [
+            [
+              true,
+              "GFP"
+            ]
+          ]
+        },
+        {
+          "name": "sense6_gfp_plasmid",
+          "tx_control": [
+            "Sense6",
+            "Star6"
+          ],
+          "tl_control": null,
+          "cds": [
+            [
+              true,
+              "GFP"
+            ]
+          ]
+        }
+      ],
+      "default_parameters": {
+        "k_Star6_concentration": 1,
+        "k_Sense6_Trigger3_concentration": 1,
+        "k_Toehold3_GFP_concentration": 1,
+        "k_Sense6_GFP_concentration": 1
+      },
+      "bindings": []
+    },
+    "inhibited_cascade": {
+      "plasmids": [
+        {
+          "name": "star6_plasmid",
+          "tx_control": null,
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "Star6"
+            ]
+          ]
+        },
+        {
+          "name": "sense6_trigger3_plasmid",
+          "tx_control": [
+            "Sense6",
+            "Star6"
+          ],
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "Trigger3"
+            ]
+          ]
+        },
+        {
+          "name": "toehold3_gfp_plasmid",
+          "tx_control": null,
+          "tl_control": [
+            "Toehold3",
+            "Trigger3"
+          ],
+          "cds": [
+            [
+              true,
+              "GFP"
+            ]
+          ]
+        },
+        {
+          "name": "atrigger3_plasmid",
+          "tx_control": null,
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "aTrigger3"
+            ]
+          ]
+        }
+      ],
+      "default_parameters": {
+        "k_Star6_concentration": 1,
+        "k_Sense6_Trigger3_concentration": 1,
+        "k_Toehold3_GFP_concentration": 1,
+        "k_aTrigger3_concentration": 1
+      },
+      "bindings": [
+        [
+          "Trigger3",
+          "aTrigger3"
+        ]
+      ]
+    },
+    "incoherent_ffl_2": {
+      "plasmids": [
+        {
+          "name": "star6_plasmid",
+          "tx_control": null,
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "Star6"
+            ]
+          ]
+        },
+        {
+          "name": "sense6_atrigger3_plasmid",
+          "tx_control": [
+            "Sense6",
+            "Star6"
+          ],
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "aTrigger3"
+            ]
+          ]
+        },
+        {
+          "name": "toehold3_gfp_plasmid",
+          "tx_control": null,
+          "tl_control": [
+            "Toehold3",
+            "Trigger3"
+          ],
+          "cds": [
+            [
+              true,
+              "GFP"
+            ]
+          ]
+        },
+        {
+          "name": "trigger3_plasmid",
+          "tx_control": null,
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "Trigger3"
+            ]
+          ]
+        }
+      ],
+      "default_parameters": {
+        "k_Star6_concentration": 1,
+        "k_Sense6_aTrigger3_concentration": 1,
+        "k_Toehold3_GFP_concentration": 1,
+        "k_Trigger3_concentration": 1
+      },
+      "bindings": [
+        [
+          "Trigger3",
+          "aTrigger3"
+        ]
+      ]
     }
   }
 }

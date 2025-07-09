@@ -1,5 +1,4 @@
 import os
-import glob
 import pandas as pd
 import matplotlib.pyplot as plt
 from data.circuits.circuit_configs import get_circuit_conditions, get_data_file
@@ -13,6 +12,9 @@ from analysis_and_figures.mcmc_analysis_hierarchical import process_mcmc_data
 from analysis_and_figures.plots_simulation import (
     plot_circuit_simulations,
     plot_circuit_conditions_overlay,
+)
+from simulations_and_analysis.individual.individual_circuits_statistics import (
+    load_individual_circuit_results,
 )
 
 
@@ -31,25 +33,6 @@ def setup_calibration():
         "intercept": calibration_results["intercept"],
         "brightness_correction": brightness_correction,
     }
-
-
-def load_circuit_results(results_directory="../data/fit_data/individual_circuits"):
-    """Load all circuit results from CSV files"""
-    mcmc_results = {}
-    result_pattern = os.path.join(results_directory, "results_*.csv")
-
-    for file_path in glob.glob(result_pattern):
-        filename = os.path.basename(file_path)
-        circuit_name = "_".join(filename.split("_")[1:-2])
-
-        mcmc_dataframe = pd.read_csv(file_path)
-        mcmc_results[circuit_name] = mcmc_dataframe
-
-        print(
-            f"Loaded {circuit_name}: {len(mcmc_dataframe)} samples, best LL: {mcmc_dataframe['likelihood'].max():.2f}"
-        )
-
-    return mcmc_results
 
 
 def create_circuit_simulation_data(
@@ -366,12 +349,12 @@ def plot_fits(
 def main():
     subfolder = "/10000_steps_updated"
     input_directory = "../../data/fit_data/individual_circuits" + subfolder
-    output_directory = "../../figures/individual_hierarchical_comparison" + subfolder
+    output_visualization_directory = "../../figures/individual_circuits" + subfolder
 
-    mcmc_results = load_circuit_results(input_directory)
+    mcmc_results = load_individual_circuit_results(input_directory)
     plot_fits(
         mcmc_results,
-        output_directory,
+        output_visualization_directory,
         sample_count=30,
         time_bounds_max=130,
         time_bounds_min=30,

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from likelihood_functions.config import CircuitConfig
 from likelihood_functions.base import CircuitFitter
 from utils.process_experimental_data import organize_results
-from analysis_and_figures.plots_simulation import plot_all_simulation_results
+from analysis_and_figures.plots_simulation import plot_circuit_simulations
 from likelihood_functions.base import MCMCAdapter
 from analysis_and_figures.mcmc_analysis import analyze_mcmc_results
 from utils.import_and_visualise_data import load_and_process_csv
@@ -43,7 +43,7 @@ def fit_single_circuit(
     priors,
     min_time=30,
     max_time=210,
-    n_samples=10000,
+    n_samples=4000,
     n_walkers=12,
     n_chains=8,
 ):
@@ -126,7 +126,7 @@ def fit_single_circuit(
     )
 
     plt.figure(figsize=(12, 8))
-    plot_all_simulation_results(sim_data, results_df, ll_quartile=20)
+    plot_circuit_simulations(sim_data, results_df)
     plt.savefig(f"fit_{safe_circuit_name}_{timestamp}.png")
     plt.close()
 
@@ -164,13 +164,13 @@ def main():
 
     # Fit each circuit individually
     circuits_to_fit = [
-        "constitutive sfGFP",
+        # "constitutive sfGFP",
         "toehold_trigger",
         "star_antistar_1",
         "trigger_antitrigger",
-        "sense_star_6",
         "cascade",
-        "cffl_type_1",
+        "sense_star_6",
+        # "cffl_type_1",
     ]
 
     for circuit_name in circuits_to_fit:

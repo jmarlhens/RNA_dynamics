@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
-from analysis_and_figures.plots_simulation import plot_simulation_results
+from analysis_and_figures.plots_simulation import plot_circuit_simulations
 from utils.process_experimental_data import organize_results
 
 
@@ -258,7 +258,7 @@ class MCMCAnalysis:
         # Plot results for each parameter set
         figs = []
         for i in range(n_best):
-            fig = plot_simulation_results(sim_data, results_df, param_set_idx=i)
+            fig = plot_circuit_simulations(sim_data, results_df)
             fig.suptitle(
                 f"Simulation for Parameter Set {i + 1}\nPosterior: {flat_posterior[best_indices[i]]:.2f}"
             )

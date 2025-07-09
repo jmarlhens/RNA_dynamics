@@ -33,6 +33,11 @@ def load_individual_circuit_results(
         circuit_name_parts = filename.split("_")[1:-2]
         circuit_name = "_".join(circuit_name_parts)
 
+        # let's not take the gfp constitutive circuit
+        if circuit_name == "constitutive sfGFP":
+            print(f"Skipping circuit: {circuit_name}")
+            continue
+
         circuit_results = pd.read_csv(filepath)
         individual_circuit_fits[circuit_name] = circuit_results
 
@@ -251,9 +256,7 @@ def main():
     # Configuration
     individual_results_directory = "../../data/fit_data/individual_circuits" + subfolder
     prior_parameters_filepath = "../../data/prior/model_parameters_priors_updated.csv"
-    output_visualization_directory = (
-        "../../figures/individual_hierarchical_comparison" + subfolder
-    )
+    output_visualization_directory = "../../figures/individual_circuits" + subfolder
 
     # Load parameter specifications
     prior_parameters = pd.read_csv(prior_parameters_filepath)

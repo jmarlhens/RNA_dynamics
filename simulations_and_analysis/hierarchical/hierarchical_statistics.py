@@ -139,7 +139,7 @@ def main():
     # Configuration
     hierarchical_results_filepath = "../../data/fit_data/hierarchical/" + data + ".csv"
     prior_parameters_filepath = "../../data/prior/model_parameters_priors_updated.csv"
-    output_visualization_directory = "../../figures/hierarchical_analysis/" + data
+    output_visualization_directory = "../../figures/hierarchical/" + data
 
     # Load parameter specifications
     prior_parameters = pd.read_csv(prior_parameters_filepath)

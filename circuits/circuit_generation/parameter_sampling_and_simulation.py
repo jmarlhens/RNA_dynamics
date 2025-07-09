@@ -152,156 +152,252 @@ class ParameterSamplingManager:
         t_span=None,
         additional_params=None,
         observe_protein="obs_Protein_GFP",
+        observe_rna_species=None,  # specific RNA observable name, None = no RNA subplot
         title=None,
         figure_size=(6, 10),
         save_path=None,
         show_protein=True,
-        show_rna=True,
         show_pulse=True,
         pulse_plasmids=None,
         scores=None,
         score_metric=None,
+        use_statistical_summary=False,
+        statistical_summary_type="median_percentiles",  # "median_percentiles" or "mean_std"
+        percentile_bounds=(10, 90),
+        ribbon_alpha=0.25,
     ):
         """
-        Run a parameter sweep and create a visualization with color coding based on scores.
+        Run parameter sweep and create visualization with optional statistical summaries.
 
         Parameters:
         -----------
-        (previous parameters...)
-        scores : pandas.Series, optional
-            Score values to use for color coding (e.g., posterior, likelihood)
-        score_metric : str, optional
-            Name of the score metric (for title/legend)
+        observe_rna_species : str or None
+            Specific RNA observable to plot (e.g., 'obs_RNA_GFP'). None = no RNA subplot.
+        statistical_summary_type : str
+            "median_percentiles" or "mean_std" for summary statistics
         """
-        # Run parameter sweep
-        result, t_span, param_values, circuit = self.run_parameter_sweep(
-            circuit_name,
-            param_df,
-            k_prot_deg,
-            pulse_configuration,
-            kinetics_type,
-            t_span,
-            additional_params,
-            pulse_plasmids=pulse_plasmids,
+
+        # Execute parameter sweep simulation
+        simulation_result, time_points, parameter_values, circuit_instance = (
+            self.run_parameter_sweep(
+                circuit_name,
+                param_df,
+                k_prot_deg,
+                pulse_configuration,
+                kinetics_type,
+                t_span,
+                additional_params,
+                pulse_plasmids=pulse_plasmids,
+            )
         )
 
-        # Determine which plots to show
-        plots_to_show = []
+        # Determine subplot configuration
+        subplot_components = []
         if show_protein:
-            plots_to_show.append("protein")
-        if show_rna:
-            plots_to_show.append("rna")
+            subplot_components.append("protein")
+        if observe_rna_species is not None:
+            subplot_components.append("rna")
         if show_pulse:
-            plots_to_show.append("pulse")
+            subplot_components.append("pulse")
 
-        number_of_plots = len(plots_to_show)
-        if number_of_plots == 0:
+        subplot_count = len(subplot_components)
+        if subplot_count == 0:
             raise ValueError("At least one plot type must be shown")
 
-        # Create figure with subplots
-        fig, axs = plt.subplots(number_of_plots, 1, figsize=figure_size, sharex=True)
-        if number_of_plots == 1:
-            axs = [axs]
+        # Create figure with subplot arrangement
+        figure, subplot_axes = plt.subplots(
+            subplot_count, 1, figsize=figure_size, sharex=True
+        )
+        if subplot_count == 1:
+            subplot_axes = [subplot_axes]
 
-        plot_idx = 0
+        current_subplot_index = 0
 
-        # Create a colormap for scores if provided
-        if scores is not None:
-            cmap = plt.cm.viridis
-            # Normalize scores for colormap
-            norm = plt.Normalize(scores.min(), scores.max())
-            # Create colors based on scores
-            colors = [cmap(norm(score)) for score in scores]
-        else:
-            # Default colors if no scores
-            colors = [plt.cm.tab10(i % 10) for i in range(len(param_df))]
+        # Extract observable field names from structured arrays
+        observable_field_names = (
+            simulation_result.observables[0].dtype.names
+            if simulation_result.observables
+            else []
+        )
 
-        # Plot protein observables if requested
+        # Compute statistical summaries for summary mode
+        trajectory_statistics = None
+        if use_statistical_summary:
+            trajectory_statistics = (
+                self._compute_structured_array_statistical_summaries(
+                    simulation_result,
+                    time_points,
+                    statistical_summary_type,
+                    percentile_bounds,
+                    observe_rna_species,
+                )
+            )
+
+        # Configure trajectory coloring for individual mode (no colorbar)
+        trajectory_colors = [plt.cm.tab10(i % 10) for i in range(len(param_df))]
+
+        # Render protein concentration subplot
         if show_protein:
-            for i in range(len(param_df)):
-                if i < len(result.observables):
-                    if observe_protein in result.observables[i].dtype.names:
-                        # Use color from our color list
-                        color = colors[i] if i < len(colors) else "blue"
-                        axs[plot_idx].plot(
-                            t_span, result.observables[i][observe_protein], color=color
-                        )
+            protein_axis = subplot_axes[current_subplot_index]
 
-            axs[plot_idx].set_ylabel("Protein concentration")
-            if score_metric:
-                axs[plot_idx].set_title(f"Protein Dynamics (colored by {score_metric})")
-            else:
-                axs[plot_idx].set_title("Protein Dynamics")
-            axs[plot_idx].grid(True)
-            plot_idx += 1
+            if use_statistical_summary and "protein" in trajectory_statistics:
+                protein_summary_data = trajectory_statistics["protein"]
 
-        # Plot RNA observables if requested
-        if show_rna:
-            rna_observables = [
-                name
-                for name in result.observables[0].dtype.names
-                if name.startswith("obs_RNA_")
-            ]
-
-            for rna_obs in rna_observables:
-                for i in range(len(param_df)):
-                    if i < len(result.observables):
-                        # Use same color scheme as protein
-                        color = colors[i] if i < len(colors) else plt.cm.tab10(i % 10)
-                        axs[plot_idx].plot(
-                            t_span,
-                            result.observables[i][rna_obs],
-                            label=_get_display_name(rna_obs) if i == 0 else None,
-                            color=color,
-                            alpha=0.7,
-                        )
-
-            axs[plot_idx].set_ylabel("RNA concentration")
-            if score_metric:
-                axs[plot_idx].set_title(f"RNA Dynamics (colored by {score_metric})")
-            else:
-                axs[plot_idx].set_title("RNA Dynamics")
-            axs[plot_idx].grid(True)
-            axs[plot_idx].legend(loc="best")
-            plot_idx += 1
-
-        # Plot pulse profile if requested
-        if show_pulse:
-            if pulse_configuration:
-                pulse_profile = []
-                for t in t_span:
-                    if (
-                        t < pulse_configuration["pulse_start"]
-                        or t > pulse_configuration["pulse_end"]
-                    ):
-                        pulse_profile.append(pulse_configuration["base_concentration"])
-                    else:
-                        pulse_profile.append(pulse_configuration["pulse_concentration"])
-
-                # Display the pulsed plasmid names in the label
-                pulse_label = ", ".join(pulse_plasmids) if pulse_plasmids else "Pulse"
-
-                axs[plot_idx].plot(
-                    t_span, pulse_profile, label=pulse_label, color="red", linewidth=2
-                )
-                axs[plot_idx].set_ylabel("Input concentration")
-                axs[plot_idx].set_title("Pulse Profile")
-                axs[plot_idx].grid(True)
-                axs[plot_idx].legend(loc="best")
-            else:
-                # If no pulse, show parameter effect visualization
-                # Create a heatmap-like visualization
-                param_matrix = np.tile(param_values, (len(t_span), 1)).T
-                axs[plot_idx].imshow(
-                    param_matrix, aspect="auto", extent=[min(t_span), max(t_span), 0, 1]
+                protein_axis.plot(
+                    time_points,
+                    protein_summary_data["central"],
+                    color="blue",
+                    linewidth=2,
+                    label="Central",
+                    zorder=3,
                 )
 
-        # Set overall labels and title
-        axs[-1].set_xlabel("Time (min)")
+                protein_axis.fill_between(
+                    time_points,
+                    protein_summary_data["lower_bound"],
+                    protein_summary_data["upper_bound"],
+                    alpha=ribbon_alpha,
+                    color="blue",
+                    label=self._get_summary_label(
+                        statistical_summary_type, percentile_bounds
+                    ),
+                    zorder=1,
+                )
+                protein_axis.legend()
+            else:
+                # Render individual protein trajectories without colorbar
+                for parameter_set_index, structured_observables_array in enumerate(
+                    simulation_result.observables
+                ):
+                    for observable_field_name in observable_field_names:
+                        if observable_field_name.startswith("obs_Protein_"):
+                            protein_trajectory = structured_observables_array[
+                                observable_field_name
+                            ]
+                            trajectory_color = (
+                                trajectory_colors[parameter_set_index]
+                                if parameter_set_index < len(trajectory_colors)
+                                else plt.cm.tab10(parameter_set_index % 10)
+                            )
+                            protein_axis.plot(
+                                time_points,
+                                protein_trajectory,
+                                color=trajectory_color,
+                                alpha=0.15,
+                                zorder=1,
+                            )
+
+            protein_axis.set_ylabel("Protein Concentration (nM)")
+            protein_axis.set_title(f"Protein - {circuit_name}")
+            protein_axis.grid(True, alpha=0.3)
+            current_subplot_index += 1
+
+        # Render RNA concentration subplot for specific species only
+        if observe_rna_species is not None:
+            rna_axis = subplot_axes[current_subplot_index]
+
+            if use_statistical_summary and "rna" in trajectory_statistics:
+                rna_summary_data = trajectory_statistics["rna"]
+
+                rna_axis.plot(
+                    time_points,
+                    rna_summary_data["central"],
+                    color="red",
+                    linewidth=2,
+                    label="Central",
+                    zorder=3,
+                )
+
+                rna_axis.fill_between(
+                    time_points,
+                    rna_summary_data["lower_bound"],
+                    rna_summary_data["upper_bound"],
+                    alpha=ribbon_alpha,
+                    color="red",
+                    label=self._get_summary_label(
+                        statistical_summary_type, percentile_bounds
+                    ),
+                    zorder=1,
+                )
+                rna_axis.legend()
+            else:
+                # Render individual RNA trajectories for specific species only
+                for parameter_set_index, structured_observables_array in enumerate(
+                    simulation_result.observables
+                ):
+                    if observe_rna_species in structured_observables_array.dtype.names:
+                        rna_trajectory = structured_observables_array[
+                            observe_rna_species
+                        ]
+                        trajectory_color = (
+                            trajectory_colors[parameter_set_index]
+                            if parameter_set_index < len(trajectory_colors)
+                            else plt.cm.tab10(parameter_set_index % 10)
+                        )
+                        rna_axis.plot(
+                            time_points,
+                            rna_trajectory,
+                            color=trajectory_color,
+                            alpha=0.15,
+                            zorder=1,
+                        )
+
+            rna_axis.set_ylabel("RNA Concentration (nM)")
+            rna_axis.set_title(f"RNA ({observe_rna_species}) - {circuit_name}")
+            rna_axis.grid(True, alpha=0.3)
+            current_subplot_index += 1
+
+        # Render pulse profile subplot
+        if show_pulse and pulse_configuration:
+            pulse_axis = subplot_axes[current_subplot_index]
+
+            # Construct pulse concentration profile
+            pulse_concentration_profile = np.zeros_like(time_points)
+            pulse_start_time = pulse_configuration.get("pulse_start", 0)
+            pulse_end_time = pulse_configuration.get("pulse_end", 10)
+            pulse_active_concentration = pulse_configuration.get(
+                "pulse_concentration", 1.0
+            )
+            pulse_baseline_concentration = pulse_configuration.get(
+                "base_concentration", 0.0
+            )
+
+            # Apply pulse timing mask
+            pulse_active_mask = (time_points >= pulse_start_time) & (
+                time_points <= pulse_end_time
+            )
+            pulse_concentration_profile[pulse_active_mask] = pulse_active_concentration
+            pulse_concentration_profile[~pulse_active_mask] = (
+                pulse_baseline_concentration
+            )
+
+            pulse_axis.plot(
+                time_points,
+                pulse_concentration_profile,
+                "g-",
+                linewidth=3,
+                label="Pulse",
+            )
+            pulse_axis.set_ylabel("Pulse Concentration (nM)")
+            pulse_axis.set_title("Pulse Profile")
+            pulse_axis.grid(True, alpha=0.3)
+            pulse_axis.legend()
+
+        # Configure axis labels and figure title
+        subplot_axes[-1].set_xlabel("Time (min)")
+
         if title:
-            fig.suptitle(title, fontsize=16, y=0.98)
+            figure.suptitle(title, fontsize=16, y=0.98)
         else:
-            plt.suptitle(f"{circuit_name}", fontsize=14, y=0.98)
+            if use_statistical_summary:
+                summary_description = self._get_summary_description(
+                    statistical_summary_type, percentile_bounds
+                )
+                plt.suptitle(
+                    f"{circuit_name} - {summary_description}", fontsize=14, y=0.98
+                )
+            else:
+                plt.suptitle(f"{circuit_name}", fontsize=14, y=0.98)
 
         plt.tight_layout()
         plt.subplots_adjust(top=0.9)
@@ -309,8 +405,378 @@ class ParameterSamplingManager:
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches="tight")
 
+        return figure
+
+    def _compute_structured_array_statistical_summaries(
+        self,
+        simulation_result,
+        time_points,
+        statistical_summary_type="median_percentiles",
+        percentile_bounds=(10, 90),
+        observe_rna_species=None,
+    ):
+        """
+        Compute statistical summaries for structured array simulation trajectories.
+
+        Parameters:
+        -----------
+        statistical_summary_type : str
+            "median_percentiles" or "mean_std"
+        observe_rna_species : str or None
+            Specific RNA observable to include in summaries
+        """
+        protein_trajectory_collection = []
+        rna_trajectory_collection = []
+
+        if len(simulation_result.observables) > 0:
+            observable_field_names = simulation_result.observables[0].dtype.names
+
+            for structured_observables_array in simulation_result.observables:
+                for observable_field_name in observable_field_names:
+                    trajectory_data = structured_observables_array[
+                        observable_field_name
+                    ]
+
+                    if observable_field_name.startswith("obs_Protein_"):
+                        protein_trajectory_collection.append(trajectory_data)
+                    elif observable_field_name == observe_rna_species:
+                        rna_trajectory_collection.append(trajectory_data)
+
+        statistical_summaries = {}
+
+        if protein_trajectory_collection:
+            protein_trajectory_matrix = np.array(protein_trajectory_collection)
+            statistical_summaries["protein"] = self._compute_summary_statistics(
+                protein_trajectory_matrix, statistical_summary_type, percentile_bounds
+            )
+
+        if rna_trajectory_collection:
+            rna_trajectory_matrix = np.array(rna_trajectory_collection)
+            statistical_summaries["rna"] = self._compute_summary_statistics(
+                rna_trajectory_matrix, statistical_summary_type, percentile_bounds
+            )
+
+        return statistical_summaries
+
+    def _compute_summary_statistics(
+        self, trajectory_matrix, statistical_summary_type, percentile_bounds
+    ):
+        """Compute either median+percentiles or mean+std statistics."""
+        if statistical_summary_type == "mean_std":
+            trajectory_mean = np.mean(trajectory_matrix, axis=0)
+            trajectory_std = np.std(trajectory_matrix, axis=0)
+            return {
+                "central": trajectory_mean,
+                "lower_bound": trajectory_mean - trajectory_std,
+                "upper_bound": trajectory_mean + trajectory_std,
+            }
+        else:  # median_percentiles
+            lower_percentile_value, upper_percentile_value = percentile_bounds
+            return {
+                "central": np.median(trajectory_matrix, axis=0),
+                "lower_bound": np.percentile(
+                    trajectory_matrix, lower_percentile_value, axis=0
+                ),
+                "upper_bound": np.percentile(
+                    trajectory_matrix, upper_percentile_value, axis=0
+                ),
+            }
+
+    def _get_summary_label(self, statistical_summary_type, percentile_bounds):
+        """Generate appropriate label for statistical summary."""
+        if statistical_summary_type == "mean_std":
+            return "Mean ± Std"
+        else:
+            return f"{percentile_bounds[0]}-{percentile_bounds[1]}% range"
+
+    def _get_summary_description(self, statistical_summary_type, percentile_bounds):
+        """Generate figure title description for statistical summary."""
+        if statistical_summary_type == "mean_std":
+            return "Mean ± Standard Deviation"
+        else:
+            return f"Median ± {percentile_bounds[0]}-{percentile_bounds[1]}% Range"
+
+    # ADD to ParameterSamplingManager class in parameter_sampling_and_simulation.py
+
+    def plot_all_circuits_pulse_grid(
+        self,
+        circuit_simulation_data,  # dict: {circuit_name: (result, t_span, param_df, pulse_plasmids)}
+        pulse_configuration=None,
+        observe_rna_species="obs_RNA_GFP",
+        use_statistical_summary=True,
+        statistical_summary_type="median_percentiles",
+        percentile_bounds=(10, 90),
+        ribbon_alpha=0.25,
+        figure_size=(20, 24),
+        save_path=None,
+    ):
+        """
+        Create unified grid plot showing all circuits with their protein/RNA/pulse subplots.
+
+        Parameters:
+        -----------
+        circuit_simulation_data : dict
+            {circuit_name: (simulation_result, time_points, param_df, pulse_plasmids)}
+        """
+        import matplotlib.gridspec as gridspec
+
+        circuit_names = list(circuit_simulation_data.keys())
+        num_circuits = len(circuit_names)
+
+        # Determine subplot structure: protein, RNA (optional), pulse
+        subplot_types = ["protein"]
+        if observe_rna_species is not None:
+            subplot_types.append("rna")
+        subplot_types.append("pulse")
+        num_subplot_types = len(subplot_types)
+
+        # Create figure with gridspec
+        figure = plt.figure(figsize=figure_size)
+        grid_spec = gridspec.GridSpec(
+            num_circuits,
+            num_subplot_types,
+            figure=figure,
+            hspace=0.3,
+            wspace=0.3,
+            top=0.95,
+            bottom=0.05,
+            left=0.08,
+            right=0.95,
+        )
+
+        # Store all axes for potential return
+        all_axes = {}
+
+        # Process each circuit
+        for circuit_idx, circuit_name in enumerate(circuit_names):
+            simulation_result, time_points, param_df, _ = circuit_simulation_data[
+                circuit_name
+            ]
+
+            # Extract observable field names
+            observable_field_names = (
+                simulation_result.observables[0].dtype.names
+                if simulation_result.observables
+                else []
+            )
+
+            # Compute statistical summaries if needed
+            trajectory_statistics = None
+            if use_statistical_summary:
+                trajectory_statistics = (
+                    self._compute_structured_array_statistical_summaries(
+                        simulation_result,
+                        time_points,
+                        statistical_summary_type,
+                        percentile_bounds,
+                        observe_rna_species,
+                    )
+                )
+
+            # Configure colors for individual trajectories
+            trajectory_colors = [plt.cm.tab10(i % 10) for i in range(len(param_df))]
+
+            circuit_axes = {}
+            subplot_idx = 0
+
+            # PROTEIN SUBPLOT
+            protein_ax = figure.add_subplot(grid_spec[circuit_idx, subplot_idx])
+            circuit_axes["protein"] = protein_ax
+
+            if use_statistical_summary and "protein" in trajectory_statistics:
+                protein_summary_data = trajectory_statistics["protein"]
+                central_label = (
+                    "Median"
+                    if statistical_summary_type == "median_percentiles"
+                    else "Mean"
+                )
+
+                protein_ax.plot(
+                    time_points,
+                    protein_summary_data["central"],
+                    color="blue",
+                    linewidth=2,
+                    label=central_label,
+                    zorder=3,
+                )
+
+                protein_ax.fill_between(
+                    time_points,
+                    protein_summary_data["lower_bound"],
+                    protein_summary_data["upper_bound"],
+                    alpha=ribbon_alpha,
+                    color="blue",
+                    label=self._get_summary_label(
+                        statistical_summary_type, percentile_bounds
+                    ),
+                    zorder=1,
+                )
+                protein_ax.legend(fontsize=8)
+            else:
+                # Individual protein trajectories
+                for parameter_set_index, structured_observables_array in enumerate(
+                    simulation_result.observables
+                ):
+                    for observable_field_name in observable_field_names:
+                        if observable_field_name.startswith("obs_Protein_"):
+                            protein_trajectory = structured_observables_array[
+                                observable_field_name
+                            ]
+                            trajectory_color = (
+                                trajectory_colors[parameter_set_index]
+                                if parameter_set_index < len(trajectory_colors)
+                                else plt.cm.tab10(parameter_set_index % 10)
+                            )
+                            protein_ax.plot(
+                                time_points,
+                                protein_trajectory,
+                                color=trajectory_color,
+                                alpha=0.15,
+                                zorder=1,
+                            )
+
+            protein_ax.set_ylabel("Protein (nM)", fontsize=10)
+            protein_ax.set_title(
+                f"{circuit_name} - Protein", fontsize=11, fontweight="bold"
+            )
+            protein_ax.grid(True, alpha=0.3)
+            protein_ax.tick_params(labelsize=8)
+            subplot_idx += 1
+
+            # RNA SUBPLOT (if requested)
+            if observe_rna_species is not None:
+                rna_ax = figure.add_subplot(grid_spec[circuit_idx, subplot_idx])
+                circuit_axes["rna"] = rna_ax
+
+                if use_statistical_summary and "rna" in trajectory_statistics:
+                    rna_summary_data = trajectory_statistics["rna"]
+                    central_label = (
+                        "Median"
+                        if statistical_summary_type == "median_percentiles"
+                        else "Mean"
+                    )
+
+                    rna_ax.plot(
+                        time_points,
+                        rna_summary_data["central"],
+                        color="red",
+                        linewidth=2,
+                        label=central_label,
+                        zorder=3,
+                    )
+
+                    rna_ax.fill_between(
+                        time_points,
+                        rna_summary_data["lower_bound"],
+                        rna_summary_data["upper_bound"],
+                        alpha=ribbon_alpha,
+                        color="red",
+                        label=self._get_summary_label(
+                            statistical_summary_type, percentile_bounds
+                        ),
+                        zorder=1,
+                    )
+                    rna_ax.legend(fontsize=8)
+                else:
+                    # Individual RNA trajectories
+                    for parameter_set_index, structured_observables_array in enumerate(
+                        simulation_result.observables
+                    ):
+                        if (
+                            observe_rna_species
+                            in structured_observables_array.dtype.names
+                        ):
+                            rna_trajectory = structured_observables_array[
+                                observe_rna_species
+                            ]
+                            trajectory_color = (
+                                trajectory_colors[parameter_set_index]
+                                if parameter_set_index < len(trajectory_colors)
+                                else plt.cm.tab10(parameter_set_index % 10)
+                            )
+                            rna_ax.plot(
+                                time_points,
+                                rna_trajectory,
+                                color=trajectory_color,
+                                alpha=0.15,
+                                zorder=1,
+                            )
+
+                rna_ax.set_ylabel("RNA (nM)", fontsize=10)
+                rna_ax.set_title(
+                    f"{circuit_name} - RNA ({observe_rna_species})",
+                    fontsize=11,
+                    fontweight="bold",
+                )
+                rna_ax.grid(True, alpha=0.3)
+                rna_ax.tick_params(labelsize=8)
+                subplot_idx += 1
+
+            # PULSE SUBPLOT
+            pulse_ax = figure.add_subplot(grid_spec[circuit_idx, subplot_idx])
+            circuit_axes["pulse"] = pulse_ax
+
+            if pulse_configuration:
+                # Create pulse profile
+                pulse_profile = np.zeros_like(time_points)
+                pulse_start_time = pulse_configuration.get("pulse_start", 0)
+                pulse_end_time = pulse_configuration.get("pulse_end", 10)
+                pulse_active_concentration = pulse_configuration.get(
+                    "pulse_concentration", 1.0
+                )
+                pulse_baseline_concentration = pulse_configuration.get(
+                    "base_concentration", 0.0
+                )
+
+                pulse_active_mask = (time_points >= pulse_start_time) & (
+                    time_points <= pulse_end_time
+                )
+                pulse_profile[pulse_active_mask] = pulse_active_concentration
+                pulse_profile[~pulse_active_mask] = pulse_baseline_concentration
+
+                pulse_ax.plot(
+                    time_points, pulse_profile, "g-", linewidth=3, label="Pulse"
+                )
+                pulse_ax.legend(fontsize=8)
+
+            pulse_ax.set_ylabel("Pulse (nM)", fontsize=10)
+            pulse_ax.set_title(
+                f"{circuit_name} - Pulse", fontsize=11, fontweight="bold"
+            )
+            pulse_ax.grid(True, alpha=0.3)
+            pulse_ax.tick_params(labelsize=8)
+
+            # Set x-label only for bottom row
+            if circuit_idx == num_circuits - 1:
+                for ax_name, ax in circuit_axes.items():
+                    ax.set_xlabel("Time (min)", fontsize=10)
+
+            all_axes[circuit_name] = circuit_axes
+
+        # Overall figure title
+        summary_description = (
+            "Mean ± Std"
+            if statistical_summary_type == "mean_std"
+            else f"Median ± {percentile_bounds[0]}-{percentile_bounds[1]}%"
+        )
+        mode_description = (
+            "Statistical Summary"
+            if use_statistical_summary
+            else "Individual Trajectories"
+        )
+
+        figure.suptitle(
+            f"All Circuits Pulse Response - {mode_description} ({summary_description})",
+            fontsize=16,
+            fontweight="bold",
+        )
+
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches="tight")
+            print(f"Grid plot saved: {save_path}")
+
         plt.show()
-        return fig
+        return figure, all_axes
 
 
 # Example usage

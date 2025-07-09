@@ -171,8 +171,8 @@ def plot_circuit_conditions_overlay(
                 s=15,
                 label=condition_name,
                 marker="o",
-                edgecolors="black",
-                linewidth=0.5,
+                # edgecolors="black",
+                # linewidth=0.5,
             )
 
             # Plot simulation data (right subplot) with unified color scheme
@@ -416,8 +416,8 @@ def plot_circuit_simulations(
                     alpha=0.7,
                     s=15,
                     marker="o",
-                    edgecolors="black",
-                    linewidth=0.5,
+                    # edgecolors="black",
+                    # linewidth=0.5,
                 )
 
             # Set common axis properties

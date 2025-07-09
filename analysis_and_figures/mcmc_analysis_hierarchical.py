@@ -5,68 +5,56 @@ import pandas as pd
 def analyze_hierarchical_mcmc_results(
     parameters, priors, likelihoods, step_accepts, swap_accepts, hierarchical_fitter
 ):
-    # Get parameter counts
-    n_circuits = hierarchical_fitter.n_circuits
-    n_params = hierarchical_fitter.n_parameters
-    n_alpha_params = hierarchical_fitter.n_alpha_params
-
-    # Convert samples to more usable format
+    # Convert samples to usable format
     n_walkers, n_samples, n_chains, _ = parameters.shape
     flat_samples = parameters.reshape(n_walkers * n_samples * n_chains, -1)
 
-    # DEBUG: Print shapes to understand the issue
-    print(f"DEBUG: parameters.shape = {parameters.shape}")
-    print(f"DEBUG: step_accepts.shape = {step_accepts.shape}")
-    print(
-        f"DEBUG: n_walkers = {n_walkers}, n_samples = {n_samples}, n_chains = {n_chains}"
+    # Parameter names for compatibility with downstream analysis functions
+    param_names = hierarchical_fitter.parameters_to_fit  # Keep for return dictionary
+    # hierarchical_param_names = hierarchical_fitter.hierarchical_parameter_names
+    # shared_param_names = hierarchical_fitter.shared_parameter_names
+
+    # Use hierarchical fitter's parameter splitting (handles both legacy and mixed effects)
+    beta_samples, theta_samples, alpha_samples, sigma_matrices = (
+        hierarchical_fitter.split_hierarchical_parameters(flat_samples)
     )
 
-    # Extract different parameter types
-    theta_samples = flat_samples[:, : n_circuits * n_params].reshape(
-        -1, n_circuits, n_params
-    )
-    alpha_samples = flat_samples[
-        :, n_circuits * n_params : n_circuits * n_params + n_alpha_params
-    ]
-    sigma_flat_samples = flat_samples[:, n_circuits * n_params + n_alpha_params :]
-
-    # Reconstruct sigma matrices
-    sigma_matrices = np.zeros((len(flat_samples), n_params, n_params))
-    for i in range(len(flat_samples)):
-        sigma_matrices[i] = hierarchical_fitter._unflatten_covariance(
-            sigma_flat_samples[i]
-        )
-
-    # Create parameter names
-    param_names = hierarchical_fitter.parameters_to_fit
+    # Get parameter names for mixed effects structure
+    hierarchical_param_names = hierarchical_fitter.hierarchical_parameter_names
+    shared_param_names = hierarchical_fitter.shared_parameter_names
     circuit_names = [config.name for config in hierarchical_fitter.configs]
 
-    # Create DataFrame with all parameters
+    # Create DataFrame with mixed effects parameters
     results_df = pd.DataFrame()
 
-    # Add θ parameters (circuit-specific)
+    # Add β parameters (shared)
+    if hierarchical_fitter.n_shared_params > 0:
+        for p, param in enumerate(shared_param_names):
+            col_name = f"beta_{param}"
+            results_df[col_name] = beta_samples[:, p]
+
+    # Add θ parameters (circuit-specific, hierarchical only)
     for c, circuit in enumerate(circuit_names):
-        for p, param in enumerate(param_names):
+        for p, param in enumerate(hierarchical_param_names):
             col_name = f"theta_{circuit}_{param}"
             results_df[col_name] = theta_samples[:, c, p]
 
-    # Add α parameters (global means)
-    for p, param in enumerate(param_names):
+    # Add α parameters (hierarchical means only)
+    for p, param in enumerate(hierarchical_param_names):
         col_name = f"alpha_{param}"
         results_df[col_name] = alpha_samples[:, p]
 
-    # Add diagonal elements of Σ (variances)
-    for p, param in enumerate(param_names):
+    # Add Σ elements (hierarchical covariance only)
+    for p, param in enumerate(hierarchical_param_names):
         col_name = f"sigma_{param}"
         results_df[col_name] = sigma_matrices[:, p, p]
 
-    # Add correlations from Σ
-    for p1 in range(n_params):
-        for p2 in range(p1 + 1, n_params):
-            param1 = param_names[p1]
-            param2 = param_names[p2]
+    # Add correlations from Σ (hierarchical parameters only)
+    for p1 in range(len(hierarchical_param_names)):
+        for p2 in range(p1 + 1, len(hierarchical_param_names)):
+            param1 = hierarchical_param_names[p1]
+            param2 = hierarchical_param_names[p2]
             col_name = f"corr_{param1}_{param2}"
-            # Calculate correlation from covariance
             results_df[col_name] = sigma_matrices[:, p1, p2] / np.sqrt(
                 sigma_matrices[:, p1, p1] * sigma_matrices[:, p2, p2]
             )

@@ -310,6 +310,157 @@ def register_constitutive_circuit(manager):
     )
 
 
+def register_i1_ffl(manager):
+    """Register Incoherent Feed-Forward Loop (I1 FFL) circuit with named plasmids"""
+    plasmids = [
+        (
+            "star6_trigger3_plasmid",
+            None,
+            None,
+            [(False, "Star6", "Trigger3")],
+        ),  # Step 1: Express Star6 and Trigger3
+        (
+            "sense6_atrigger3_plasmid",
+            ("Sense6", "Star6"),
+            None,
+            [(False, "aTrigger3")],
+        ),  # Step 2: Sense6 controls aTrigger3
+        (
+            "toehold3_gfp_plasmid",
+            None,
+            ("Toehold3", "Trigger3"),
+            [(True, "GFP")],
+        ),  # Step 3: Toehold3 controls GFP translation
+    ]
+    # Define binding between Trigger3 and aTrigger3
+    bindings = [("Trigger3", "aTrigger3")]
+
+    manager.add_circuit(
+        name="incoherent_ffl_1",
+        plasmids=plasmids,
+        default_parameters={
+            "k_Star6_Trigger3_concentration": 1,  # Concentration factor for Trigger3 production
+            "k_Sense6_aTrigger3_concentration": 1,  # Concentration factor for aTrigger3 production
+            "k_Toehold3_GFP_concentration": 1,  # Concentration factor for GFP translation
+        },
+        bindings=bindings,  # Add bindings
+    )
+
+
+def register_or_gate_cascade(manager):
+    """"""
+    plasmids = [
+        ("star6_plasmid", None, None, [(False, "Star6")]),  # Step 1: Express Star6
+        (
+            "sense6_trigger3_plasmid",
+            ("Sense6", "Star6"),
+            None,
+            [(False, "Trigger3")],
+        ),  # Step 2: Sense6 controls Trigger3
+        (
+            "toehold3_gfp_plasmid",
+            None,
+            ("Toehold3", "Trigger3"),
+            [(True, "GFP")],
+        ),  # Step 3: Toehold3 controls GFP translation
+        (
+            "sense6_gfp_plasmid",
+            ("Sense6", "Star6"),
+            None,
+            [(True, "GFP")],
+        ),  # Step 4: Sense6 controls GFP
+    ]
+
+    manager.add_circuit(
+        name="or_gate_cascade",
+        plasmids=plasmids,
+        default_parameters={
+            "k_Star6_concentration": 1,  # Initial concentration of Star6
+            "k_Sense6_Trigger3_concentration": 1,  # Initial concentration of Trigger3
+            "k_Toehold3_GFP_concentration": 1,  # Initial concentration of GFP
+            "k_Sense6_GFP_concentration": 1,  # Initial concentration of GFP from Sense6
+        },
+    )
+
+
+def register_inhibited_cascade(manager):
+    """cascade but with atrigger3 inhibiting the last part"""
+    plasmids = [
+        ("star6_plasmid", None, None, [(False, "Star6")]),  # Step 1: Express Star6
+        (
+            "sense6_trigger3_plasmid",
+            ("Sense6", "Star6"),
+            None,
+            [(False, "Trigger3")],
+        ),  # Step 2: Sense6 controls Trigger3
+        (
+            "toehold3_gfp_plasmid",
+            None,
+            ("Toehold3", "Trigger3"),
+            [(True, "GFP")],
+        ),  # Step 3: Toehold3 controls GFP translation
+        (
+            "atrigger3_plasmid",
+            None,
+            None,
+            [(False, "aTrigger3")],
+        ),  # Step 4: Express aTrigger3
+    ]
+    # Define binding between Trigger3 and aTrigger3
+    bindings = [("Trigger3", "aTrigger3")]
+
+    manager.add_circuit(
+        name="inhibited_cascade",
+        plasmids=plasmids,
+        default_parameters={
+            "k_Star6_concentration": 1,  # Initial concentration of Star6
+            "k_Sense6_Trigger3_concentration": 1,  # Initial concentration of Trigger3
+            "k_Toehold3_GFP_concentration": 1,  # Initial concentration of GFP
+            "k_aTrigger3_concentration": 1,  # Initial concentration of aTrigger3
+        },
+        bindings=bindings,  # Add bindings
+    )
+
+
+def register_i_ffl(manager):
+    """Register Incoherent Feed-Forward Loop (I FFL) circuit with named plasmids"""
+    plasmids = [
+        ("star6_plasmid", None, None, [(False, "Star6")]),  # Step 1: Express Star6
+        (
+            "sense6_atrigger3_plasmid",
+            ("Sense6", "Star6"),
+            None,
+            [(False, "aTrigger3")],
+        ),  # Step 2: Sense6 controls aTrigger3
+        (
+            "toehold3_gfp_plasmid",
+            None,
+            ("Toehold3", "Trigger3"),
+            [(True, "GFP")],
+        ),  # Step 3: Toehold3 controls GFP translation
+        (
+            "trigger3_plasmid",
+            None,
+            None,
+            [(False, "Trigger3")],
+        ),  # Step 4: Express Trigger3
+    ]
+    # Define binding between Trigger3 and aTrigger3
+    bindings = [("Trigger3", "aTrigger3")]
+
+    manager.add_circuit(
+        name="incoherent_ffl_2",
+        plasmids=plasmids,
+        default_parameters={
+            "k_Star6_concentration": 1,  # Concentration factor for Star6 production
+            "k_Sense6_aTrigger3_concentration": 1,  # Concentration factor for aTrigger3 production
+            "k_Toehold3_GFP_concentration": 1,  # Concentration factor for GFP translation
+            "k_Trigger3_concentration": 1,  # Concentration factor for Trigger3 production
+        },
+        bindings=bindings,  # Add bindings
+    )
+
+
 def main():
     """Initialize the database with all circuits"""
     # You can specify the parameters file path here
@@ -317,10 +468,11 @@ def main():
 
     # Create a circuit manager and register all circuits
     manager = CircuitManager(parameters_file=parameters_file)
-    # register_star_antistar_1(manager)
-    # register_all_circuits(manager)
-    # register_trigger_antitrigger(manager)
-    register_constitutive_circuit(manager)
+
+    register_i1_ffl(manager)
+    register_or_gate_cascade(manager)
+    register_inhibited_cascade(manager)
+    register_i_ffl(manager)
 
     # List all available circuits
     circuits = manager.list_circuits()

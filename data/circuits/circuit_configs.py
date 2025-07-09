@@ -201,6 +201,122 @@ CIRCUIT_CONDITIONS = {
             "k_Sense6_Toehold3_GFP_concentration": 3,
         },
     },
+    "cffl_12": {
+        # STAR6 fixed at 15nM, STAR1 titrated
+        "STAR1_0nM_STAR6_15nM": {
+            "k_Star1_concentration": 0,
+            "k_Star6_concentration": 15,
+            "k_Sense1_aSTAR6_concentration": 5,
+            "k_Sense6_Trigger3_concentration": 5,
+            "k_Sense6_Toehold3_GFP_concentration": 3,
+        },
+        "STAR1_3nM_STAR6_15nM": {
+            "k_Star1_concentration": 3,
+            "k_Star6_concentration": 15,
+            "k_Sense1_aSTAR6_concentration": 5,
+            "k_Sense6_Trigger3_concentration": 5,
+            "k_Sense6_Toehold3_GFP_concentration": 3,
+        },
+        "STAR1_5nM_STAR6_15nM": {
+            "k_Star1_concentration": 5,
+            "k_Star6_concentration": 15,
+            "k_Sense1_aSTAR6_concentration": 5,
+            "k_Sense6_Trigger3_concentration": 5,
+            "k_Sense6_Toehold3_GFP_concentration": 3,
+        },
+        "STAR1_10nM_STAR6_15nM": {
+            "k_Star1_concentration": 10,
+            "k_Star6_concentration": 15,
+            "k_Sense1_aSTAR6_concentration": 5,
+            "k_Sense6_Trigger3_concentration": 5,
+            "k_Sense6_Toehold3_GFP_concentration": 3,
+        },
+        "STAR1_15nM_STAR6_15nM": {
+            "k_Star1_concentration": 15,
+            "k_Star6_concentration": 15,
+            "k_Sense1_aSTAR6_concentration": 5,
+            "k_Sense6_Trigger3_concentration": 5,
+            "k_Sense6_Toehold3_GFP_concentration": 3,
+        },
+        # STAR1 fixed at 15nM, STAR6 titrated
+        "STAR1_15nM_STAR6_0nM": {
+            "k_Star1_concentration": 15,
+            "k_Star6_concentration": 0,
+            "k_Sense1_aSTAR6_concentration": 5,
+            "k_Sense6_Trigger3_concentration": 5,
+            "k_Sense6_Toehold3_GFP_concentration": 3,
+        },
+        "STAR1_15nM_STAR6_3nM": {
+            "k_Star1_concentration": 15,
+            "k_Star6_concentration": 3,
+            "k_Sense1_aSTAR6_concentration": 5,
+            "k_Sense6_Trigger3_concentration": 5,
+            "k_Sense6_Toehold3_GFP_concentration": 3,
+        },
+        "STAR1_15nM_STAR6_5nM": {
+            "k_Star1_concentration": 15,
+            "k_Star6_concentration": 5,
+            "k_Sense1_aSTAR6_concentration": 5,
+            "k_Sense6_Trigger3_concentration": 5,
+            "k_Sense6_Toehold3_GFP_concentration": 3,
+        },
+        "STAR1_15nM_STAR6_10nM": {
+            "k_Star1_concentration": 15,
+            "k_Star6_concentration": 10,
+            "k_Sense1_aSTAR6_concentration": 5,
+            "k_Sense6_Trigger3_concentration": 5,
+            "k_Sense6_Toehold3_GFP_concentration": 3,
+        },
+    },
+    "iffl_1": {
+        # STAR-Trigger fixed at 15nM, Sense-antiTrigger titrated
+        "STARTrigger_15nM_antiTrigger_0nM": {
+            "k_Star6_Trigger3_concentration": 15,
+            "k_Sense6_aTrigger3_concentration": 0,
+            "k_Toehold3_GFP_concentration": 3,
+        },
+        "STARTrigger_15nM_antiTrigger_3nM": {
+            "k_Star6_Trigger3_concentration": 15,
+            "k_Sense6_aTrigger3_concentration": 3,
+            "k_Toehold3_GFP_concentration": 3,
+        },
+        "STARTrigger_15nM_antiTrigger_5nM": {
+            "k_Star6_Trigger3_concentration": 15,
+            "k_Sense6_aTrigger3_concentration": 5,
+            "k_Toehold3_GFP_concentration": 3,
+        },
+        "STARTrigger_15nM_antiTrigger_10nM": {
+            "k_Star6_Trigger3_concentration": 15,
+            "k_Sense6_aTrigger3_concentration": 10,
+            "k_Toehold3_GFP_concentration": 3,
+        },
+        "STARTrigger_15nM_antiTrigger_15nM": {
+            "k_Star6_Trigger3_concentration": 15,
+            "k_Sense6_aTrigger3_concentration": 15,
+            "k_Toehold3_GFP_concentration": 3,
+        },
+        # Sense-antiTrigger fixed at 5nM, STAR-Trigger titrated
+        "STARTrigger_0nM_antiTrigger_5nM": {
+            "k_Star6_Trigger3_concentration": 0,
+            "k_Sense6_aTrigger3_concentration": 5,
+            "k_Toehold3_GFP_concentration": 3,
+        },
+        "STARTrigger_3nM_antiTrigger_5nM": {
+            "k_Star6_Trigger3_concentration": 3,
+            "k_Sense6_aTrigger3_concentration": 5,
+            "k_Toehold3_GFP_concentration": 3,
+        },
+        "STARTrigger_5nM_antiTrigger_5nM": {
+            "k_Star6_Trigger3_concentration": 5,
+            "k_Sense6_aTrigger3_concentration": 5,
+            "k_Toehold3_GFP_concentration": 3,
+        },
+        "STARTrigger_10nM_antiTrigger_5nM": {
+            "k_Star6_Trigger3_concentration": 10,
+            "k_Sense6_aTrigger3_concentration": 5,
+            "k_Toehold3_GFP_concentration": 3,
+        },
+    },
 }
 
 
