@@ -58,12 +58,12 @@
         {
           "name": "pr-sense6-toehold3-gfp_plasmid",
           "tx_control": [
-            "Sense_6",
-            "STAR_6"
+            "Sense6",
+            "Star6"
           ],
           "tl_control": [
-            "Toehold_3",
-            "Trigger_3"
+            "Toehold3",
+            "Trigger3"
           ],
           "cds": [
             [
@@ -79,7 +79,7 @@
           "cds": [
             [
               false,
-              "STAR_6"
+              "Star6"
             ]
           ]
         },
@@ -90,15 +90,15 @@
           "cds": [
             [
               false,
-              "Trigger_3"
+              "Trigger3"
             ]
           ]
         }
       ],
       "default_parameters": {
-        "k_Sense_6_Toehold_3_GFP_concentration": 1,
-        "k_STAR_6_concentration": 1,
-        "k_Trigger_3_concentration": 1
+        "k_Sense6_Toehold3_GFP_concentration": 1,
+        "k_Star6_concentration": 1,
+        "k_Trigger3_concentration": 1
       },
       "bindings": []
     },
@@ -237,7 +237,7 @@
           "cds": [
             [
               false,
-              "aSTAR6"
+              "aStar6"
             ]
           ]
         },
@@ -276,11 +276,16 @@
       "default_parameters": {
         "k_Star1_concentration": 1,
         "k_Star6_concentration": 1,
-        "k_Sense1_aSTAR6_concentration": 1000,
+        "k_Sense1_aStar6_concentration": 1000,
         "k_Sense6_Trigger3_concentration": 1,
         "k_Sense6_Toehold3_GFP_concentration": 1
       },
-      "bindings": []
+      "bindings": [
+        [
+          "Star6",
+          "aStar6"
+        ]
+      ]
     },
     "cleaved_transcription": {
       "plasmids": [
@@ -291,7 +296,7 @@
           "cds": [
             [
               false,
-              "STAR"
+              "Star"
             ],
             [
               true,
@@ -301,7 +306,7 @@
         }
       ],
       "default_parameters": {
-        "k_STAR_GFP_concentration": 1
+        "k_Star_GFP_concentration": 1
       },
       "bindings": []
     },
@@ -356,7 +361,12 @@
         "k_Sense6_aTrigger3_concentration": 1,
         "k_Toehold3_GFP_concentration": 1
       },
-      "bindings": []
+      "bindings": [
+        [
+          "Trigger3",
+          "aTrigger3"
+        ]
+      ]
     },
     "sequestration": {
       "plasmids": [
@@ -672,7 +682,7 @@
         ]
       ]
     },
-    "or_gate_cascade": {
+    "or_gate_c1ffl": {
       "plasmids": [
         {
           "name": "star6_plasmid",
@@ -802,7 +812,7 @@
         ]
       ]
     },
-    "incoherent_ffl_2": {
+    "inhibited_incoherent_cascade": {
       "plasmids": [
         {
           "name": "star6_plasmid",
