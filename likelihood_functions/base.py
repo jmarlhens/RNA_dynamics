@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 from optimization.adaptive_parallel_tempering import ParallelTempering
-from .likelihood import calculate_likelihoods
 from utils.process_experimental_data import (
     prepare_experimental_data,
     prepare_combined_params,
@@ -10,7 +9,12 @@ from utils.process_experimental_data import (
 
 class CircuitFitter:
     def __init__(
-        self, configs, parameters_to_fit, model_parameters_priors, calibration_data
+        self,
+        configs,
+        parameters_to_fit,
+        model_parameters_priors,
+        calibration_data,
+        sigma_0_squared=1e2,
     ):
         """
         Initialize CircuitFitter with caching of experimental data
@@ -21,18 +25,21 @@ class CircuitFitter:
         parameters_to_fit : List of parameter names to fit
         model_parameters_priors : pd.DataFrame of prior distributions for model parameters
         calibration_data : Dictionary containing calibration parameters
+        sigma_0_squared : float, optional
         """
         self.configs = configs
         self.parameters_to_fit = parameters_to_fit
         self.model_parameters_priors = model_parameters_priors
         self.calibration_params = calibration_data
         self.simulators = {}
-        self.experimental_data_cache = {}  # Cache for experimental data
+        self.experimental_data_cache = {}
 
         self._setup_priors()
         self._validate_configs()
         self._setup_simulators()
         self._cache_experimental_data()
+
+        self.sigma_0_squared = sigma_0_squared
 
     def _cache_experimental_data(self):
         """Pre-calculate and cache experimental data means and variances"""
@@ -159,113 +166,205 @@ class CircuitFitter:
 
         return results
 
-    # def simulate_parameters(self, log_params: np.ndarray) -> dict:
-    #     """
-    #     Run simulations for given parameter sets (in log space) across all conditions
-    #
-    #     Args:
-    #         log_params: Array of shape (n_samples, n_params) or (n_params,) in log space
-    #
-    #     Returns:
-    #         Dictionary with simulation results
-    #     """
-    #     # Convert to linear space for simulation
-    #     linear_params = self.log_to_linear_params(log_params, self.parameters_to_fit)
-    #
-    #
-    #     arguments = [[linear_params, config] for config in self.configs]
-    #
-    #     c_count = multiprocessing.cpu_count()
-    #     # with multiprocessing.Pool(c_count - 2) as p:
-    #     #     cur_results = p.map(self.simulate_parameters_for_config, iterable=arguments)
-    #
-    #     with concurrent.futures.ThreadPoolExecutor(max_workers=c_count - 2) as executor:
-    #         cur_results = executor.map(self.simulate_parameters_for_config, arguments)
-    #
-    #     results = {}
-    #     for i, config, cur_result in zip(range(len(self.configs)), self.configs, cur_results):
-    #         results[i] = {
-    #             'combined_params': cur_result[1],
-    #             'simulation_results': cur_result[0],
-    #             'config': config
-    #         }
-    #
-    #     return results
-    #
-    # def simulate_parameters_for_config(self, args):
-    #     linear_params, config = args
-    #     combined_params_df = prepare_combined_params(
-    #         linear_params,
-    #         config.condition_params
-    #     )
-    #
-    #     simulator = self.simulators[config.name]
-    #     simulation_results = simulator.run(
-    #         param_values=combined_params_df.drop(['param_set_idx', 'condition'], axis=1),
-    #     )
-    #
-    #     return simulation_results, combined_params_df
+    def _compute_likelihood_vectorized_unified(
+        self, circuit_simulation_dict, n_parameter_sets
+    ):
+        """Unified vectorized computation with breakdown reconstruction capability"""
+        total_likelihood_vector = np.zeros(n_parameter_sets)
+        circuit_likelihood_breakdown = {}
+
+        for circuit_idx, simulation_results_dict in circuit_simulation_dict.items():
+            circuit_configuration = simulation_results_dict["config"]
+            circuit_name = circuit_configuration.name
+
+            # Vectorized simulation extraction
+            observables_list = simulation_results_dict["simulation_results"].observables
+            simulation_matrix = np.array(
+                [obs["obs_Protein_GFP"] for obs in observables_list]
+            )
+
+            combined_params_df = simulation_results_dict["combined_params"]
+            condition_labels = combined_params_df["condition"].values
+            parameter_set_indices = combined_params_df["param_set_idx"].values
+
+            # Align experimental means with simulation order
+            experimental_means_matrix = np.zeros_like(simulation_matrix)
+            for condition_name in circuit_configuration.condition_params.keys():
+                condition_mask = condition_labels == condition_name
+                cached_experimental_means = self.experimental_data_cache[circuit_name][
+                    condition_name
+                ]["means"]
+                experimental_means_matrix[condition_mask] = cached_experimental_means
+
+            # Vectorized likelihood computation
+            likelihood_per_simulation = (
+                self._calculate_heteroscedastic_likelihood_vectorized(
+                    simulation_matrix, experimental_means_matrix
+                )
+            )
+
+            # Aggregate by parameter set
+            circuit_total_likelihoods = np.bincount(
+                parameter_set_indices,
+                weights=likelihood_per_simulation,
+                minlength=n_parameter_sets,
+            )
+
+            # Store breakdown data for reconstruction
+            circuit_likelihood_breakdown[circuit_idx] = {
+                "circuit_totals": circuit_total_likelihoods,
+                "condition_labels": condition_labels,
+                "parameter_set_indices": parameter_set_indices,
+                "simulation_likelihoods": likelihood_per_simulation,
+                "condition_names": list(circuit_configuration.condition_params.keys()),
+                "circuit_name": circuit_name,
+            }
+
+            total_likelihood_vector += circuit_total_likelihoods
+
+        return total_likelihood_vector, circuit_likelihood_breakdown
+
+    def _reconstruct_breakdown_matrices(
+        self, circuit_likelihood_breakdown, n_parameter_sets
+    ):
+        """Reconstruct legacy matrix format from vectorized results"""
+        n_circuits = len(circuit_likelihood_breakdown)
+        circuit_likelihood_matrix = np.zeros((n_parameter_sets, n_circuits))
+        condition_likelihood_arrays = []
+
+        for circuit_idx, breakdown_data in circuit_likelihood_breakdown.items():
+            circuit_likelihood_matrix[:, circuit_idx] = breakdown_data["circuit_totals"]
+
+            # Reconstruct per-condition likelihoods
+            condition_names = breakdown_data["condition_names"]
+            condition_matrix = np.zeros((n_parameter_sets, len(condition_names)))
+
+            for condition_idx, condition_name in enumerate(condition_names):
+                condition_mask = breakdown_data["condition_labels"] == condition_name
+                condition_parameter_indices = breakdown_data["parameter_set_indices"][
+                    condition_mask
+                ]
+                condition_likelihoods = breakdown_data["simulation_likelihoods"][
+                    condition_mask
+                ]
+
+                # Aggregate condition likelihoods by parameter set
+                condition_totals = np.bincount(
+                    condition_parameter_indices,
+                    weights=condition_likelihoods,
+                    minlength=n_parameter_sets,
+                )
+                condition_matrix[:, condition_idx] = condition_totals
+
+            condition_likelihood_arrays.append(condition_matrix)
+
+        return circuit_likelihood_matrix, condition_likelihood_arrays
+
+    def _calculate_heteroscedastic_likelihood_vectorized(
+        self, simulation_values, experimental_means_matrix
+    ):
+        """Vectorized likelihood calculation with aligned experimental means"""
+        minimum_signal_threshold = 1e-6
+        heteroscedastic_variances = self.sigma_0_squared * np.maximum(
+            simulation_values, minimum_signal_threshold
+        )
+
+        residuals = simulation_values - experimental_means_matrix
+        time_points_count = simulation_values.shape[1]
+
+        return (
+            -0.5
+            * np.sum((residuals**2) / heteroscedastic_variances, axis=1)
+            / time_points_count
+        )
 
     def calculate_likelihood_from_simulation(self, simulation_data: dict) -> dict:
-        """Calculate log likelihood from pre-computed simulation data using cached experimental data"""
-        first_config_data = simulation_data[0]
-        n_param_sets = len(
-            first_config_data["combined_params"]["param_set_idx"].unique()
+        """Unified MCMC-optimized computation"""
+        first_circuit_data = next(iter(simulation_data.values()))
+        n_parameter_sets = len(
+            first_circuit_data["combined_params"]["param_set_idx"].unique()
         )
-        total_log_likelihood = np.zeros(n_param_sets)
-        circuit_likelihoods = {}
 
-        for config_idx, data in simulation_data.items():
-            config = self.configs[config_idx]
-            circuit_name = config.name
-            circuit_total = np.zeros(n_param_sets)
-            condition_likelihoods = {}
+        total_likelihoods, _ = self._compute_likelihood_vectorized_unified(
+            simulation_data, n_parameter_sets
+        )
+        return {"total": total_likelihoods}
 
-            for condition_name, _ in config.condition_params.items():
-                condition_mask = data["combined_params"]["condition"] == condition_name
-                sim_indices = data["combined_params"].index[condition_mask]
-                # param_set_indices = data['combined_params'].loc[condition_mask, 'param_set_idx']
+    def calculate_likelihood_from_simulation_with_breakdown(
+        self, simulation_data: dict
+    ) -> dict:
+        """Unified computation with breakdown reconstruction"""
+        first_circuit_data = next(iter(simulation_data.values()))
+        n_parameter_sets = len(
+            first_circuit_data["combined_params"]["param_set_idx"].unique()
+        )
 
-                # Get cached experimental data
-                cached_data = self.experimental_data_cache[circuit_name][condition_name]
-                exp_means, exp_vars = cached_data["means"], cached_data["vars"]
+        total_likelihoods, circuit_breakdown_data = (
+            self._compute_likelihood_vectorized_unified(
+                simulation_data, n_parameter_sets
+            )
+        )
 
-                sim_values = np.array(
-                    [
-                        data["simulation_results"].observables[i]["obs_Protein_GFP"]
-                        for i in sim_indices
-                    ]
+        circuit_breakdown = {}
+        for circuit_idx, breakdown_data in circuit_breakdown_data.items():
+            circuit_name = breakdown_data["circuit_name"]
+            condition_names = breakdown_data["condition_names"]
+
+            condition_breakdown = {}
+            for condition_idx, condition_name in enumerate(condition_names):
+                condition_mask = breakdown_data["condition_labels"] == condition_name
+                condition_parameter_indices = breakdown_data["parameter_set_indices"][
+                    condition_mask
+                ]
+                condition_likelihoods = breakdown_data["simulation_likelihoods"][
+                    condition_mask
+                ]
+
+                condition_totals = np.bincount(
+                    condition_parameter_indices,
+                    weights=condition_likelihoods,
+                    minlength=n_parameter_sets,
                 )
+                condition_breakdown[condition_name] = condition_totals
 
-                log_likelihoods = calculate_likelihoods(sim_values, exp_means, exp_vars)
-                condition_likelihoods[condition_name] = log_likelihoods
-                circuit_total += log_likelihoods
-
-            circuit_likelihoods[circuit_name] = {
-                "total": circuit_total,
-                "conditions": condition_likelihoods,
+            circuit_breakdown[circuit_name] = {
+                "total": breakdown_data["circuit_totals"],
+                "conditions": condition_breakdown,
             }
-            total_log_likelihood += circuit_total
 
-        return {"total": total_log_likelihood, "circuits": circuit_likelihoods}
+        return {"total": total_likelihoods, "circuits": circuit_breakdown}
+
+    def _compute_likelihood_matrix_core(
+        self, circuit_simulation_dict, n_parameter_sets
+    ):
+        """Legacy interface: reconstruct matrix format"""
+        total_likelihoods, circuit_breakdown_data = (
+            self._compute_likelihood_vectorized_unified(
+                circuit_simulation_dict, n_parameter_sets
+            )
+        )
+        circuit_likelihood_matrix, condition_likelihood_arrays = (
+            self._reconstruct_breakdown_matrices(
+                circuit_breakdown_data, n_parameter_sets
+            )
+        )
+        return total_likelihoods, circuit_likelihood_matrix, condition_likelihood_arrays
 
     def calculate_log_likelihood(self, log_params: np.ndarray) -> dict:
-        """
-        Calculate log likelihood for parameters in log space.
-
-        Args:
-            log_params: Array of shape (n_samples, n_params) or (n_params,) in log space
-
-        Returns:
-            Dictionary containing:
-                'total': total log likelihood array
-                'circuits': dict of circuit likelihoods
-                    each circuit contains:
-                        'total': total circuit likelihood
-                        'conditions': dict of condition likelihoods
-        """
+        """MCMC-optimized likelihood calculation"""
         simulation_data = self.simulate_parameters(log_params)
         return self.calculate_likelihood_from_simulation(simulation_data)
+
+    def calculate_comprehensive_circuit_likelihood_analysis(
+        self, circuit_simulation_results: dict
+    ) -> dict:
+        """Legacy method - redirects to breakdown calculation"""
+        comprehensive_results = (
+            self.calculate_likelihood_from_simulation_with_breakdown(
+                circuit_simulation_results
+            )
+        )
+        return comprehensive_results["circuits"]
 
     def calculate_log_prior(self, log_params: np.ndarray) -> np.ndarray:
         """
@@ -380,3 +479,17 @@ class MCMCAdapter:
             n_walkers=n_walkers,
             n_chains=n_chains,
         )
+
+    @staticmethod
+    def _reshape_parameters_for_parallel_tempering(parameter_array):
+        """Standard parameter reshaping for parallel tempering compatibility"""
+        original_shape = parameter_array.shape
+        parameters_flattened = parameter_array.reshape(-1, original_shape[-1])
+        return parameters_flattened, original_shape
+
+    @staticmethod
+    def _reshape_likelihood_results_from_parallel_tempering(
+        likelihood_results, original_shape
+    ):
+        """Reshape likelihood results back to parallel tempering structure"""
+        return likelihood_results.reshape(original_shape[:-1])

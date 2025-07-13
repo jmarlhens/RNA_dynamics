@@ -1,5 +1,8 @@
 from likelihood_functions.base import MCMCAdapter
 from optimization.adaptive_parallel_tempering import ParallelTempering
+from likelihood_functions.hierarchical_likelihood.base_hierarchical_adaptive_proposal import (
+    HierarchicalAdaptiveProposal,
+)
 
 
 class HierarchicalMCMCAdapter(MCMCAdapter):
@@ -16,38 +19,34 @@ class HierarchicalMCMCAdapter(MCMCAdapter):
         return self.hierarchical_fitter.generate_hierarchical_parameters(n_sets=1)[0]
 
     def get_log_likelihood_function(self):
-        """Return likelihood function for hierarchical model"""
-
-        def log_likelihood(params):
-            # Reshape to handle parallel tempering structure
-            original_shape = params.shape
-            params_2d = params.reshape(-1, original_shape[-1])
-
-            # Calculate likelihood using correct method name
-            likelihood_results = self.hierarchical_fitter.calculate_data_likelihood(
-                params_2d
+        def log_likelihood(hierarchical_parameter_array):
+            parameters_flattened, original_shape = (
+                self._reshape_parameters_for_parallel_tempering(
+                    hierarchical_parameter_array
+                )
             )
-
-            # Extract numpy array directly (no dictionary overhead)
-            return likelihood_results["total"].reshape(original_shape[:-1])
+            likelihood_results = self.hierarchical_fitter.calculate_data_likelihood(
+                parameters_flattened
+            )
+            return self._reshape_likelihood_results_from_parallel_tempering(
+                likelihood_results["total"], original_shape
+            )
 
         return log_likelihood
 
     def get_log_prior_function(self):
-        """Return prior function for hierarchical model"""
-
-        def log_prior(params):
-            # Reshape to handle parallel tempering structure
-            original_shape = params.shape
-            params_2d = params.reshape(-1, original_shape[-1])
-
-            # Calculate prior
+        def log_prior(hierarchical_parameter_array):
+            parameters_flattened, original_shape = (
+                self._reshape_parameters_for_parallel_tempering(
+                    hierarchical_parameter_array
+                )
+            )
             prior_values = self.hierarchical_fitter.calculate_hyperparameter_prior(
-                params_2d
+                parameters_flattened
             )["total"]
-
-            # Reshape back to original shape
-            return prior_values.reshape(original_shape[:-1])
+            return self._reshape_likelihood_results_from_parallel_tempering(
+                prior_values, original_shape
+            )
 
         return log_prior
 
@@ -59,4 +58,18 @@ class HierarchicalMCMCAdapter(MCMCAdapter):
             n_dim=self.hierarchical_fitter.n_total_params,
             n_walkers=n_walkers,
             n_chains=n_chains,
+        )
+
+    def setup_adaptive_hierarchical_parallel_tempering(self, n_walkers=5, n_chains=12):
+        hierarchical_proposal_function = HierarchicalAdaptiveProposal(
+            self.hierarchical_fitter
+        )
+
+        return ParallelTempering(
+            log_likelihood=self.get_log_likelihood_function(),
+            log_prior=self.get_log_prior_function(),
+            n_dim=self.hierarchical_fitter.n_total_params,
+            n_walkers=n_walkers,
+            n_chains=n_chains,
+            proposal_function=hierarchical_proposal_function,
         )
