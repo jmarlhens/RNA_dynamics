@@ -161,6 +161,7 @@ class Circuit:
         self,
         t_span=None,
         param_values=None,
+        solver_options=None,
         print_rules=False,
         print_odes=False,
         plot=False,
@@ -177,6 +178,8 @@ class Circuit:
             - dict mapping parameter names to lists of values
             - pandas DataFrame with parameter names as columns
             - list of dictionaries, each containing a set of parameter values
+        solver_options : dict, optional
+            Options for the ODE solver, e.g., {'rtol': 1e-6, 'atol': 1e-8}
         print_rules : bool, optional
             Whether to print model rules
         print_odes : bool, optional
@@ -208,7 +211,20 @@ class Circuit:
             print(equations)
 
         # Create simulator
-        sim = ScipyOdeSimulator(self.model, tspan=t_span)
+        default_solver_options = {"rtol": 1e-6, "atol": 1e-8, "mxstep": 5000}
+        final_solver_options = {**default_solver_options, **(solver_options or {})}
+
+        if self.use_pulses and self.pulse_config:
+            # Extract solver options from pulse_config if present
+            pulse_solver_options = self.pulse_config.get("solver_options", {})
+            final_solver_options.update(pulse_solver_options)
+
+        sim = ScipyOdeSimulator(
+            self.model,
+            tspan=t_span,
+            integrator="lsoda",
+            integrator_options=final_solver_options,
+        )
 
         # If param_values is provided, run multiple simulations
         if param_values is not None:

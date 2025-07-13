@@ -15,23 +15,17 @@ def analyze_hierarchical_mcmc_results(
     # shared_param_names = hierarchical_fitter.shared_parameter_names
 
     # Use hierarchical fitter's parameter splitting (handles both legacy and mixed effects)
-    beta_samples, theta_samples, alpha_samples, sigma_matrices = (
+    theta_samples, alpha_samples, sigma_matrices = (
         hierarchical_fitter.split_hierarchical_parameters(flat_samples)
     )
 
     # Get parameter names for mixed effects structure
     hierarchical_param_names = hierarchical_fitter.hierarchical_parameter_names
-    shared_param_names = hierarchical_fitter.shared_parameter_names
+    # shared_param_names = hierarchical_fitter.shared_parameter_names
     circuit_names = [config.name for config in hierarchical_fitter.configs]
 
     # Create DataFrame with mixed effects parameters
     results_df = pd.DataFrame()
-
-    # Add β parameters (shared)
-    if hierarchical_fitter.n_shared_params > 0:
-        for p, param in enumerate(shared_param_names):
-            col_name = f"beta_{param}"
-            results_df[col_name] = beta_samples[:, p]
 
     # Add θ parameters (circuit-specific, hierarchical only)
     for c, circuit in enumerate(circuit_names):

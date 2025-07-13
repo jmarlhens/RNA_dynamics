@@ -2,8 +2,9 @@ from pysb import Monomer, Model
 
 
 class ReactionComplex:
-
-    def __init__(self, substrate: Monomer = None, product: Monomer = None, model: Model = None):
+    def __init__(
+        self, substrate: Monomer = None, product: Monomer = None, model: Model = None
+    ):
         self.substrate = substrate
         self.product = product
 

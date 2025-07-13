@@ -253,6 +253,9 @@ def main():
     """Execute individual circuits hierarchical comparison analysis"""
     subfolder = "/rnase_competition"
     subfolder = "/10000_steps_updated"
+    subfolder = "/constrained_prior_3_tighter"
+    subfolder = "/even_tighter"
+
     # Configuration
     individual_results_directory = "../../data/fit_data/individual_circuits" + subfolder
     prior_parameters_filepath = "../../data/prior/model_parameters_priors_updated.csv"

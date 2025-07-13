@@ -2,6 +2,7 @@ from pysb import Rule, Model
 from circuits.modules.reactioncomplex import ReactionComplex
 from circuits.modules.molecules import RNA
 
+
 class Sequestration(ReactionComplex):
     def __init__(self, species1_name, species2_name, model: Model):
         """
@@ -19,8 +20,12 @@ class Sequestration(ReactionComplex):
         super().__init__(model=model)
 
         # Define binding and unbinding rates
-        self.k_bind = model.parameters.get("k_sequestration_bind", 1)  # Default rate for binding
-        self.k_unbind = model.parameters.get("k_sequestration_unbind", 0.1)  # Default rate for unbinding
+        self.k_bind = model.parameters.get(
+            "k_sequestration_bind", 1
+        )  # Default rate for binding
+        self.k_unbind = model.parameters.get(
+            "k_sequestration_unbind", 0.1
+        )  # Default rate for unbinding
 
         # Determine the site to use for binding based on the regulation type
         # dont like the way it is, needs to change later
@@ -32,21 +37,26 @@ class Sequestration(ReactionComplex):
             rule_suffix = "_toehold"
         else:
             raise ValueError(
-                f"Neither sense nor toehold keyword found in species names: {species1_name}, {species2_name}")
+                f"Neither sense nor toehold keyword found in species names: {species1_name}, {species2_name}"
+            )
 
         # Define binding and unbinding rules using the selected site
         binding_rule = Rule(
-            f'{species1.name}_binds_{species2.name}{rule_suffix}',
-            species1(state="full", **{binding_site: None}) + species2(state="full", **{binding_site: None}) >>
-            species1(state="full", **{binding_site: 1}) % species2(state="full", **{binding_site: 1}),
-            self.k_bind
+            f"{species1.name}_binds_{species2.name}{rule_suffix}",
+            species1(state="full", **{binding_site: None})
+            + species2(state="full", **{binding_site: None})
+            >> species1(state="full", **{binding_site: 1})
+            % species2(state="full", **{binding_site: 1}),
+            self.k_bind,
         )
 
         unbinding_rule = Rule(
-            f'{species1.name}_unbinds_{species2.name}{rule_suffix}',
-            species1(state="full", **{binding_site: 1}) % species2(state="full", **{binding_site: 1}) >>
-            species1(state="full", **{binding_site: None}) + species2(state="full", **{binding_site: None}),
-            self.k_unbind
+            f"{species1.name}_unbinds_{species2.name}{rule_suffix}",
+            species1(state="full", **{binding_site: 1})
+            % species2(state="full", **{binding_site: 1})
+            >> species1(state="full", **{binding_site: None})
+            + species2(state="full", **{binding_site: None}),
+            self.k_unbind,
         )
 
         # Add rules to the model

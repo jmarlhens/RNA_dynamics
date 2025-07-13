@@ -9,6 +9,7 @@ from typing import Optional, Dict, Union
 
 class KineticsType(Enum):
     """Enum representing the type of kinetics to use in the model."""
+
     MICHAELIS_MENTEN = "michaelis_menten"
     MASS_ACTION = "mass_action"
 
@@ -27,15 +28,18 @@ class Transcription(ReactionComplex):
         self.k_tx = self.parameters["k_tx"]
         self.K_tx = self.parameters["K_tx"]
         self.k_concentration = self.parameters["k_" + sequence_name + "_concentration"]
-        Expression('k_tx_plasmid_' + sequence_name, (self.k_concentration * self.k_tx)/(self.K_tx + self.k_concentration))
+        Expression(
+            "k_tx_plasmid_" + sequence_name,
+            (self.k_concentration * self.k_tx) / (self.K_tx + self.k_concentration),
+        )
         self.k_deg = self.parameters["k_rna_deg"]
 
         rules = []
         # Transcription rule: RNA is produced in the unbound state
         rule = Rule(
-            f'transcription_{rna.name}',
+            f"transcription_{rna.name}",
             None >> rna(state="full", sense=None, toehold=None, b=None),
-            model.expressions['k_tx_plasmid_' + sequence_name]
+            model.expressions["k_tx_plasmid_" + sequence_name],
         )
         rules.append(rule)
 
@@ -43,7 +47,9 @@ class Transcription(ReactionComplex):
 
 
 class PulsedTranscription(ReactionComplex):
-    def __init__(self, sequence_name: str = None, model: Model = None, pulse_config: dict = None):
+    def __init__(
+        self, sequence_name: str = None, model: Model = None, pulse_config: dict = None
+    ):
         """
         Enhanced Transcription class that supports both constant and pulsing plasmid concentrations.
 
@@ -66,48 +72,60 @@ class PulsedTranscription(ReactionComplex):
         self.k_deg = self.parameters["k_rna_deg"]
 
         # Set up time tracking if using pulses
-        if pulse_config and pulse_config.get('use_pulse', False):
+        if pulse_config and pulse_config.get("use_pulse", False):
             # Check if Time monomer exists using proper PySB method
-            time_monomer = next((m for m in model.monomers if m.name == 'Time'), None)
+            time_monomer = next((m for m in model.monomers if m.name == "Time"), None)
 
             if time_monomer is None:
                 # Add time monomer and parameters if they don't exist
-                Monomer('Time')
-                Parameter('Time_0', 0)
-                Parameter('k_clock', 1)
-                Initial(model.monomers['Time'], model.parameters['Time_0'])
-                Rule('Clock', None >> model.monomers['Time'](), model.parameters['k_clock'])
+                Monomer("Time")
+                Parameter("Time_0", 0)
+                Parameter("k_clock", 1)
+                Initial(model.monomers["Time"], model.parameters["Time_0"])
+                Rule(
+                    "Clock",
+                    None >> model.monomers["Time"](),
+                    model.parameters["k_clock"],
+                )
 
-            Observable('obs_Time', model.monomers['Time'])
+            Observable("obs_Time", model.monomers["Time"])
 
             # Create pulsed concentration expression
             Expression(
-                'k_' + sequence_name + '_concentration',
+                "k_" + sequence_name + "_concentration",
                 Piecewise(
-                    (pulse_config['base_concentration'],
-                     sp.Lt(model.observables['obs_Time'], pulse_config['pulse_start'])),
-                    (pulse_config['base_concentration'],
-                     sp.Gt(model.observables['obs_Time'], pulse_config['pulse_end'])),
-                    (pulse_config['pulse_concentration'], True)
-                )
+                    (
+                        pulse_config["base_concentration"],
+                        sp.Lt(
+                            model.observables["obs_Time"], pulse_config["pulse_start"]
+                        ),
+                    ),
+                    (
+                        pulse_config["base_concentration"],
+                        sp.Gt(model.observables["obs_Time"], pulse_config["pulse_end"]),
+                    ),
+                    (pulse_config["pulse_concentration"], True),
+                ),
             )
         else:
             # Use constant concentration as in original implementation
-            self.k_concentration = self.parameters["k_" + sequence_name + "_concentration"]
+            self.k_concentration = self.parameters[
+                "k_" + sequence_name + "_concentration"
+            ]
 
         # Create transcription rate expression
         Expression(
-            'k_tx_plasmid_' + sequence_name,
-            (model.expressions['k_' + sequence_name + '_concentration'] * self.k_tx) /
-            (self.K_tx + model.expressions['k_' + sequence_name + '_concentration'])
+            "k_tx_plasmid_" + sequence_name,
+            (model.expressions["k_" + sequence_name + "_concentration"] * self.k_tx)
+            / (self.K_tx + model.expressions["k_" + sequence_name + "_concentration"]),
         )
 
         # Create transcription rule
         rules = []
         rule = Rule(
-            f'transcription_{rna.name}',
+            f"transcription_{rna.name}",
             None >> rna(state="full", sense=None, toehold=None, b=None),
-            model.expressions['k_tx_plasmid_' + sequence_name]
+            model.expressions["k_tx_plasmid_" + sequence_name],
         )
         rules.append(rule)
         self.rules = rules
@@ -124,17 +142,22 @@ class Translation(ReactionComplex):
         self.K_tl = self.parameters["K_tl"]
         self.k_mat = self.parameters["k_mat"]
         self.k_deg = self.parameters["k_prot_deg"]
-        Observable('obs_RNA_' + sequence_name, model.monomers['RNA_' + sequence_name](state='full'))
-        Expression('k_tl_eff_' + sequence_name, self.k_tl / (self.K_tl + model.observables['obs_RNA_' + sequence_name]))
+        Observable(
+            "obs_RNA_" + sequence_name,
+            model.monomers["RNA_" + sequence_name](state="full"),
+        )
+        Expression(
+            "k_tl_eff_" + sequence_name,
+            self.k_tl / (self.K_tl + model.observables["obs_RNA_" + sequence_name]),
+        )
 
         rules = []
 
         # Translation rule: Translation occurs only if RNA is not bound at any site
         rule = Rule(
-            f'translation_of_{rna.name}_to_{protein.name}',
-            rna(state="full") >>
-            rna(state="full") + protein(state="immature"),
-            model.expressions['k_tl_eff_' + sequence_name]
+            f"translation_of_{rna.name}_to_{protein.name}",
+            rna(state="full") >> rna(state="full") + protein(state="immature"),
+            model.expressions["k_tl_eff_" + sequence_name],
         )
         rules.append(rule)
 
@@ -147,16 +170,18 @@ class MassActionTranscription(ReactionComplex):
 
         super().__init__(substrate=None, product=rna, model=model)
 
-        polymerase_name = 'RNAPolymerase'
-        polymerase = next((m for m in model.monomers if m.name == polymerase_name), None)
+        polymerase_name = "RNAPolymerase"
+        polymerase = next(
+            (m for m in model.monomers if m.name == polymerase_name), None
+        )
         if polymerase is None:
-            Monomer(polymerase_name, ['b'])
-            Initial(model.monomers[polymerase_name](b=None), model.parameters['rnap_0'])
+            Monomer(polymerase_name, ["b"])
+            Initial(model.monomers[polymerase_name](b=None), model.parameters["rnap_0"])
 
-        dna_name = 'DNA_' + sequence_name
+        dna_name = "DNA_" + sequence_name
         dna = next((m for m in model.monomers if m.name == dna_name), None)
         if dna is None:
-            Monomer(dna_name, ['b'])
+            Monomer(dna_name, ["b"])
             self.k_concentration = self.parameters[f"k_{sequence_name}_concentration"]
             Initial(model.monomers[dna_name](b=None), self.k_concentration)
 
@@ -170,26 +195,29 @@ class MassActionTranscription(ReactionComplex):
 
         # Rule 1: Polymerase binding to DNA
         rule1 = Rule(
-            f'polymerase_binding_{sequence_name}',
-            model.monomers[polymerase_name](b=None) + model.monomers[dna_name](b=None) >>
-            model.monomers[polymerase_name](b=1) % model.monomers[dna_name](b=1),
-            self.k_bind
+            f"polymerase_binding_{sequence_name}",
+            model.monomers[polymerase_name](b=None) + model.monomers[dna_name](b=None)
+            >> model.monomers[polymerase_name](b=1) % model.monomers[dna_name](b=1),
+            self.k_bind,
         )
         rules.append(rule1)
 
         # Rule 2: Transcription (RNA production from complex)
         rule2 = Rule(
-            f'transcription_{rna.name}',
-            model.monomers[polymerase_name](b=1) % model.monomers[dna_name](b=1) >>
-            model.monomers[polymerase_name](b=None) + model.monomers[dna_name](b=None) + rna(state="full", sense=None,
-                                                                                        toehold=None, b=None),
-            self.k_cat
+            f"transcription_{rna.name}",
+            model.monomers[polymerase_name](b=1) % model.monomers[dna_name](b=1)
+            >> model.monomers[polymerase_name](b=None)
+            + model.monomers[dna_name](b=None)
+            + rna(state="full", sense=None, toehold=None, b=None),
+            self.k_cat,
         )
         rules.append(rule2)
 
         # Create observable for the DNA-polymerase complex
-        Observable(f'obs_RNAP_{dna_name}_complex',
-                   model.monomers[polymerase_name](b=1) % model.monomers[dna_name](b=1))
+        Observable(
+            f"obs_RNAP_{dna_name}_complex",
+            model.monomers[polymerase_name](b=1) % model.monomers[dna_name](b=1),
+        )
 
         self.rules = rules
 
@@ -286,11 +314,13 @@ class MassActionTranslation(ReactionComplex):
         super().__init__(substrate=rna, product=protein, model=model)
 
         # Add ribosome monomer if it doesn't exist
-        ribosome_name = 'Ribosome'
+        ribosome_name = "Ribosome"
         ribosome = next((m for m in model.monomers if m.name == ribosome_name), None)
         if ribosome is None:
-            Monomer(ribosome_name, ['b'])
-            Initial(model.monomers[ribosome_name](b=None), model.parameters['ribosome_0'])
+            Monomer(ribosome_name, ["b"])
+            Initial(
+                model.monomers[ribosome_name](b=None), model.parameters["ribosome_0"]
+            )
 
         # Parameters for mass action kinetics
         self.k_bind = self.parameters["k_tl_bind"]  # Binding rate
@@ -298,31 +328,38 @@ class MassActionTranslation(ReactionComplex):
         self.k_cat = self.parameters["k_tl_cat"]  # Catalytic rate
         self.k_mat = self.parameters["k_mat"]  # Protein maturation rate
         self.k_deg = self.parameters["k_prot_deg"]  # Protein degradation rate
-        Observable('obs_RNA_' + sequence_name, model.monomers['RNA_' + sequence_name](state='full'))
+        Observable(
+            "obs_RNA_" + sequence_name,
+            model.monomers["RNA_" + sequence_name](state="full"),
+        )
 
         rules = []
 
         # Rule 1: Ribosome binding to RNA
         rule1 = Rule(
-            f'ribosome_binding_{rna.name}',
-            model.monomers[ribosome_name](b=None) + rna(state="full", b=None) >>
-            model.monomers[ribosome_name](b=1) % rna(state="full", b=1),
-            self.k_bind
+            f"ribosome_binding_{rna.name}",
+            model.monomers[ribosome_name](b=None) + rna(state="full", b=None)
+            >> model.monomers[ribosome_name](b=1) % rna(state="full", b=1),
+            self.k_bind,
         )
         rules.append(rule1)
 
         # Rule 2: Translation (protein production from complex)
         rule2 = Rule(
-            f'translation_of_{rna.name}_to_{protein.name}',
-            model.monomers[ribosome_name](b=1) % rna(state="full", b=1) >>
-            model.monomers[ribosome_name](b=None) + rna(state="full", b=None) + protein(state="immature"),
-            self.k_cat
+            f"translation_of_{rna.name}_to_{protein.name}",
+            model.monomers[ribosome_name](b=1) % rna(state="full", b=1)
+            >> model.monomers[ribosome_name](b=None)
+            + rna(state="full", b=None)
+            + protein(state="immature"),
+            self.k_cat,
         )
         rules.append(rule2)
 
         # Create observable for the RNA-ribosome complex
-        Observable(f'obs_Ribosome_{rna.name}_complex',
-                   model.monomers[ribosome_name](b=1) % rna(state="full", b=1))
+        Observable(
+            f"obs_Ribosome_{rna.name}_complex",
+            model.monomers[ribosome_name](b=1) % rna(state="full", b=1),
+        )
 
         self.rules = rules
 
@@ -330,11 +367,11 @@ class MassActionTranslation(ReactionComplex):
 class TranscriptionFactory:
     @staticmethod
     def create_transcription(
-            transcription_type: TranscriptionType,
-            sequence_name: str,
-            model: Model,
-            pulse_config: Optional[Dict] = None,
-            kinetics_type: KineticsType = KineticsType.MICHAELIS_MENTEN
+        transcription_type: TranscriptionType,
+        sequence_name: str,
+        model: Model,
+        pulse_config: Optional[Dict] = None,
+        kinetics_type: KineticsType = KineticsType.MICHAELIS_MENTEN,
     ) -> Union[Transcription, PulsedTranscription, MassActionTranscription]:
         """
         Factory method to create appropriate transcription instance.
@@ -354,11 +391,11 @@ class TranscriptionFactory:
                 return Transcription(sequence_name=sequence_name, model=model)
             elif transcription_type == TranscriptionType.PULSED:
                 if pulse_config is None:
-                    raise ValueError("pulse_config is required for pulsed transcription")
+                    raise ValueError(
+                        "pulse_config is required for pulsed transcription"
+                    )
                 return PulsedTranscription(
-                    sequence_name=sequence_name,
-                    model=model,
-                    pulse_config=pulse_config
+                    sequence_name=sequence_name, model=model, pulse_config=pulse_config
                 )
         elif kinetics_type == KineticsType.MASS_ACTION:
             if transcription_type == TranscriptionType.CONSTANT:
@@ -372,16 +409,18 @@ class TranscriptionFactory:
             #         pulse_config=pulse_config
             #     )
 
-        raise ValueError(f"Unsupported combination: {transcription_type}, {kinetics_type}")
+        raise ValueError(
+            f"Unsupported combination: {transcription_type}, {kinetics_type}"
+        )
 
 
 class TranslationFactory:
     @staticmethod
     def create_translation(
-            rna: RNA,
-            prot_name: str,
-            model: Model,
-            kinetics_type: KineticsType = KineticsType.MICHAELIS_MENTEN
+        rna: RNA,
+        prot_name: str,
+        model: Model,
+        kinetics_type: KineticsType = KineticsType.MICHAELIS_MENTEN,
     ) -> Union[Translation, MassActionTranslation]:
         """
         Factory method to create appropriate translation instance.

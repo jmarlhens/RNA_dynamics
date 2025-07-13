@@ -152,9 +152,9 @@ if __name__ == "__main__":
         parameters_to_fit,
         priors,
         calibration_params,
-        n_samples=10000,
-        n_walkers=12,
-        n_chains=8,
+        n_samples=2,
+        n_walkers=10,
+        n_chains=10,
     )
 
     print("Hierarchical parameter estimation completed successfully!")

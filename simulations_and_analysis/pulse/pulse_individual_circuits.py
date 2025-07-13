@@ -5,10 +5,13 @@ from circuits.circuit_generation.circuit_manager import CircuitManager
 from circuits.circuit_generation.parameter_sampling_and_simulation import (
     ParameterSamplingManager,
 )
-from utils.GFP_calibration import fit_gfp_calibration, get_brightness_correction_factor
 from simulations_and_analysis.individual.individual_circuits_statistics import (
     load_individual_circuit_results,
 )
+from data.circuits.circuit_configs import get_circuit_conditions
+
+# REUSE existing functions from individual_circuits_simulations.py
+from analysis_and_figures.mcmc_analysis_hierarchical import process_mcmc_data
 
 # Define pulse plasmid mapping - matches exact plasmid names from circuits.json
 PULSE_PLASMID_MAPPING = {
@@ -17,58 +20,8 @@ PULSE_PLASMID_MAPPING = {
     "cascade": ["star6_plasmid"],
     "toehold_trigger": ["trigger3_plasmid"],
     "star_antistar_1": ["star1_plasmid"],
-    "trigger_antitrigger": ["trigger3_plasmid"],  # Main input for pulse
+    "trigger_antitrigger": ["trigger3_plasmid"],
 }
-
-# Define pulse configuration
-PULSE_CONFIGURATION = {
-    "use_pulse": True,
-    "pulse_start": 30.1,  # minutes
-    "pulse_end": 40.1,  # minutes
-    "pulse_concentration": 5.0,
-    "base_concentration": 0.0,
-}
-
-
-def setup_calibration():
-    """Set up GFP calibration parameters"""
-    calibration_data = pd.read_csv("../../utils/calibration_gfp/gfp_Calibration.csv")
-    calibration_results = fit_gfp_calibration(
-        calibration_data,
-        concentration_col="GFP Concentration (nM)",
-        fluorescence_pattern="F.I. (a.u)",
-    )
-    brightness_correction, _ = get_brightness_correction_factor("avGFP", "sfGFP")
-
-    return {
-        "slope": calibration_results["slope"],
-        "intercept": calibration_results["intercept"],
-        "brightness_correction": brightness_correction,
-    }
-
-
-def convert_mcmc_to_parameter_dataframe(
-    mcmc_samples, parameters_to_fit, burn_in_fraction=0.4
-):
-    """Convert MCMC samples to parameter DataFrame for ParameterSamplingManager"""
-    # Filter chain 0 and apply burn-in
-    chain_zero_samples = mcmc_samples[mcmc_samples["chain"] == 0]
-    burn_in_cutoff = chain_zero_samples["iteration"].max() * burn_in_fraction
-    post_burnin_samples = chain_zero_samples[
-        chain_zero_samples["iteration"] > burn_in_cutoff
-    ]
-
-    # Extract parameter columns and convert from log10 to linear scale
-    parameter_columns = [
-        col for col in parameters_to_fit if col in post_burnin_samples.columns
-    ]
-    linear_parameters = 10 ** post_burnin_samples[parameter_columns]
-
-    # Add likelihood scores for color coding
-    if "likelihood" in post_burnin_samples.columns:
-        linear_parameters["likelihood"] = post_burnin_samples["likelihood"]
-
-    return linear_parameters
 
 
 def get_pulse_plasmids_for_circuit(circuit_name):
@@ -76,13 +29,170 @@ def get_pulse_plasmids_for_circuit(circuit_name):
     return PULSE_PLASMID_MAPPING.get(circuit_name, [f"{circuit_name}_plasmid_0"])
 
 
-def simulate_circuit_pulse_batch(
+def get_circuit_pulse_configuration(circuit_name):
+    """Get circuit-specific pulse parameters"""
+    circuit_specific_concentrations = {
+        "sense_star_6": 15.0,
+        "cffl_type_1": 15.0,
+        "cascade": 15.0,
+        "toehold_trigger": 15.0,
+        "star_antistar_1": 15.0,
+        "trigger_antitrigger": 15.0,
+    }
+
+    return {
+        "use_pulse": True,
+        "pulse_start": 30.5,
+        "pulse_end": 40.5,
+        "pulse_concentration": circuit_specific_concentrations.get(circuit_name, 15.0),
+        "base_concentration": 0.0,  # Only for pulsed plasmid
+    }
+
+
+def extract_plasmid_to_parameter_mapping(circuit_manager, circuit_name):
+    """Extract systematic mapping from plasmids to their concentration parameters"""
+    circuit_configuration = circuit_manager.get_circuit_config(circuit_name)
+    plasmid_to_parameter_mapping = {}
+
+    for plasmid_name, tx_control, tl_control, cds_list in circuit_configuration[
+        "plasmids"
+    ]:
+        # Extract component names produced by this plasmid
+        produced_components = [
+            component_name for is_protein, component_name in cds_list
+        ]
+
+        # Map to concentration parameters based on circuit's default parameters
+        circuit_default_parameters = circuit_configuration["default_parameters"]
+
+        for parameter_name in circuit_default_parameters.keys():
+            if parameter_name.endswith("_concentration"):
+                # Check if parameter contains any component produced by this plasmid
+                for component_name in produced_components:
+                    if component_name in parameter_name:
+                        plasmid_to_parameter_mapping[plasmid_name] = parameter_name
+                        break
+
+    return plasmid_to_parameter_mapping
+
+
+def create_pulse_circuit_simulation_data(
     circuit_name,
-    mcmc_samples,
+    mcmc_raw_samples,
+    circuit_manager,
+):
+    """
+    Modified version of create_circuit_simulation_data that incorporates pulse configuration
+    and experimental baseline concentrations for non-pulsed plasmids.
+    """
+    # REUSE existing MCMC processing logic
+    mcmc_processed_result = process_mcmc_data(
+        mcmc_raw_samples, burn_in=0.4, chain_idx=0
+    )
+    mcmc_filtered_samples = mcmc_processed_result["processed_data"]
+
+    # Get experimental baseline concentrations for non-pulsed plasmids
+    circuit_experimental_conditions = get_circuit_conditions(circuit_name)
+    first_experimental_condition = list(circuit_experimental_conditions.keys())[0]
+    experimental_baseline_concentrations = circuit_experimental_conditions[
+        first_experimental_condition
+    ]
+
+    pulse_plasmids = get_pulse_plasmids_for_circuit(circuit_name)
+    pulse_configuration = get_circuit_pulse_configuration(circuit_name)
+
+    # SYSTEMATIC parameter identification using circuit definition
+    plasmid_to_parameter_mapping = extract_plasmid_to_parameter_mapping(
+        circuit_manager, circuit_name
+    )
+
+    # Log the configuration
+    print(f"\n=== {circuit_name} Pulse Setup ===")
+    print(f"Pulsed plasmids: {pulse_plasmids}")
+    print(f"Pulse concentration: {pulse_configuration['pulse_concentration']} nM")
+    print(f"Plasmid-to-parameter mapping: {plasmid_to_parameter_mapping}")
+    print(
+        f"Experimental baseline concentrations: {experimental_baseline_concentrations}"
+    )
+
+    # Identify pulsed parameters using systematic mapping
+    pulsed_concentration_parameters = set()
+    for pulsed_plasmid_name in pulse_plasmids:
+        if pulsed_plasmid_name in plasmid_to_parameter_mapping:
+            pulsed_parameter_name = plasmid_to_parameter_mapping[pulsed_plasmid_name]
+            pulsed_concentration_parameters.add(pulsed_parameter_name)
+
+    # Separate pulsed vs non-pulsed concentrations
+    non_pulsed_concentrations = {}
+    for (
+        parameter_name,
+        concentration_value,
+    ) in experimental_baseline_concentrations.items():
+        if parameter_name in pulsed_concentration_parameters:
+            print(
+                f"  PULSED: {parameter_name} = 0.0 nM (baseline) → {pulse_configuration['pulse_concentration']} nM (pulse)"
+            )
+        else:
+            non_pulsed_concentrations[parameter_name] = concentration_value
+            print(
+                f"  NON-PULSED: {parameter_name} = {concentration_value} nM (maintained)"
+            )
+    print("=== End Configuration ===\n")
+
+    return {
+        "mcmc_processed_samples": mcmc_filtered_samples,
+        "pulse_configuration": pulse_configuration,
+        "pulse_plasmids": pulse_plasmids,
+        "non_pulsed_concentrations": non_pulsed_concentrations,
+        "experimental_baseline_concentrations": experimental_baseline_concentrations,
+    }
+
+
+def get_circuit_pulse_configuration_with_equilibration(
+    circuit_name, equilibration_time=120
+):
+    """Get circuit-specific pulse parameters with pre-equilibration period"""
+    circuit_specific_concentrations = {
+        "sense_star_6": 15.0,
+        "cffl_type_1": 15.0,
+        "cascade": 15.0,
+        "toehold_trigger": 15.0,
+        "star_antistar_1": 15.0,
+        "trigger_antitrigger": 15.0,
+    }
+
+    pulse_concentration = circuit_specific_concentrations.get(circuit_name, 15.0)
+
+    return {
+        "use_pulse": True,
+        "pulse_start": equilibration_time + 0.5,  # Start pulse after equilibration
+        "pulse_end": equilibration_time + 10.5,  # End pulse 10 minutes later
+        "pulse_concentration": pulse_concentration,
+        "base_concentration": 0.0,
+        "equilibration_time": equilibration_time,
+    }
+
+
+def create_extended_time_span(
+    equilibration_time=120, pulse_duration=10, observation_time=60
+):
+    """Create extended time span including equilibration, pulse, and observation periods"""
+    total_simulation_time = equilibration_time + pulse_duration + observation_time
+    # Use higher resolution for better temporal accuracy
+    time_points_count = int(total_simulation_time * 5) + 1  # 5 points per minute
+    return np.linspace(0, total_simulation_time, time_points_count)
+
+
+def simulate_circuit_pulse_batch_with_equilibration(
+    circuit_name,
+    mcmc_raw_samples,
     parameters_to_fit,
     circuit_manager,
     protein_degradation_rate=0.1,
     sample_count=50,
+    equilibration_time=120,
+    pulse_duration=10,
+    observation_time=60,
     output_directory=None,
     use_statistical_summary=False,
     statistical_summary_type="median_percentiles",
@@ -90,45 +200,73 @@ def simulate_circuit_pulse_batch(
     observe_rna_species="obs_RNA_GFP",
 ):
     """
-    Batch pulse simulation with optional statistical summaries.
-
-    Parameters:
-    -----------
-    statistical_summary_type : str
-        "median_percentiles" or "mean_std" for summary computation
-    observe_rna_species : str or None
-        Specific RNA observable to plot. None = no RNA subplot.
+    Enhanced batch pulse simulation with pre-equilibration period
     """
-    # Convert MCMC samples to parameter DataFrame
-    parameter_dataframe = convert_mcmc_to_parameter_dataframe(
-        mcmc_samples, parameters_to_fit
+    # Create extended time span
+    extended_time_span = create_extended_time_span(
+        equilibration_time, pulse_duration, observation_time
     )
 
-    # Sample parameters for simulation
-    if len(parameter_dataframe) > sample_count:
-        sampled_parameters = parameter_dataframe.sample(n=sample_count, random_state=42)
-    else:
-        sampled_parameters = parameter_dataframe.copy()
+    # Get pulse configuration with equilibration timing
+    pulse_configuration = get_circuit_pulse_configuration_with_equilibration(
+        circuit_name, equilibration_time
+    )
 
-    # Get pulse plasmids for this circuit
-    pulse_plasmids = get_pulse_plasmids_for_circuit(circuit_name)
+    # REUSE existing MCMC processing logic
+    pulse_simulation_data = create_pulse_circuit_simulation_data(
+        circuit_name,
+        mcmc_raw_samples,
+        circuit_manager,
+    )
 
-    # Create ParameterSamplingManager
-    sampling_manager = ParameterSamplingManager(circuit_manager)
+    mcmc_filtered_samples = pulse_simulation_data["mcmc_processed_samples"]
+    pulse_plasmids = pulse_simulation_data["pulse_plasmids"]
+    non_pulsed_concentrations = pulse_simulation_data["non_pulsed_concentrations"]
 
-    # Define time span for pulse simulation
-    pulse_time_span = np.linspace(0, 120, 601)
+    print(
+        f"{circuit_name}: {len(mcmc_raw_samples)} → {len(mcmc_filtered_samples)} samples after burn-in"
+    )
+    print(
+        f"Equilibration: {equilibration_time} min, Pulse: {pulse_configuration['pulse_start']:.1f}-{pulse_configuration['pulse_end']:.1f} min"
+    )
 
-    # Extract likelihood scores and filter parameters
-    likelihood_scores = sampled_parameters.get("likelihood")
-    parameter_subset = sampled_parameters.drop(columns=["likelihood"], errors="ignore")
+    # Sample parameters for pulse simulation
+    final_sample_size = min(sample_count, len(mcmc_filtered_samples))
+    print(f"Sampling {final_sample_size} parameters for extended pulse simulation...")
+    sampled_mcmc_parameters = (
+        mcmc_filtered_samples.sample(n=final_sample_size, random_state=42)
+        if len(mcmc_filtered_samples) > final_sample_size
+        else mcmc_filtered_samples.copy()
+    )
 
+    # Extract parameter values (assuming parameters are in log10 space in MCMC results)
+    parameter_columns = [
+        col for col in parameters_to_fit if col in sampled_mcmc_parameters.columns
+    ]
+    linear_parameter_values = 10 ** sampled_mcmc_parameters[parameter_columns]
+
+    # Add likelihood scores for visualization
+    if "likelihood" in sampled_mcmc_parameters.columns:
+        linear_parameter_values["likelihood"] = sampled_mcmc_parameters["likelihood"]
+
+    # Filter outliers (REUSE existing filtering logic)
+    likelihood_scores = linear_parameter_values.get("likelihood")
+    parameter_subset = linear_parameter_values.drop(
+        columns=["likelihood"], errors="ignore"
+    )
     parameter_subset_filtered = parameter_subset[
         (parameter_subset > parameter_subset.quantile(0.05))
         & (parameter_subset < parameter_subset.quantile(0.95))
     ].dropna()
 
-    # Construct unified output path in same directory
+    # Prepare additional parameters: protein degradation + non-pulsed concentrations
+    additional_simulation_parameters = {"k_prot_deg": protein_degradation_rate}
+    additional_simulation_parameters.update(non_pulsed_concentrations)
+
+    # Create ParameterSamplingManager and run extended pulse simulation
+    sampling_manager = ParameterSamplingManager(circuit_manager)
+
+    # Construct output path
     output_path = None
     if output_directory:
         mode_descriptor = "summary" if use_statistical_summary else "individual"
@@ -141,24 +279,22 @@ def simulate_circuit_pulse_batch(
             and statistical_summary_type == "median_percentiles"
             else ""
         )
-
-        filename = f"{circuit_name}_pulse_{mode_descriptor}{summary_type_descriptor}{percentile_descriptor}.png"
+        equilibration_descriptor = f"_eq{equilibration_time}min"
+        filename = f"{circuit_name}_pulse_extended{equilibration_descriptor}_{mode_descriptor}{summary_type_descriptor}{percentile_descriptor}.png"
         output_path = os.path.join(output_directory, filename)
 
-    # Determine figure size based on number of subplots
-    subplot_count = sum(
-        [True, observe_rna_species is not None, True]
-    )  # protein, rna, pulse
-    figure_size = (8, 3 * subplot_count + 1)
+    # Determine figure size (accounting for longer time series)
+    subplot_count = sum([True, observe_rna_species is not None, True])
+    figure_size = (10, 3 * subplot_count + 1)  # Wider for extended time series
 
-    # Execute pulse simulation with visualization
+    # Execute extended pulse simulation
     sampling_manager.plot_parameter_sweep_with_pulse(
         circuit_name=circuit_name,
         param_df=parameter_subset_filtered,
         k_prot_deg=protein_degradation_rate,
-        pulse_configuration=PULSE_CONFIGURATION,
+        pulse_configuration=pulse_configuration,
         pulse_plasmids=pulse_plasmids,
-        t_span=pulse_time_span,
+        t_span=extended_time_span,
         figure_size=figure_size,
         save_path=output_path,
         show_protein=True,
@@ -170,167 +306,26 @@ def simulate_circuit_pulse_batch(
         statistical_summary_type=statistical_summary_type,
         percentile_bounds=percentile_bounds,
         ribbon_alpha=0.25,
+        additional_params=additional_simulation_parameters,
     )
 
-    return len(sampled_parameters)
+    return len(sampled_mcmc_parameters)
 
 
-def create_all_circuits_grid_plots(
-    mcmc_results_by_circuit,
-    output_directory=".",
-    sample_count=100,
-    protein_degradation_rate=0.1,
-    observe_rna_species="obs_RNA_GFP",
-):
-    """
-    Generate unified grid plots showing all circuits together.
-    """
-    circuit_manager = CircuitManager(
-        parameters_file="../../data/prior/model_parameters_priors.csv",
-        json_file="../../data/circuits/circuits.json",
-    )
-
-    model_priors = pd.read_csv("../../data/prior/model_parameters_priors.csv")
-    parameters_to_fit = model_priors[
-        model_priors["Parameter"] != "k_prot_deg"
-    ].Parameter.tolist()
-
-    sampling_manager = ParameterSamplingManager(circuit_manager)
-
-    # Prepare simulation data for all circuits
-    circuit_simulation_data = {}
-
-    print("Preparing simulation data for all circuits...")
-    for circuit_name, mcmc_samples in mcmc_results_by_circuit.items():
-        print(f"Processing {circuit_name}...")
-
-        # Convert and sample MCMC parameters
-        parameter_dataframe = convert_mcmc_to_parameter_dataframe(
-            mcmc_samples, parameters_to_fit
-        )
-
-        if len(parameter_dataframe) > sample_count:
-            sampled_parameters = parameter_dataframe.sample(
-                n=sample_count, random_state=42
-            )
-        else:
-            sampled_parameters = parameter_dataframe.copy()
-
-        # Get pulse plasmids
-        pulse_plasmids = get_pulse_plasmids_for_circuit(circuit_name)
-
-        # Filter parameters
-        parameter_subset = sampled_parameters.drop(
-            columns=["likelihood"], errors="ignore"
-        )
-        parameter_subset_filtered = parameter_subset[
-            (parameter_subset > parameter_subset.quantile(0.05))
-            & (parameter_subset < parameter_subset.quantile(0.95))
-        ].dropna()
-
-        # Run simulation
-        simulation_result, time_points, param_df, circuit_instance = (
-            sampling_manager.run_parameter_sweep(
-                circuit_name,
-                parameter_subset_filtered,
-                protein_degradation_rate,
-                PULSE_CONFIGURATION,
-                pulse_plasmids=pulse_plasmids,
-                t_span=np.linspace(0, 120, 601),
-            )
-        )
-
-        circuit_simulation_data[circuit_name] = (
-            simulation_result,
-            time_points,
-            param_df,
-            pulse_plasmids,
-        )
-
-    # Create output directory
-    os.makedirs(output_directory, exist_ok=True)
-
-    # Generate grid plots for different modes
-    plot_configs = [
-        {
-            "use_statistical_summary": False,
-            "filename": "all_circuits_pulse_grid_individual.png",
-            "description": "Individual Trajectories",
-        },
-        {
-            "use_statistical_summary": True,
-            "statistical_summary_type": "median_percentiles",
-            "percentile_bounds": (10, 90),
-            "filename": "all_circuits_pulse_grid_summary_median_10_90.png",
-            "description": "Median ± 10-90%",
-        },
-        {
-            "use_statistical_summary": True,
-            "statistical_summary_type": "median_percentiles",
-            "percentile_bounds": (25, 75),
-            "filename": "all_circuits_pulse_grid_summary_median_25_75.png",
-            "description": "Median ± 25-75%",
-        },
-        {
-            "use_statistical_summary": True,
-            "statistical_summary_type": "mean_std",
-            "filename": "all_circuits_pulse_grid_summary_mean_std.png",
-            "description": "Mean ± Std",
-        },
-    ]
-
-    generated_plots = []
-
-    for config in plot_configs:
-        print(f"Generating grid plot: {config['description']}")
-
-        save_path = os.path.join(output_directory, config["filename"])
-
-        figure, axes = sampling_manager.plot_all_circuits_pulse_grid(
-            circuit_simulation_data,
-            pulse_configuration=PULSE_CONFIGURATION,
-            observe_rna_species=observe_rna_species,
-            use_statistical_summary=config["use_statistical_summary"],
-            statistical_summary_type=config.get(
-                "statistical_summary_type", "median_percentiles"
-            ),
-            percentile_bounds=config.get("percentile_bounds", (10, 90)),
-            figure_size=(
-                18,
-                4 * len(circuit_simulation_data),
-            ),  # Dynamic height based on circuit count
-            save_path=save_path,
-        )
-
-        generated_plots.append((config["description"], save_path))
-
-    print(f"\nGenerated {len(generated_plots)} grid plots:")
-    for description, path in generated_plots:
-        print(f"  - {description}: {path}")
-
-    return generated_plots
-
-
-def plot_fits_with_batch_pulse_simulation(
+def plot_fits_with_extended_pulse_simulation(
     mcmc_results_by_circuit,
     output_directory=".",
     sample_count=60,
     protein_degradation_rate=0.1,
+    equilibration_time=120,
+    pulse_duration=10,
+    observation_time=60,
     use_statistical_summary=False,
     statistical_summary_type="median_percentiles",
     percentile_bounds=(10, 90),
     observe_rna_species="obs_RNA_GFP",
 ):
-    """
-    Generate pulse simulation plots with unified directory structure.
-
-    Parameters:
-    -----------
-    statistical_summary_type : str
-        "median_percentiles" or "mean_std" for summary computation
-    observe_rna_species : str or None
-        Specific RNA observable to plot. None = no RNA subplot.
-    """
+    """Generate extended pulse simulation plots with pre-equilibration"""
     circuit_manager = CircuitManager(
         parameters_file="../../data/prior/model_parameters_priors.csv",
         json_file="../../data/circuits/circuits.json",
@@ -341,19 +336,21 @@ def plot_fits_with_batch_pulse_simulation(
         model_priors["Parameter"] != "k_prot_deg"
     ].Parameter.tolist()
 
-    # Create unified output directory
     os.makedirs(output_directory, exist_ok=True)
 
     for circuit_name, mcmc_raw_samples in mcmc_results_by_circuit.items():
-        print(f"Simulating {circuit_name} with batch pulse processing...")
+        print(f"Simulating {circuit_name} with extended pulse processing...")
 
-        sample_count_used = simulate_circuit_pulse_batch(
+        sample_count_used = simulate_circuit_pulse_batch_with_equilibration(
             circuit_name=circuit_name,
-            mcmc_samples=mcmc_raw_samples,
+            mcmc_raw_samples=mcmc_raw_samples,
             parameters_to_fit=parameters_to_fit,
             circuit_manager=circuit_manager,
             protein_degradation_rate=protein_degradation_rate,
             sample_count=sample_count,
+            equilibration_time=equilibration_time,
+            pulse_duration=pulse_duration,
+            observation_time=observation_time,
             output_directory=output_directory,
             use_statistical_summary=use_statistical_summary,
             statistical_summary_type=statistical_summary_type,
@@ -365,65 +362,54 @@ def plot_fits_with_batch_pulse_simulation(
             f"✓ Completed {circuit_name}: {sample_count_used} parameter sets processed"
         )
 
-    print(f"All pulse simulations completed. Output: {output_directory}")
+    print(f"All extended pulse simulations completed. Output: {output_directory}")
 
 
-def main():
-    subfolder = "/10000_steps_updated"
+# Modified main function to use extended pulse simulation
+def main_with_equilibration():
+    subfolder = "/tighter_3"
     input_directory = "../../data/fit_data/individual_circuits" + subfolder
     output_visualization_directory = (
         "../../figures/individual_circuits_pulse" + subfolder
     )
 
-    # Load MCMC results from individual circuit fits
     mcmc_results = load_individual_circuit_results(input_directory)
 
-    # Generate individual circuit plots (existing functionality)
-    print("Generating individual circuit plots...")
+    print("Generating individual circuit plots with 120min pre-equilibration...")
 
-    plot_fits_with_batch_pulse_simulation(
+    # Parameters for extended simulation
+    equilibration_time = 300  # Minutes to reach steady state
+    pulse_duration = 10  # Pulse duration in minutes
+    observation_time = 60  # Time to observe after pulse
+
+    plot_fits_with_extended_pulse_simulation(
         mcmc_results,
         output_visualization_directory,
         sample_count=300,
         protein_degradation_rate=0.1,
+        equilibration_time=equilibration_time,
+        pulse_duration=pulse_duration,
+        observation_time=observation_time,
         use_statistical_summary=False,
         observe_rna_species="obs_RNA_GFP",
     )
 
-    plot_fits_with_batch_pulse_simulation(
+    plot_fits_with_extended_pulse_simulation(
         mcmc_results,
         output_visualization_directory,
         sample_count=300,
         protein_degradation_rate=0.1,
+        equilibration_time=equilibration_time,
+        pulse_duration=pulse_duration,
+        observation_time=observation_time,
         use_statistical_summary=True,
         statistical_summary_type="median_percentiles",
         percentile_bounds=(10, 90),
         observe_rna_species="obs_RNA_GFP",
     )
 
-    plot_fits_with_batch_pulse_simulation(
-        mcmc_results,
-        output_visualization_directory,
-        sample_count=300,
-        protein_degradation_rate=0.1,
-        use_statistical_summary=True,
-        statistical_summary_type="mean_std",
-        observe_rna_species="obs_RNA_GFP",
-    )
-
-    # Generate unified grid plots (NEW functionality)
-    print("\nGenerating unified grid plots...")
-
-    create_all_circuits_grid_plots(
-        mcmc_results,
-        output_visualization_directory,
-        sample_count=100,  # Smaller sample for grid plots to manage figure complexity
-        protein_degradation_rate=0.1,
-        observe_rna_species=None,
-    )
-
-    print("\nAll plots completed!")
+    print("\nAll extended pulse plots completed!")
 
 
 if __name__ == "__main__":
-    main()
+    main_with_equilibration()

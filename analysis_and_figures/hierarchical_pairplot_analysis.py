@@ -327,7 +327,7 @@ def create_circuit_prior_comparison_pairplot(
     pairplot_figure._legend.set_title("Parameter Groups")
     pairplot_figure._legend.set_bbox_to_anchor((1.05, 0.8))
 
-    plt.tight_layout()
+    # plt.tight_layout()
     plt.savefig(pairplot_filepath, dpi=300, bbox_inches="tight")
     plt.close()
 

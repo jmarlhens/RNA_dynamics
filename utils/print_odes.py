@@ -13,29 +13,37 @@ def format_species_name(species):
     species_str = str(species)
 
     # Handle RNA species formatting
-    if species_str.startswith('RNA_'):
-        name_parts = species_str.split('(')[0].replace('RNA_', '')
+    if species_str.startswith("RNA_"):
+        name_parts = species_str.split("(")[0].replace("RNA_", "")
         state = species_str.split("state=")[1].split("'")[1]
 
         # Check for complexes
-        if '%' in species_str:
-            complexes = species_str.split('%')
+        if "%" in species_str:
+            complexes = species_str.split("%")
             formatted_complexes = []
             for complex in complexes:
-                complex_name = complex.split('(')[0].replace('RNA_', '')
+                complex_name = complex.split("(")[0].replace("RNA_", "")
                 complex_state = complex.split("state=")[1].split("'")[1]
                 # Manually construct the LaTeX-like formatted string
-                formatted_complex = "RNA^{" + complex_name.replace('_', r' cdot ') + "}_{" + complex_state + "}"
+                formatted_complex = (
+                    "RNA^{"
+                    + complex_name.replace("_", r" cdot ")
+                    + "}_{"
+                    + complex_state
+                    + "}"
+                )
                 formatted_complexes.append(formatted_complex)
             return ":".join(formatted_complexes)
 
         # Format single RNA species
-        formatted_name = "RNA^{" + name_parts.replace('_', r' cdot ') + "}_{" + state + "}"
+        formatted_name = (
+            "RNA^{" + name_parts.replace("_", r" cdot ") + "}_{" + state + "}"
+        )
         return formatted_name
 
     # Handle Protein species formatting
-    elif species_str.startswith('Protein_'):
-        protein_name = species_str.split('(')[0].replace('Protein_', '')
+    elif species_str.startswith("Protein_"):
+        protein_name = species_str.split("(")[0].replace("Protein_", "")
         state = species_str.split("state=")[1].split("'")[1]
         formatted_name = f"{protein_name}_{{{state}}}"
         return formatted_name
@@ -49,15 +57,17 @@ def substitute_expressions(ode_string, expression_dict):
     for expr_name, expr_definition in expression_dict.items():
         # Replace each expression placeholder with its definition
         # This uses a regular expression to find whole word matches only, to avoid partial replacements
-        pattern = r'\b' + re.escape(expr_name) + r'\b'
-        ode_string = re.sub(pattern, f'({expr_definition})', ode_string)
+        pattern = r"\b" + re.escape(expr_name) + r"\b"
+        ode_string = re.sub(pattern, f"({expr_definition})", ode_string)
     return ode_string
 
 
 def find_ODEs_from_Pysb_model(model):
     odes = model._odes
     if len(odes) == 0:
-        raise Exception("Model has no odes. Please run ODE build_simulate_analyse before to instantiate odes.")
+        raise Exception(
+            "Model has no odes. Please run ODE build_simulate_analyse before to instantiate odes."
+        )
     #
 
     species_names = [format_species_name(species) for species in model.species]
@@ -73,20 +83,22 @@ def find_ODEs_from_Pysb_model(model):
     expression_mapping = {}
     for i, expression in enumerate(model.expressions):
         expression_str = str(expression.expand_expr())
-        components = expression_str.split('*')
-        formatted_components = [fr"k_{{{space.join(part[2:].split('_'))}}}" for part in components]
+        components = expression_str.split("*")
+        formatted_components = [
+            rf"k_{{{space.join(part[2:].split('_'))}}}" for part in components
+        ]
 
         expression_str = r" ".join(formatted_components)
         expression_mapping[expression.name] = expression_str
-
-
 
     parameter_mapping = {}
     for i, param in enumerate(model.parameters):
         # "k_rna_deg" to k_{rna \ deg}
         # k_trigger_binding to k_{trigger \ binding}
         # k_Sense1_GFP_concentration to k_{Sense1 \ GFP \ concentration}
-        parameter_mapping[param.name] = fr"k_{{{space.join(param.name[2:].split('_'))}}}"
+        parameter_mapping[param.name] = (
+            rf"k_{{{space.join(param.name[2:].split('_'))}}}"
+        )
 
     # Substitute expressions in the ODEs
     equations = [substitute_expressions(eq, parameter_mapping) for eq in equations]
@@ -94,6 +106,7 @@ def find_ODEs_from_Pysb_model(model):
     equations = [substitute_expressions(eq, name_mapping) for eq in equations]
 
     return equations
+
 
 def simpy_equations_from_string(equations):
     # Extract observables as variables
@@ -105,7 +118,10 @@ def simpy_equations_from_string(equations):
     # Dynamically create sympy symbols for parameters
     param_symbols = sp.symbols(list(parameters.keys()))
 
-    all_symbols_dict = {**{str(var): var for var in variables}, **{str(param): param for param in param_symbols}}
+    all_symbols_dict = {
+        **{str(var): var for var in variables},
+        **{str(param): param for param in param_symbols},
+    }
 
     # Assuming 'equations' is your list of ODE strings
     equations_sym = []
@@ -113,7 +129,7 @@ def simpy_equations_from_string(equations):
         pass
         # Split each equation string at '=',
         # taking the part after '=' as the expression to be solved for steady state
-        ode_rhs = eq_str.split('=')[1]
+        ode_rhs = eq_str.split("=")[1]
 
         # Substitute parameter names with their values in the expression
         for param_name, param_value in parameters.items():
@@ -125,57 +141,63 @@ def simpy_equations_from_string(equations):
 
     return equations_sym, variables
 
+
 def simpy_equations_from_Pysb_model(model):
     equations = find_ODEs_from_Pysb_model(model)
     equations_sym, variables = simpy_equations_from_string(equations)
     return equations_sym, variables
 
 
-
-
-
 def convert_to_latex_fractions(eq):
     # Step 1: Handle full fraction expressions (numerator:denominator/variable)
-    eq = re.sub(r'(\b\w+\^\{[^}]+\}_\{\w+\}\s*:\s*\b\w+\^\{[^}]+\}_\{\w+\})\/(\b\w+)', r'\\frac{\1}{\2}', eq)
+    eq = re.sub(
+        r"(\b\w+\^\{[^}]+\}_\{\w+\}\s*:\s*\b\w+\^\{[^}]+\}_\{\w+\})\/(\b\w+)",
+        r"\\frac{\1}{\2}",
+        eq,
+    )
 
     # Step 2: Handle derivatives in the numerator or denominator
-    eq = re.sub(r'(d\w+\^\{[\w\\\s\.\-]+\}_\{\w+\})\/(\b\w+)', r'\\frac{\1}{\2}', eq)
+    eq = re.sub(r"(d\w+\^\{[\w\\\s\.\-]+\}_\{\w+\})\/(\b\w+)", r"\\frac{\1}{\2}", eq)
 
     # Step 3: Handle more complex fractions (numerators/denominators that are enclosed in parentheses)
-    eq = re.sub(r'(\([^)]+\))\/(\([^)]+\))', r'\\frac{\1}{\2}', eq)
+    eq = re.sub(r"(\([^)]+\))\/(\([^)]+\))", r"\\frac{\1}{\2}", eq)
 
     # Step 4: Handle simple fractions involving variables or constants (not involving colon ':')
-    eq = re.sub(r'(\b\w+|\b\w+_{\w+})\/(\b\w+|\b\w+_{\w+})', r'\\frac{\1}{\2}', eq)
+    eq = re.sub(r"(\b\w+|\b\w+_{\w+})\/(\b\w+|\b\w+_{\w+})", r"\\frac{\1}{\2}", eq)
 
     # Step 5: Ensure complexes with colons (e.g., RNA_{...} : RNA_{...}) are not treated as fractions
-    eq = re.sub(r'(\w+\^{[^}]+})\s*:\s*(\w+\^{[^}]+})', r'\1 : \2', eq)  # Keep complexes intact
+    eq = re.sub(
+        r"(\w+\^{[^}]+})\s*:\s*(\w+\^{[^}]+})", r"\1 : \2", eq
+    )  # Keep complexes intact
 
     return eq
 
+
 def format_expression(expression):
     # Replace ((...)*(...))*(-1) with -(...)*(...)
-    expression = re.sub(r'\(\(([^()]+)\)\*\(([^()]+)\)\)\*\(-1\)', r'-(\1)*(\2)', expression)
+    expression = re.sub(
+        r"\(\(([^()]+)\)\*\(([^()]+)\)\)\*\(-1\)", r"-(\1)*(\2)", expression
+    )
 
     # Replace ((...)*(...)) with (...)*(...)
-    expression = re.sub(r'\(\(([^()]+)\)\*\(([^()]+)\)\)', r'(\1)*(\2)', expression)
+    expression = re.sub(r"\(\(([^()]+)\)\*\(([^()]+)\)\)", r"(\1)*(\2)", expression)
 
     # Handle complex terms ending with *(-1)
-    expression = re.sub(r'\((([^()]+\*)+[^()]+)\)\*\(-1\)', r'-(\1)', expression)
+    expression = re.sub(r"\((([^()]+\*)+[^()]+)\)\*\(-1\)", r"-(\1)", expression)
 
     # Remove unnecessary outer parentheses around single terms
-    expression = re.sub(r'\((\w+(?:\^{[^{}]+})?(?:_{[^{}]+})?)\)', r'\1', expression)
+    expression = re.sub(r"\((\w+(?:\^{[^{}]+})?(?:_{[^{}]+})?)\)", r"\1", expression)
 
     # Remove *-1 at the end of terms
-    expression = re.sub(r'\*-1', r'', expression)
+    expression = re.sub(r"\*-1", r"", expression)
 
     # Handle remaining (...)*(-1) cases
-    expression = re.sub(r'\(([^()]+)\)\*\(-1\)', r'-(\1)', expression)
+    expression = re.sub(r"\(([^()]+)\)\*\(-1\)", r"-(\1)", expression)
 
     # Simplify addition of negative terms
-    expression = re.sub(r'\+\s*-', r'- ', expression)
+    expression = re.sub(r"\+\s*-", r"- ", expression)
 
     return expression
-
 
 
 def convert_to_latex(equations):
@@ -183,13 +205,13 @@ def convert_to_latex(equations):
     formatted_equations = []
     for eq in equations:
         # Replace ** with ^ for exponentiation in LaTeX
-        eq = eq.replace('**', '^')
+        eq = eq.replace("**", "^")
 
         # Add subscript to variable names that have an underscore and subsequent characters
-        eq = re.sub(r'(\w+)_(\w+)', r'\1_{\2}', eq)
+        eq = re.sub(r"(\w+)_(\w+)", r"\1_{\2}", eq)
 
         # remove "*1"
-        eq = re.sub(r'\*(1)', '', eq)
+        eq = re.sub(r"\*(1)", "", eq)
 
         # Case 1: Match patterns like ((k_{star, act})*(RNA^{Sense1 \cdot GFP}_{init}))*(-1)
         eq = format_expression(eq)
@@ -197,18 +219,17 @@ def convert_to_latex(equations):
         # Convert derivatives and general fractions to LaTeX fraction format
         eq = convert_to_latex_fractions(eq)
 
-
         # Align the equation using &=
-        eq = eq.replace('=', '&=')
+        eq = eq.replace("=", "&=")
 
         # Change cdot to \cdot
-        eq = eq.replace(r'cdot', r'\cdot ')
+        eq = eq.replace(r"cdot", r"\cdot ")
 
         formatted_equations.append(eq)
 
     # Combine all equations into one, separated by \\
-    combined_equations = ' \\\\\n'.join(formatted_equations)
-    return f'\n{combined_equations}\n'
+    combined_equations = " \\\\\n".join(formatted_equations)
+    return f"\n{combined_equations}\n"
 
 
 def write_to_file(latex_code, filename="odes.tex"):
@@ -218,30 +239,31 @@ def write_to_file(latex_code, filename="odes.tex"):
     :param latex_code: The LaTeX code containing the equations.
     :param filename: The name of the file to save the LaTeX code.
     """
-    with open(filename, 'w') as file:
+    with open(filename, "w") as file:
         # Write the preamble including the breqn package for automatic line breaking
-        file.write('\\documentclass{article}\n')
-        file.write('\\usepackage{amsmath}\n')
-        file.write('\\usepackage{breqn}\n')  # Include breqn for line breaking
-        file.write('\\begin{document}\n')
+        file.write("\\documentclass{article}\n")
+        file.write("\\usepackage{amsmath}\n")
+        file.write("\\usepackage{breqn}\n")  # Include breqn for line breaking
+        file.write("\\begin{document}\n")
 
         # Use the dmath environment from breqn for each equation
-        equations = latex_code.split('\n')  # Split the LaTeX code into lines
+        equations = latex_code.split("\n")  # Split the LaTeX code into lines
         for eq in equations:
             if eq.strip():  # Only process non-empty lines
-                file.write(f'\\begin{{dmath}}\n{eq}\n\\end{{dmath}}\n')
+                file.write(f"\\begin{{dmath}}\n{eq}\n\\end{{dmath}}\n")
 
-        file.write('\\end{document}\n')
+        file.write("\\end{document}\n")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from pysb.examples.robertson import model
+
     # simulate the model
     tspan = np.linspace(0, 300, 3000)
     from pysb.simulator import ScipyOdeSimulator
+
     sim = ScipyOdeSimulator(model, tspan)
     simres = sim.run()
-
 
     equations = find_ODEs_from_Pysb_model(model)
     print(equations)

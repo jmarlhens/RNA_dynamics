@@ -2,7 +2,7 @@ import pandas as pd
 import os
 from circuits.circuit_generation.circuit_manager import CircuitManager
 from likelihood_functions.circuit_utils import create_circuit_configs, setup_calibration
-from likelihood_functions.hierarchical_likelihood.base_hierarchical import (
+from likelihood_functions.hierarchical_likelihood.base_hierarchical_mixed_effect_models import (
     HierarchicalCircuitFitter,
 )
 

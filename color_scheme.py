@@ -5,8 +5,9 @@ import matplotlib.pyplot as plt
 
 def hex_to_rgb(hex):
     h = hex.lstrip("#")
-    rgb = tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+    rgb = tuple(int(h[i : i + 2], 16) for i in (0, 2, 4))
     return rgb
+
 
 CMAP_COLORS = ["#FFFFFF", "#FF5500", "#B3003C"]
 cmap_colors = CMAP_COLORS
@@ -39,4 +40,3 @@ plt.show()
 # fig, ax = plt.subplots()
 # ax.add_patch(plt.Rectangle((0, 0), 1, 1, fill=True, color=dark_blue))
 # plt.show()
-

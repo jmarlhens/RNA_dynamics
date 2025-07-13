@@ -245,8 +245,10 @@ class MCMCAnalysis:
         sim_data = self.circuit_fitter.simulate_parameters(best_params)
 
         # Calculate likelihoods and priors for these parameters
-        likelihood_data = self.circuit_fitter.calculate_likelihood_from_simulation(
-            sim_data
+        likelihood_data = (
+            self.circuit_fitter.calculate_likelihood_from_simulation_with_breakdown(
+                sim_data
+            )
         )
         prior_data = self.circuit_fitter.calculate_log_prior(best_params)
 

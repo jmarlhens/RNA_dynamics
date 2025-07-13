@@ -372,7 +372,7 @@ def register_or_gate_cascade(manager):
     ]
 
     manager.add_circuit(
-        name="or_gate_cascade",
+        name="or_gate_c1ffl",
         plasmids=plasmids,
         default_parameters={
             "k_Star6_concentration": 1,  # Initial concentration of Star6
@@ -449,7 +449,7 @@ def register_i_ffl(manager):
     bindings = [("Trigger3", "aTrigger3")]
 
     manager.add_circuit(
-        name="incoherent_ffl_2",
+        name="inhibited_incoherent_cascade",
         plasmids=plasmids,
         default_parameters={
             "k_Star6_concentration": 1,  # Concentration factor for Star6 production

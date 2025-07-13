@@ -348,6 +348,8 @@ def plot_fits(
 
 def main():
     subfolder = "/10000_steps_updated"
+    subfolder = "/constrained_prior_3_tighter"
+
     input_directory = "../../data/fit_data/individual_circuits" + subfolder
     output_visualization_directory = "../../figures/individual_circuits" + subfolder
 

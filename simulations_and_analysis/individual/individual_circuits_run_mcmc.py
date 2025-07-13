@@ -43,9 +43,9 @@ def fit_single_circuit(
     priors,
     min_time=30,
     max_time=210,
-    n_samples=4000,
-    n_walkers=12,
-    n_chains=8,
+    n_samples=500,
+    n_walkers=10,
+    n_chains=10,
 ):
     """
     Fit a single circuit and save its results using the new CircuitManager system
@@ -104,7 +104,7 @@ def fit_single_circuit(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     # Only replace invalid filename characters but preserve case
     safe_circuit_name = circuit_name.replace("/", "_")
-    filename = f"../../data/fit_data/individual_circuits/results_prior_updated_{safe_circuit_name}_{timestamp}.csv"
+    filename = f"../../data/fit_data/individual_circuits/results_{safe_circuit_name}_{timestamp}.csv"
     df.to_csv(filename, index=False)
 
     # Plot and save best fit results
@@ -119,10 +119,13 @@ def fit_single_circuit(
     # sim_data = circuit_fitter.simulate_parameters(param_df)
     # Expected type 'ndarray | ndarray', got 'DataFrame' instead
     sim_data = circuit_fitter.simulate_parameters(param_df.values)
-    log_likelihood = circuit_fitter.calculate_likelihood_from_simulation(sim_data)
+    likelihood_breakdown = (
+        circuit_fitter.calculate_likelihood_from_simulation_with_breakdown(sim_data)
+    )
+    log_prior = circuit_fitter.calculate_log_prior(param_df.values)
     log_prior = circuit_fitter.calculate_log_prior(param_df.values)
     results_df = organize_results(
-        parameters_to_fit, param_df.values, log_likelihood, log_prior
+        parameters_to_fit, param_df.values, likelihood_breakdown, log_prior
     )
 
     plt.figure(figsize=(12, 8))
@@ -136,7 +139,7 @@ def fit_single_circuit(
 def main():
     # Initialize CircuitManager with existing circuits file
     circuit_manager = CircuitManager(
-        parameters_file="../../data/prior/model_parameters_priors_updated.csv",
+        parameters_file="../../data/prior/model_parameters_priors_updated_tighter.csv",
         json_file="../../data/circuits/circuits.json",
     )
 
@@ -151,27 +154,35 @@ def main():
     # Load data for all circuits in central configuration
     circuit_data = {}
     for circuit_name, data_file in DATA_FILES.items():
-        try:
-            data, tspan = load_and_process_csv(data_file)
-            circuit_data[circuit_name] = {"experimental_data": data, "tspan": tspan}
-            print(f"Loaded data for {circuit_name}")
-        except Exception as e:
-            print(f"Error loading data for {circuit_name}: {e}")
+        data, tspan = load_and_process_csv(data_file)
+        circuit_data[circuit_name] = {"experimental_data": data, "tspan": tspan}
+        print(f"Loaded data for {circuit_name}")
 
     # Load priors
-    priors = pd.read_csv("../../data/prior/model_parameters_priors_updated.csv")
+    priors = pd.read_csv("../../data/prior/model_parameters_priors_updated_tighter.csv")
     priors = priors[priors["Parameter"] != "k_prot_deg"]
 
     # Fit each circuit individually
     circuits_to_fit = [
         # "constitutive sfGFP",
-        "toehold_trigger",
-        "star_antistar_1",
-        "trigger_antitrigger",
-        "cascade",
-        "sense_star_6",
+        # "sense_star_6",
+        # "toehold_trigger",
+        # "star_antistar_1",
+        # "trigger_antitrigger",
+        # "cascade",
         # "cffl_type_1",
+        # "inhibited_incoherent_cascade",
+        # "inhibited_cascade",
+        "or_gate_c1ffl",
+        "iffl_1",
+        "cffl_12",
     ]
+
+    for circuit_name in ["cffl_12", "iffl_1", "inhibited_cascade"]:
+        conditions = get_circuit_conditions(circuit_name)
+        print(f"\n{circuit_name} conditions:")
+        for cond_name, params in conditions.items():
+            print(f"  {cond_name}: {params}")
 
     for circuit_name in circuits_to_fit:
         if circuit_name in available_circuits:
@@ -195,20 +206,18 @@ def main():
             data_info = circuit_data[circuit_name]
 
             # Fit the circuit
-            try:
-                _, _ = fit_single_circuit(
-                    circuit_manager=circuit_manager,
-                    circuit_name=circuit_name,
-                    condition_params=condition_params,
-                    experimental_data=data_info["experimental_data"],
-                    tspan=data_info["tspan"],
-                    priors=priors,
-                    min_time=min_time,
-                    max_time=max_time,
-                )
-                print(f"Completed fitting {circuit_name}")
-            except Exception as e:
-                print(f"Error fitting circuit {circuit_name}: {e}")
+            _, _ = fit_single_circuit(
+                circuit_manager=circuit_manager,
+                circuit_name=circuit_name,
+                condition_params=condition_params,
+                experimental_data=data_info["experimental_data"],
+                tspan=data_info["tspan"],
+                priors=priors,
+                min_time=min_time,
+                max_time=max_time,
+            )
+            print(f"Completed fitting {circuit_name}")
+
         else:
             print(f"Warning: Circuit '{circuit_name}' not found in available circuits.")
 
