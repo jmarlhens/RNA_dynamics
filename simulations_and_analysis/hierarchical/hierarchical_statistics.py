@@ -7,6 +7,7 @@ import os
 import pandas as pd
 from analysis_and_figures.hierarchical_pairplot_analysis import (
     create_hierarchical_histogram_grid,
+    create_circuit_prior_comparison_pairplot,
 )
 from analysis_and_figures.process_hierarchical import (
     convert_hierarchical_to_unified_format,
@@ -116,14 +117,14 @@ def execute_hierarchical_unified_analysis(
         legend_on_idx=1,
     )
 
-    # print("Creating hierarchical pairplot...")
-    # create_circuit_prior_comparison_pairplot(
-    #     hierarchical_unified_comparison_dataset,
-    #     visualization_parameter_names,
-    #     output_visualization_directory + "/hierarchical_pairplot_unified.png",
-    #     diagonal_visualization_type="kde",
-    #     offdiagonal_visualization_type="scatter",
-    # )
+    print("Creating hierarchical pairplot...")
+    create_circuit_prior_comparison_pairplot(
+        hierarchical_unified_comparison_dataset,
+        visualization_parameter_names,
+        output_visualization_directory + "/hierarchical_pairplot_unified.png",
+        diagonal_visualization_type="kde",
+        offdiagonal_visualization_type="scatter",
+    )
 
     return {
         "unified_dataset": hierarchical_unified_comparison_dataset,
@@ -134,7 +135,7 @@ def execute_hierarchical_unified_analysis(
 def main():
     """Execute hierarchical unified analysis"""
 
-    data = "hierarchical_results_20250628_234739"
+    data = "simple_hierarchical_results_20250714_142603"
 
     # Configuration
     hierarchical_results_filepath = "../../data/fit_data/hierarchical/" + data + ".csv"

@@ -7,6 +7,9 @@ from analysis_and_figures.mcmc_analysis_hierarchical import process_mcmc_data
 from analysis_and_figures.plots_simulation import (
     plot_circuit_simulations,
     plot_circuit_conditions_overlay,
+    extract_trajectory_data,
+    plot_single_circuit_two_column,
+    plot_single_circuit_overlay,
 )
 from simulations_and_analysis.individual.individual_circuits_simulations import (
     create_circuit_simulation_data,
@@ -185,6 +188,127 @@ def generate_hierarchical_individual_plots(
         plt.close()
 
     return best_theta_samples, random_theta_samples
+
+
+def generate_per_circuit_hierarchical_plots(
+    circuit_theta_results,
+    output_directory,
+    sample_count,
+    time_bounds_max,
+    time_bounds_min,
+):
+    """Generate separate two-column and overlay plots for each circuit"""
+
+    circuit_manager = CircuitManager(
+        parameters_file="../../data/prior/model_parameters_priors.csv",
+        json_file="../../data/circuits/circuits.json",
+    )
+
+    model_priors = pd.read_csv("../../data/prior/model_parameters_priors.csv")
+    parameters_to_fit = model_priors[
+        model_priors["Parameter"] != "k_prot_deg"
+    ].Parameter.tolist()
+    calibration_parameters = setup_calibration()
+
+    for circuit_name, theta_samples in circuit_theta_results.items():
+        print(f"Generating per-circuit plots for {circuit_name}")
+
+        # Create circuit configuration and fitter
+        circuit_configuration, circuit_fitter = create_circuit_simulation_data(
+            circuit_name,
+            theta_samples,
+            parameters_to_fit,
+            circuit_manager,
+            calibration_parameters,
+            time_bounds_max,
+            time_bounds_min,
+        )
+
+        final_sample_size = min(sample_count, len(theta_samples))
+        theta_final_samples = (
+            theta_samples.sample(n=final_sample_size, random_state=42)
+            if len(theta_samples) > final_sample_size
+            else theta_samples.copy()
+        )
+
+        best_theta_samples = theta_final_samples.sort_values(
+            by="likelihood", ascending=False
+        )
+        random_theta_samples = theta_final_samples.sample(
+            n=final_sample_size, random_state=42
+        )
+
+        # Generate plots for both sample types
+        for sample_type, samples in [
+            ("best", best_theta_samples),
+            ("random", random_theta_samples),
+        ]:
+            simulation_data, results_dataframe = simulate_and_organize_parameter_sets(
+                samples, circuit_fitter, parameters_to_fit
+            )
+
+            # Prepare single-circuit data structure
+            single_circuit_simulation_dict = {
+                circuit_name: {
+                    "config": circuit_configuration,
+                    "combined_params": simulation_data["combined_params"],
+                    "simulation_results": simulation_data["simulation_results"],
+                }
+            }
+
+            trajectory_data = extract_trajectory_data(
+                single_circuit_simulation_dict, results_dataframe
+            )
+            circuit_trajectory_data = trajectory_data[
+                trajectory_data["circuit"] == circuit_name
+            ]
+            circuit_data = single_circuit_simulation_dict[circuit_name]
+
+            # Generate two-column plots (experimental | simulation)
+            for simulation_mode in ["individual", "summary"]:
+                _ = plot_single_circuit_two_column(
+                    circuit_name,
+                    circuit_data,
+                    circuit_trajectory_data,
+                    results_dataframe,
+                    simulation_mode=simulation_mode,
+                    summary_type="median_iqr",
+                    percentile_bounds=(10, 90),
+                )
+
+                mode_suffix = (
+                    "_summary" if simulation_mode == "summary" else "_individual"
+                )
+                two_column_filename = f"hierarchical_{sample_type}_{circuit_name}_two_column{mode_suffix}.png"
+                plt.savefig(
+                    os.path.join(output_directory, two_column_filename),
+                    bbox_inches="tight",
+                    dpi=300,
+                )
+                plt.close()
+
+            # Generate overlay plots (experimental + simulation superposed)
+            for simulation_mode in ["individual", "summary"]:
+                _ = plot_single_circuit_overlay(
+                    circuit_name,
+                    circuit_data,
+                    circuit_trajectory_data,
+                    results_dataframe,
+                    simulation_mode=simulation_mode,
+                    summary_type="median_iqr",
+                    percentile_bounds=(10, 90),
+                )
+
+                mode_suffix = (
+                    "_summary" if simulation_mode == "summary" else "_individual"
+                )
+                overlay_filename = f"hierarchical_{sample_type}_{circuit_name}_overlay{mode_suffix}.png"
+                plt.savefig(
+                    os.path.join(output_directory, overlay_filename),
+                    bbox_inches="tight",
+                    dpi=300,
+                )
+                plt.close()
 
 
 def plot_hierarchical_fits(
@@ -401,7 +525,7 @@ def plot_hierarchical_fits(
 
 def main():
     # Specify hierarchical results file
-    project = "hierarchical_results_20250628_234739"
+    project = "simple_hierarchical_results_20250715_094058"
     hierarchical_results_file = "../../data/fit_data/hierarchical/" + project + ".csv"
     output_directory = "../../figures/hierarchical_simulations/" + project
 
@@ -418,8 +542,17 @@ def main():
         hierarchical_results_file, parameters_to_fit, burn_in_fraction=0.4
     )
 
-    # Plot hierarchical fits
+    # Generate combined plots (existing functionality)
     plot_hierarchical_fits(
+        circuit_theta_results,
+        output_directory,
+        sample_count=30,
+        time_bounds_max=130,
+        time_bounds_min=30,
+    )
+
+    # Generate per-circuit plots (new functionality)
+    generate_per_circuit_hierarchical_plots(
         circuit_theta_results,
         output_directory,
         sample_count=30,
