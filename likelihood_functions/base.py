@@ -14,7 +14,7 @@ class CircuitFitter:
         parameters_to_fit,
         model_parameters_priors,
         calibration_data,
-        sigma_0_squared=1e2,
+        sigma_0_squared=1e1,
     ):
         """
         Initialize CircuitFitter with caching of experimental data
@@ -81,7 +81,11 @@ class CircuitFitter:
 
         for config in self.configs:
             simulator = ScipyOdeSimulator(
-                config.model, config.tspan, compiler="cython", cleanup=True
+                config.model,
+                config.tspan,
+                compiler="cython",
+                cleanup=True,
+                integrator="lsoda",
             )
             self.simulators[config.name] = simulator
 

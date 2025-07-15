@@ -23,7 +23,7 @@ class HierarchicalCircuitFitter(CircuitFitter):
         parameters_to_fit,
         model_parameters_priors,
         calibration_data,
-        sigma_0_squared=0.01,
+        sigma_0_squared=1e2,
         # individual_circuit_posterior_results=None,
     ):
         """Initialize with support for hierarchical structure"""
