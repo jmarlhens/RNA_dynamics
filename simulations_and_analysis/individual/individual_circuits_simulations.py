@@ -12,6 +12,9 @@ from analysis_and_figures.mcmc_analysis_hierarchical import process_mcmc_data
 from analysis_and_figures.plots_simulation import (
     plot_circuit_simulations,
     plot_circuit_conditions_overlay,
+    extract_trajectory_data,
+    plot_single_circuit_two_column,
+    plot_single_circuit_overlay,
 )
 from simulations_and_analysis.individual.individual_circuits_statistics import (
     load_individual_circuit_results,
@@ -80,8 +83,10 @@ def simulate_and_organize_parameter_sets(
     """Simulate parameters and organize results"""
     log_parameters = parameter_samples[parameters_to_fit].values
     simulation_results = circuit_fitter.simulate_parameters(log_parameters)
-    log_likelihoods = circuit_fitter.calculate_likelihood_from_simulation(
-        simulation_results
+    log_likelihoods = (
+        circuit_fitter.calculate_likelihood_from_simulation_with_breakdown(
+            simulation_results
+        )
     )
     log_priors = circuit_fitter.calculate_log_prior(log_parameters)
 
@@ -123,6 +128,137 @@ def plot_individual_circuit(
         os.path.join(output_directory, f"{sample_type}_fits_{circuit_name}.png")
     )
     plt.close()
+
+
+def generate_per_circuit_individual_plots(
+    mcmc_results_by_circuit,
+    output_directory,
+    sample_count,
+    time_bounds_max,
+    time_bounds_min,
+):
+    """Generate separate two-column and overlay plots for each individual circuit"""
+
+    circuit_manager = CircuitManager(
+        parameters_file="../../data/prior/model_parameters_priors.csv",
+        json_file="../../data/circuits/circuits.json",
+    )
+
+    model_priors = pd.read_csv("../../data/prior/model_parameters_priors.csv")
+    parameters_to_fit = model_priors[
+        model_priors["Parameter"] != "k_prot_deg"
+    ].Parameter.tolist()
+    calibration_parameters = setup_calibration()
+
+    for circuit_name, mcmc_raw_samples in mcmc_results_by_circuit.items():
+        print(f"Generating per-circuit plots for individual circuit {circuit_name}")
+
+        # Process MCMC samples with burn-in filtering
+        mcmc_processed_result = process_mcmc_data(
+            mcmc_raw_samples, burn_in=0.4, chain_idx=0
+        )
+        mcmc_filtered_samples = mcmc_processed_result["processed_data"]
+
+        print(
+            f"{circuit_name}: {len(mcmc_raw_samples)} → {len(mcmc_filtered_samples)} samples after burn-in"
+        )
+
+        final_sample_size = min(sample_count, len(mcmc_filtered_samples))
+        mcmc_final_samples = (
+            mcmc_filtered_samples.sample(n=final_sample_size, random_state=42)
+            if len(mcmc_filtered_samples) > final_sample_size
+            else mcmc_filtered_samples.copy()
+        )
+
+        # Create circuit configuration and fitter
+        circuit_configuration, circuit_fitter = create_circuit_simulation_data(
+            circuit_name,
+            mcmc_raw_samples,
+            parameters_to_fit,
+            circuit_manager,
+            calibration_parameters,
+            time_bounds_max,
+            time_bounds_min,
+        )
+
+        best_likelihood_samples = mcmc_final_samples.sort_values(
+            by="likelihood", ascending=False
+        )
+        random_samples = mcmc_final_samples.sample(n=final_sample_size, random_state=42)
+
+        # Generate plots for both sample types
+        for sample_type, samples in [
+            ("best", best_likelihood_samples),
+            ("random", random_samples),
+        ]:
+            simulation_data, results_dataframe = simulate_and_organize_parameter_sets(
+                samples, circuit_fitter, parameters_to_fit
+            )
+
+            # Prepare single-circuit data structure
+            single_circuit_simulation_dict = {
+                circuit_name: {
+                    "config": circuit_configuration,
+                    "combined_params": simulation_data["combined_params"],
+                    "simulation_results": simulation_data["simulation_results"],
+                }
+            }
+
+            trajectory_data = extract_trajectory_data(
+                single_circuit_simulation_dict, results_dataframe
+            )
+            circuit_trajectory_data = trajectory_data[
+                trajectory_data["circuit"] == circuit_name
+            ]
+            circuit_data = single_circuit_simulation_dict[circuit_name]
+
+            # Generate two-column plots (experimental | simulation)
+            for simulation_mode in ["individual", "summary"]:
+                _ = plot_single_circuit_two_column(
+                    circuit_name,
+                    circuit_data,
+                    circuit_trajectory_data,
+                    results_dataframe,
+                    simulation_mode=simulation_mode,
+                    summary_type="median_iqr",
+                    percentile_bounds=(10, 90),
+                )
+
+                mode_suffix = (
+                    "_summary" if simulation_mode == "summary" else "_individual"
+                )
+                two_column_filename = f"individual_{sample_type}_{circuit_name}_two_column{mode_suffix}.png"
+                plt.savefig(
+                    os.path.join(output_directory, two_column_filename),
+                    bbox_inches="tight",
+                    dpi=300,
+                )
+                plt.close()
+
+            # Generate overlay plots (experimental + simulation superposed)
+            for simulation_mode in ["individual", "summary"]:
+                _ = plot_single_circuit_overlay(
+                    circuit_name,
+                    circuit_data,
+                    circuit_trajectory_data,
+                    results_dataframe,
+                    simulation_mode=simulation_mode,
+                    summary_type="median_iqr",
+                    percentile_bounds=(10, 90),
+                )
+
+                mode_suffix = (
+                    "_summary" if simulation_mode == "summary" else "_individual"
+                )
+                overlay_filename = (
+                    f"individual_{sample_type}_{circuit_name}_overlay{mode_suffix}.png"
+                )
+                plt.savefig(
+                    os.path.join(output_directory, overlay_filename),
+                    bbox_inches="tight",
+                    dpi=300,
+                )
+                plt.close()
 
 
 def plot_fits(
@@ -349,12 +485,24 @@ def plot_fits(
 def main():
     subfolder = "/10000_steps_updated"
     subfolder = "/constrained_prior_3_tighter"
+    subfolder = "/cross_val_circuits"
 
     input_directory = "../../data/fit_data/individual_circuits" + subfolder
     output_visualization_directory = "../../figures/individual_circuits" + subfolder
 
     mcmc_results = load_individual_circuit_results(input_directory)
+
+    # Generate combined plots (existing functionality)
     plot_fits(
+        mcmc_results,
+        output_visualization_directory,
+        sample_count=30,
+        time_bounds_max=130,
+        time_bounds_min=30,
+    )
+
+    # Generate per-circuit plots (new functionality)
+    generate_per_circuit_individual_plots(
         mcmc_results,
         output_visualization_directory,
         sample_count=30,

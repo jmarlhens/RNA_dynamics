@@ -173,7 +173,7 @@ def main():
         # "cffl_type_1",
         # "inhibited_incoherent_cascade",
         # "inhibited_cascade",
-        "or_gate_c1ffl",
+        # "or_gate_c1ffl",
         "iffl_1",
         "cffl_12",
     ]
