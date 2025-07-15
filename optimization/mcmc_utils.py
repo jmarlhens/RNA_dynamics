@@ -1,5 +1,20 @@
 import numpy as np
+from matplotlib import pyplot as plt, animation
+from matplotlib.colors import LinearSegmentedColormap
 from numpy.fft import fft, ifft
+from matplotlib.backends.backend_pdf import PdfPages
+
+COLORS = [(0.30, 0.56, 1.00), (0.35, 0.24, 1.00), (1.00, 0.00, 0.42), (1.00, 0.40, 0.10), (1.00, 0.65, 0.19)]
+COLORS_DARK = [(0.00, 0.24, 0.90), (0.28, 0.00, 0.84), (0.80, 0.00, 0.27), (0.90, 0.24, 0.00), (1.00, 0.50, 0.00)]
+COLORS_MAIN = [(0.30, 0.55, 1.00), (1.00, 0.40, 0.10)]
+COLORS_CMAP_ORANGE = ["#FFFFFF", "#FF5500", "#B3003C"]
+COLORS_CMAP_BLUE = ["#FFFFFF", "#69A3FF", "#4400D6"]
+
+COLORMAP_ORANGE = LinearSegmentedColormap.from_list("my_cmap", COLORS_CMAP_ORANGE)
+COLORMAP_BLUE = LinearSegmentedColormap.from_list("my_cmap", COLORS_CMAP_BLUE)
+
+COLOR_GRAY = "#808080"
+COLOR_REPLICATES = COLORS_DARK[2:]  # Use only redish colors for replicates
 
 
 # © Copyright 2012-2021, Dan Foreman-Mackey & contributors.
@@ -146,6 +161,106 @@ def convergence_test(samples, per_parameter_test=False):
 
     R_hat = np.sqrt(var_plus / W)
     return R_hat
+
+
+def animate_parameter_trace_2D(data):
+    # Code created with the help of Perplexity
+    data = np.array(data)
+    if len(data.shape) == 2:
+        data = np.expand_dims(data, 1)
+
+    n_w = data.shape[1]
+    scatter_plots = []
+    line_plots = []
+
+    def update(version):
+        cur_data = data[:version]
+        pass
+        # Line connects the mean trajectory up to the current version
+        if version > 0 and len(cur_data) > 0:
+            # print(f"I'm here with version {version} and shape {cur_data.shape}")
+            # print(cur_data[:, 0])
+            for iW in range(n_w):
+                scatter_plots[iW].set_offsets(cur_data[:, iW])
+                line_plots[iW].set_data(cur_data[:, iW, 0], cur_data[:, iW, 1])
+        else:
+            for iW in range(n_w):
+                line_plots[iW].set_data([], [])
+
+        pass
+        ax.set_title(f'Numpy Array Evolution - Version {version + 1}', fontsize=16, weight='bold')
+        return scat, line
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for iW in range(n_w):
+        scat = ax.scatter([], [], s=60, color=COLORS[iW % 5], zorder=2, alpha=0.6)
+        line, = ax.plot([], [], "--", lw=2, color=COLORS[iW % 5], zorder=1, alpha=0.4)
+        scatter_plots.append(scat)
+        line_plots.append(line)
+
+    ax.set_xlim(np.min(data[:, :, 0]) - 0.5, np.max(data[:, :, 0]) + 0.5)
+    ax.set_ylim(np.min(data[:, :, 1]) - 0.5, np.max(data[:, :, 1]) + 0.5)
+    ax.set_xlabel('Element Index', fontsize=14)
+    ax.set_ylabel('Value', fontsize=14)
+    ax.set_title('Numpy Array Evolution Over Versions', fontsize=16, weight='bold')
+    ax.grid(True, alpha=0.3)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    ani = animation.FuncAnimation(fig, update, frames=data.shape[0], interval=0.01, blit=True)
+
+    FFwriter = animation.FFMpegWriter(fps=30)
+    ani.save('animation.mp4', writer=FFwriter, dpi=180)
+    # ani.save('array_evolution.gif', writer='pillow', dpi=180)  # Save as GIF
+    plt.close(fig)
+    print(f"Wrote animation to {'array_evolution.gif'}")
+
+
+def sliding_average(x, N):
+    cumsum = np.cumsum(np.insert(x, 0, 0))
+    return (cumsum[N:] - cumsum[:-N]) / float(N)
+
+
+def plot_traces(data, file_path, param_names=[], N=200):
+    # Code created with the help of Perplexity
+
+    data = np.array(data)
+    num_plots = data.shape[-1]
+    num_samples = data.shape[0]
+    X = np.arange(num_samples)
+    with PdfPages(file_path) as pdf:
+        plots_per_page = 3
+        num_pages = int(np.ceil(num_plots / plots_per_page))
+
+        for page in range(num_pages):
+            fig, axes = plt.subplots(plots_per_page, 1, figsize=(15, 10), squeeze=False)  # Landscape mode
+
+            axes = axes[:, 0]
+
+            for i in range(plots_per_page):
+                plot_idx = page * plots_per_page + i
+                if plot_idx < num_plots:
+                    ax = axes[i]
+                    ax.plot(X, data[:, plot_idx], color=COLORS_MAIN[0], zorder=2)
+                    sliding_window = [data[iX: iX + N + 1, plot_idx] for iX in range(data.shape[0] - N)]
+                    mean = np.array(list(map(np.mean, sliding_window)))
+                    std_dev = np.array(list(map(np.std, sliding_window)))
+                    ax.plot(X[N:], mean, "--", color="#808080", alpha=1, zorder=1)  # COLORS_MAIN[0])
+                    ax.fill_between(X[N:], mean - std_dev, mean + std_dev, color="#E0E0E0", zorder=0)
+
+                    if len(param_names) > plot_idx:
+                        ax.set_title(f'{param_names[plot_idx]}', fontsize=14)
+                    ax.grid(True, alpha=0.3)
+                    ax.set_xlabel("Iteration")
+                else:
+                    # Hide unused subplots
+                    axes[i].axis('off')
+            plt.tight_layout()
+            pdf.savefig(fig)
+            plt.close(fig)
+
+    print(f"Saved plots file to '{file_path}'.")
 
 
 if __name__ == '__main__':

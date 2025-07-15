@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 
-from optimization.mcmc_utils import convergence_test
+from optimization.mcmc_utils import convergence_test, animate_parameter_trace_2D, plot_traces
 from optimization.optimization_algorithm import OptimizationAlgorithm
 
 
@@ -16,6 +16,20 @@ class ParallelTempering(OptimizationAlgorithm):
 
         self.n_walkers = n_walkers
         self.n_chains = n_chains
+
+        swap_mask = np.zeros(shape=(n_walkers, int(np.ceil(n_chains / 2) * 2)), dtype=bool)
+        swap_mask[:, ::2] = 1
+        self.swap_mask = swap_mask
+
+        self.temperatures = np.power(2, np.arange(self.n_chains), dtype=float)
+        self.temperatures[-1] = np.inf
+        # Value choice follows Vousden et al. 2016
+
+        # Diffs of T_2 - T_1, ..., T_(N-1) - T_(N-2). The diff T_N - T_(N-1) is excluded by purpose following 1 < i < N for the S_i
+        variance = 0.1
+        self.variance = np.ones(shape=(self.n_walkers, self.n_chains, self.n_dim))
+        self.variance = self.variance * np.expand_dims(np.expand_dims(np.arange(1, self.n_chains + 1), axis=0), axis=-1)
+        self.variance *= variance
 
         if proposal_function is None:
             def adaptive_proposal(prev_state=None, radius=None):
@@ -40,14 +54,10 @@ class ParallelTempering(OptimizationAlgorithm):
 
         self.proposal_function = proposal_function
 
-        swap_mask = np.zeros(shape=(n_walkers, int(np.ceil(n_chains / 2) * 2)), dtype=bool)
-        swap_mask[:, ::2] = 1
-        self.swap_mask = swap_mask
-        pass
-
-    def run(self, initial_parameters=None, n_samples=10 ** 3, target_acceptance_ratio=None,
+    def run(self, initial_parameters=None, n_samples=10 ** 3,
+            target_acceptance_ratio=None,
             adaptive_temperature=True):
-        # Variance -> Will be adapted per chain, how to adapt per parameter (e.g. one could use gradient evaluation once in a while to choose variance in dependence to current gradient
+        # Variance -> Will be adapted per chain, how to adapt per parameter (e.g. one could use gradient evaluation once in a while to choose variance in dependence to current gradient)
         # ? How to adapt number of chains dynamically so that also there a desired acceptance rate is achieved?
 
         n_walkers = self.n_walkers
@@ -58,34 +68,22 @@ class ParallelTempering(OptimizationAlgorithm):
         else:
             initial_parameters = np.array(initial_parameters)
 
-        self.temperatures = np.power(2, np.arange(self.n_chains), dtype=float)
+        v_factor = 10 ** 2
+        v = int(np.ceil(v_factor / n_walkers))
+        t0 = 10 * v
+        S = np.log(np.diff(self.temperatures, axis=-1))
+        S = S[:-1]
 
         if adaptive_temperature and n_chains <= 2:
             print(
                 f"Disabling adaptive temperature for n_chains={n_chains}. Minimal number of chains for adaptive temperature is 3, but more chains are recommended.")
             adaptive_temperature = False
 
-        if adaptive_temperature:
-            self.temperatures[-1] = np.inf
-            # Value choice follows Vousden et al. 2016
-            v_factor = 10 ** 2
-            v = int(np.ceil(v_factor / n_walkers))
-            t0 = 10 * v  # ToDo Choose in dependence to number of samples to generate
-            S = np.log(np.diff(self.temperatures, axis=-1))
-            S = S[:-1]
-            # Diffs of T_2 - T_1, ..., T_(N-1) - T_(N-2). The diff T_N - T_(N-1) is excluded by purpose following 1 < i < N for the S_i
-
-        variance = 0.1
-        self.variance = np.ones(shape=(self.n_walkers, self.n_chains, self.n_dim))
-        self.variance = self.variance * np.expand_dims(np.expand_dims(np.arange(1, self.n_chains + 1), axis=0),
-                                                       axis=-1)
-        self.variance *= variance
-
         adaptive_proposal_distribution = target_acceptance_ratio is not None and target_acceptance_ratio > 0 and target_acceptance_ratio < 1.0
 
         adaptive_temperature_stop_iteration = int(n_samples / 2)
 
-        parameters = np.zeros(shape=(n_samples, n_walkers, n_chains, *initial_parameters.shape))
+        parameters = np.zeros(shape=(n_samples, n_walkers, n_chains, self.n_dim))
         priors = np.zeros(shape=(n_samples, n_walkers, n_chains))
         likelihoods = np.zeros(shape=(n_samples, n_walkers, n_chains))
         step_accepts = np.zeros(shape=(n_samples, n_walkers, n_chains))
@@ -231,7 +229,7 @@ def test_smile():
     n_dim = 2
     n_walkers = 4
     n_chains = 10
-    n_samples = 2*10 ** 3
+    n_samples = 10 ** 4
     target_acceptance_ratio = 0.4
     log_likelihood = log_smile_adapt
 
@@ -258,10 +256,10 @@ def test_smile():
                 move = np.random.normal(loc=0, scale=radius)  # The size is implicitly defined via the shape of radius
                 state = state + move
 
-                if len(state.shape) > 1:
-                    state[..., 1:] = self.func(state[..., 0:1])
-                else:
-                    state[1] = self.func(state[0])
+                # if len(state.shape) > 1:
+                #     state[..., 1:] = self.func(state[..., 0:1])
+                # else:
+                #     state[1] = self.func(state[0])
 
             return state
 
@@ -270,19 +268,29 @@ def test_smile():
     pt = ParallelTempering(log_likelihood=log_likelihood, log_prior=log_prior,
                            n_dim=n_dim, n_walkers=n_walkers, n_chains=n_chains,
                            proposal_function=proposal_function)
-    parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=[0, 0], n_samples=n_samples,
-                                                                         target_acceptance_ratio=target_acceptance_ratio,
-                                                                         adaptive_temperature=adaptive_temperature)
+    prev_parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=[0, 0],
+                                                                              n_samples=n_samples,
+                                                                              target_acceptance_ratio=target_acceptance_ratio,
+                                                                              adaptive_temperature=adaptive_temperature)
+    parameters = prev_parameters
 
-    # parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=parameters[-1, 0, 0], n_samples=n_samples,
-    #                                                                      target_acceptance_ratio=target_acceptance_ratio,
-    #                                                                      adaptive_temperature=adaptive_temperature)
+    # By not reinitializing the parallel tempering object, the previous state will persist
+    # One thing to note is, that the adaptive temperature schedule will be activated again.
+    # To circumvent this, either set adaptive temperature to False or drop half of the samples generated.
+    parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=prev_parameters[-1],
+                                                                         n_samples=n_samples,
+                                                                         target_acceptance_ratio=target_acceptance_ratio,
+                                                                         adaptive_temperature=False)
 
     print(f"Completed Sampling ({len(parameters)})")
 
     R_hat = convergence_test(parameters[int(len(parameters) / 2):], per_parameter_test=True)
 
     print(f"Potential Scale Reduction: {R_hat}")
+
+    # animate_parameter_trace_2D(parameters[:, :, 0])
+    for iW in range(n_walkers):
+        plot_traces(data=parameters[:, iW, 0], file_path=f"traces_walker{iW}.pdf", param_names=["x1", "x2"])
 
     # R_hat value below 1.2 are favorable
     # tau = integrated_autocorrelation_time(parameters)
@@ -291,29 +299,33 @@ def test_smile():
 
     step_acceptance_rates = np.mean(step_accepts, axis=0)
     swap_acceptance_rates = np.mean(swap_accepts, axis=0)
+    for parameters in [parameters, prev_parameters]:
+        print("Creating Figures")
+        fig, ax = plt.subplots()
+        for iW in range(n_walkers):
+            ax.scatter(parameters[:, iW, 0, 0].reshape(-1), parameters[:, iW, 0, 1].reshape(-1), alpha=0.1)
+            ax.scatter(parameters[:, iW, 1:, 0].reshape(-1), parameters[:, iW, 1:, 1].reshape(-1), marker=".",
+                       alpha=0.1)
+        plt.show()
 
-    print("Creating Figures")
-    fig, ax = plt.subplots()
-    ax.scatter(parameters[:, :, :, 0].reshape(-1), parameters[:, :, :, 1].reshape(-1), alpha=0.1)
-    plt.show()
+        fig, axes = plt.subplots(ncols=n_chains, sharex=True, sharey=True)
+        for iC in range(n_chains):
+            ax = axes
+            if hasattr(axes, "shape"):
+                ax = axes[iC]
+
+            # ax.scatter(parameters[:, :, iC, 0].reshape(-1), parameters[:, :, iC, 1].reshape(-1), alpha=0.1)
+            sns.kdeplot(x=parameters[::10, :, iC, 0].reshape(-1), y=parameters[::10, :, iC, 1].reshape(-1), ax=ax,
+                        cmap="Reds")
+        plt.show()
 
     fig, axes = plt.subplots(ncols=n_chains, sharex=True, sharey=True)
     for iC in range(n_chains):
-        ax = axes
-        if hasattr(axes, "shape"):
-            ax = axes[iC]
-
-        # ax.scatter(parameters[:, :, iC, 0].reshape(-1), parameters[:, :, iC, 1].reshape(-1), alpha=0.1)
-        sns.kdeplot(x=parameters[::10, :, iC, 0].reshape(-1), y=parameters[::10, :, iC, 1].reshape(-1), ax=ax,
-                    cmap="Reds")
+        ax = axes[iC]
+        for iW in range(n_walkers):
+            ax.plot(parameters[:, iW, iC, 0].reshape(-1), parameters[:, iW, iC, 1].reshape(-1), alpha=0.1)
+            ax.scatter(parameters[:, iW, iC, 0].reshape(-1), parameters[:, iW, iC, 1].reshape(-1), alpha=0.1)
     plt.show()
-
-    # fig, axes = plt.subplots(ncols=n_chains, sharex=True, sharey=True)
-    # for iC in range(n_chains):
-    #     ax = axes[iC]
-    #     ax.plot(parameters[:, :, iC, 0].reshape(-1), parameters[:, :, iC, 1].reshape(-1), alpha=0.1)
-    #     ax.scatter(parameters[:, :, iC, 0].reshape(-1), parameters[:, :, iC, 1].reshape(-1), alpha=0.1)
-    # plt.show()
 
 
 def sampling_test():
