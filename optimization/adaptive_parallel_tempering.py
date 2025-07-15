@@ -231,7 +231,7 @@ def test_smile():
     n_dim = 2
     n_walkers = 4
     n_chains = 10
-    n_samples = 10 ** 4
+    n_samples = 2*10 ** 3
     target_acceptance_ratio = 0.4
     log_likelihood = log_smile_adapt
 
@@ -249,7 +249,7 @@ def test_smile():
 
         def __call__(self, prev_state=None, radius=None):
             if prev_state is None:
-                state = self.radius * np.random.randn(n_dim)
+                state = radius * np.random.randn(n_dim)
             else:
                 state = np.array(prev_state)
                 if radius is None:
@@ -273,9 +273,14 @@ def test_smile():
     parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=[0, 0], n_samples=n_samples,
                                                                          target_acceptance_ratio=target_acceptance_ratio,
                                                                          adaptive_temperature=adaptive_temperature)
-    print("Completed Sampling")
 
-    R_hat = convergence_test(parameters[int(len(parameters) / 2):])
+    # parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=parameters[-1, 0, 0], n_samples=n_samples,
+    #                                                                      target_acceptance_ratio=target_acceptance_ratio,
+    #                                                                      adaptive_temperature=adaptive_temperature)
+
+    print(f"Completed Sampling ({len(parameters)})")
+
+    R_hat = convergence_test(parameters[int(len(parameters) / 2):], per_parameter_test=True)
 
     print(f"Potential Scale Reduction: {R_hat}")
 

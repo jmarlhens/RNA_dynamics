@@ -110,7 +110,7 @@ def integrated_autocorrelation_time(X, c=6):
     return tau
 
 
-def convergence_test(samples):
+def convergence_test(samples, per_parameter_test=False):
     """
     Checks for mixing and stationarity by employing multiple walkers following Gelman et al. (Bayesian Data Analysis Third edition (with errors ﬁxed as of 15 February 2021), Gelman Rubin approach).
     Gives rise to the potential scale reduction with narrows 1 for n -> \infty. Large values indicate, that the number of samples should be increased.
@@ -120,11 +120,14 @@ def convergence_test(samples):
     :return:
     """
 
+    axis = 0 if per_parameter_test else None
+
     # We only consider the first chain here, as this is the chain sampling from the untempered posterior
     samples = samples[:, :, 0]
-
-    # Drop burn in phase
-    data = samples[int(len(samples) / 2):]
+    # Burn in phase already dropped before hand
+    # # Drop burn in phase
+    # data = samples[int(len(samples) / 2):]
+    data = samples
     length = len(data)
     n = int(length / 2)
     split = data[:n], data[n:2 * n]
@@ -132,11 +135,12 @@ def convergence_test(samples):
 
     # Computing the between chain variance B
     per_chain_average = np.mean(split, axis=0)
-    B = n * np.var(per_chain_average)
+
+    B = n * np.var(per_chain_average, axis=axis)
 
     # Computing the within chain variance W
     per_chain_variance = np.var(split, axis=0)
-    W = np.mean(per_chain_variance)
+    W = np.mean(per_chain_variance, axis=axis)
 
     var_plus = ((n - 1) * W + B) / n
 
