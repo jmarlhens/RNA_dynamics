@@ -152,17 +152,12 @@ def generate_hierarchical_individual_plots(
         if len(theta_samples) > final_sample_size
         else theta_samples.copy()
     )
-
-    best_theta_samples = theta_final_samples.sort_values(
-        by="likelihood", ascending=False
-    )
     random_theta_samples = theta_final_samples.sample(
         n=final_sample_size, random_state=42
     )
 
     # Generate plots for both best and random samples
     for sample_type, samples in [
-        ("best", best_theta_samples),
         ("random", random_theta_samples),
     ]:
         simulation_data, results_dataframe = simulate_and_organize_parameter_sets(
@@ -178,7 +173,9 @@ def generate_hierarchical_individual_plots(
         )
 
         sample_count_actual = len(samples)
-        plot_title = f"{'Top' if sample_type == 'best' else 'Random'} {sample_count_actual} Hierarchical Theta Fits for {circuit_name}"
+        plot_title = (
+            f"'Random '{sample_count_actual} Hierarchical Theta Fits for {circuit_name}"
+        )
         plt.suptitle(plot_title)
         plt.savefig(
             os.path.join(
@@ -187,7 +184,7 @@ def generate_hierarchical_individual_plots(
         )
         plt.close()
 
-    return best_theta_samples, random_theta_samples
+    return random_theta_samples
 
 
 def generate_per_circuit_hierarchical_plots(
@@ -231,16 +228,12 @@ def generate_per_circuit_hierarchical_plots(
             else theta_samples.copy()
         )
 
-        best_theta_samples = theta_final_samples.sort_values(
-            by="likelihood", ascending=False
-        )
         random_theta_samples = theta_final_samples.sample(
             n=final_sample_size, random_state=42
         )
 
         # Generate plots for both sample types
         for sample_type, samples in [
-            ("best", best_theta_samples),
             ("random", random_theta_samples),
         ]:
             simulation_data, results_dataframe = simulate_and_organize_parameter_sets(
@@ -331,9 +324,7 @@ def plot_hierarchical_fits(
     ].Parameter.tolist()
     calibration_parameters = setup_calibration()
 
-    combined_best_simulation_data = {}
     combined_random_simulation_data = {}
-    combined_best_results = []
     combined_random_results = []
 
     for circuit_name, theta_samples in circuit_theta_results.items():
@@ -351,80 +342,35 @@ def plot_hierarchical_fits(
         )
 
         # Generate individual plots and get samples
-        best_theta_samples, random_theta_samples = (
-            generate_hierarchical_individual_plots(
-                circuit_name,
-                theta_samples,
-                circuit_fitter,
-                parameters_to_fit,
-                output_directory,
-                sample_count,
-            )
+        random_theta_samples = generate_hierarchical_individual_plots(
+            circuit_name,
+            theta_samples,
+            circuit_fitter,
+            parameters_to_fit,
+            output_directory,
+            sample_count,
         )
 
-        # Prepare data for combined plotting
-        best_simulation_data, best_results_dataframe = (
-            simulate_and_organize_parameter_sets(
-                best_theta_samples, circuit_fitter, parameters_to_fit
-            )
-        )
         random_simulation_data, random_results_dataframe = (
             simulate_and_organize_parameter_sets(
                 random_theta_samples, circuit_fitter, parameters_to_fit
             )
         )
 
-        combined_best_simulation_data[circuit_name] = {
-            "config": circuit_configuration,
-            "combined_params": best_simulation_data["combined_params"],
-            "simulation_results": best_simulation_data["simulation_results"],
-        }
         combined_random_simulation_data[circuit_name] = {
             "config": circuit_configuration,
             "combined_params": random_simulation_data["combined_params"],
             "simulation_results": random_simulation_data["simulation_results"],
         }
 
-        combined_best_results.append(best_results_dataframe)
         combined_random_results.append(random_results_dataframe)
 
-    # Direct reuse of existing plotting functions with proper data structure
-    combined_best_dataframe = pd.concat(combined_best_results, ignore_index=True)
     combined_random_dataframe = pd.concat(combined_random_results, ignore_index=True)
 
     # All plots below use existing functions from plots_simulation.py unchanged
     print(
         "Generating combined hierarchical plots using existing plot_circuit_simulations()..."
     )
-
-    plot_circuit_simulations(
-        combined_best_simulation_data,
-        combined_best_dataframe,
-        plot_mode="individual",
-        likelihood_percentile_range=20,
-    )
-    plt.savefig(
-        os.path.join(output_directory, "all_circuits_hierarchical_best_fits.png"),
-        bbox_inches="tight",
-        dpi=300,
-    )
-    plt.close()
-
-    plot_circuit_simulations(
-        combined_best_simulation_data,
-        combined_best_dataframe,
-        plot_mode="summary",
-        summary_type="median_iqr",
-        percentile_bounds=(10, 90),
-    )
-    plt.savefig(
-        os.path.join(
-            output_directory, "all_circuits_hierarchical_best_fits_summary.png"
-        ),
-        bbox_inches="tight",
-        dpi=300,
-    )
-    plt.close()
 
     plot_circuit_simulations(
         combined_random_simulation_data,
@@ -458,37 +404,6 @@ def plot_hierarchical_fits(
     print(
         "Generating overlay plots using existing plot_circuit_conditions_overlay()..."
     )
-
-    plot_circuit_conditions_overlay(
-        combined_best_simulation_data,
-        combined_best_dataframe,
-        simulation_mode="individual",
-    )
-    plt.savefig(
-        os.path.join(
-            output_directory,
-            "all_circuits_hierarchical_best_fits_overlay_individual.png",
-        ),
-        bbox_inches="tight",
-        dpi=300,
-    )
-    plt.close()
-
-    plot_circuit_conditions_overlay(
-        combined_best_simulation_data,
-        combined_best_dataframe,
-        simulation_mode="summary",
-        summary_type="median_iqr",
-        percentile_bounds=(10, 90),
-    )
-    plt.savefig(
-        os.path.join(
-            output_directory, "all_circuits_hierarchical_best_fits_overlay_summary.png"
-        ),
-        bbox_inches="tight",
-        dpi=300,
-    )
-    plt.close()
 
     plot_circuit_conditions_overlay(
         combined_random_simulation_data,
@@ -525,7 +440,7 @@ def plot_hierarchical_fits(
 
 def main():
     # Specify hierarchical results file
-    project = "simple_hierarchical_results_20250715_094058"
+    project = "adaptive_hierarchical_results_20250715_172928"
     hierarchical_results_file = "../../data/fit_data/hierarchical/" + project + ".csv"
     output_directory = "../../figures/hierarchical_simulations/" + project
 

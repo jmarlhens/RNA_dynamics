@@ -40,7 +40,7 @@ def fit_hierarchical_multiple_circuits(
 
     # Generate test parameters
     np.random.seed(42)
-    params = hierarchical_fitter.generate_hierarchical_parameters(96)
+    params = hierarchical_fitter.generate_initial_hierarchical_parameters(96)
 
     # =========================================================================
     # Prior Calculation Performance Test

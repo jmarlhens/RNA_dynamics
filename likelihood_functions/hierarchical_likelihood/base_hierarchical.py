@@ -23,7 +23,7 @@ class HierarchicalCircuitFitter(CircuitFitter):
         parameters_to_fit,
         model_parameters_priors,
         calibration_data,
-        sigma_0_squared=1e2,
+        sigma_0_squared=1e1,
         # individual_circuit_posterior_results=None,
     ):
         """Initialize with support for hierarchical structure"""
@@ -109,7 +109,7 @@ class HierarchicalCircuitFitter(CircuitFitter):
         # else:
         # Original hardcoded values
         self.nu = self.n_parameters - 6
-        self.psi = 4 * np.eye(self.n_parameters)
+        self.psi = 0.1 * np.eye(self.n_parameters)
 
         self._sigma_degree_coefficient = -0.5 * (self.nu + self.n_parameters + 1)
         self._sigma_trace_coefficient = -0.5
@@ -159,7 +159,7 @@ class HierarchicalCircuitFitter(CircuitFitter):
 
         return cholesky_lower_triangular @ cholesky_lower_triangular.T
 
-    def generate_hierarchical_parameters(self, n_sets=20):
+    def generate_initial_hierarchical_parameters(self, n_sets=20):
         """
         Generate parameter sets for the hierarchical model
         Returns array of shape (n_sets, n_total_params)

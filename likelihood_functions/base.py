@@ -14,7 +14,7 @@ class CircuitFitter:
         parameters_to_fit,
         model_parameters_priors,
         calibration_data,
-        sigma_0_squared=1e1,
+        sigma_0_squared=1e-1,
     ):
         """
         Initialize CircuitFitter with caching of experimental data
@@ -85,7 +85,7 @@ class CircuitFitter:
                 config.tspan,
                 compiler="cython",
                 cleanup=True,
-                integrator="lsoda",
+                # integrator="lsoda",
             )
             self.simulators[config.name] = simulator
 

@@ -16,7 +16,9 @@ class HierarchicalMCMCAdapter(MCMCAdapter):
     def get_initial_parameters(self):
         """Get initial parameters for hierarchical model"""
         # Generate one set of hierarchical parameters
-        return self.hierarchical_fitter.generate_hierarchical_parameters(n_sets=1)[0]
+        return self.hierarchical_fitter.generate_initial_hierarchical_parameters(
+            n_sets=1
+        )[0]
 
     def get_log_likelihood_function(self):
         def log_likelihood(hierarchical_parameter_array):

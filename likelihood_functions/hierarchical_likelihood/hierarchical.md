@@ -130,7 +130,7 @@ class HierarchicalCircuitFitter(CircuitFitter):
         return matrix
     
     # Parameter generation and manipulation
-    def generate_hierarchical_parameters(self, n_sets=20):
+    def generate_initial_hierarchical_parameters(self, n_sets=20):
         """
         Generate parameter sets for the hierarchical model
         Returns array of shape (n_sets, n_total_params)
@@ -391,57 +391,59 @@ class HierarchicalCircuitFitter(CircuitFitter):
 
 ```python
 class HierarchicalMCMCAdapter(MCMCAdapter):
-    """Adapter for hierarchical model to use with MCMC"""
-    
-    def __init__(self, hierarchical_fitter):
-        """Initialize with hierarchical circuit fitter"""
-        super().__init__(hierarchical_fitter)
-        self.hierarchical_fitter = hierarchical_fitter
-    
-    def get_initial_parameters(self):
-        """Get initial parameters for hierarchical model"""
-        # Generate one set of hierarchical parameters
-        return self.hierarchical_fitter.generate_hierarchical_parameters(n_sets=1)[0]
-    
-    def get_log_likelihood_function(self):
-        """Return likelihood function for hierarchical model"""
-        def log_likelihood(params):
-            # Reshape to handle parallel tempering structure
-            original_shape = params.shape
-            params_2d = params.reshape(-1, original_shape[-1])
-            
-            # Calculate likelihood
-            likelihood_results = self.hierarchical_fitter.calculate_hierarchical_likelihood(params_2d)
-            
-            # Reshape back to original shape
-            return likelihood_results['total'].reshape(original_shape[:-1])
-        
-        return log_likelihood
-    
-    def get_log_prior_function(self):
-        """Return prior function for hierarchical model"""
-        def log_prior(params):
-            # Reshape to handle parallel tempering structure
-            original_shape = params.shape
-            params_2d = params.reshape(-1, original_shape[-1])
-            
-            # Calculate prior
-            prior_values = self.hierarchical_fitter.calculate_hierarchical_prior(params_2d)
-            
-            # Reshape back to original shape
-            return prior_values.reshape(original_shape[:-1])
-        
-        return log_prior
-    
-    def setup_hierarchical_parallel_tempering(self, n_walkers=5, n_chains=12):
-        """Setup parallel tempering for hierarchical model"""
-        return ParallelTempering(
-            log_likelihood=self.get_log_likelihood_function(),
-            log_prior=self.get_log_prior_function(),
-            n_dim=self.hierarchical_fitter.n_total_params,
-            n_walkers=n_walkers,
-            n_chains=n_chains
-        )
+	"""Adapter for hierarchical model to use with MCMC"""
+
+	def __init__(self, hierarchical_fitter):
+		"""Initialize with hierarchical circuit fitter"""
+		super().__init__(hierarchical_fitter)
+		self.hierarchical_fitter = hierarchical_fitter
+
+	def get_initial_parameters(self):
+		"""Get initial parameters for hierarchical model"""
+		# Generate one set of hierarchical parameters
+		return self.hierarchical_fitter.generate_initial_hierarchical_parameters(n_sets=1)[0]
+
+	def get_log_likelihood_function(self):
+		"""Return likelihood function for hierarchical model"""
+
+		def log_likelihood(params):
+			# Reshape to handle parallel tempering structure
+			original_shape = params.shape
+			params_2d = params.reshape(-1, original_shape[-1])
+
+			# Calculate likelihood
+			likelihood_results = self.hierarchical_fitter.calculate_hierarchical_likelihood(params_2d)
+
+			# Reshape back to original shape
+			return likelihood_results['total'].reshape(original_shape[:-1])
+
+		return log_likelihood
+
+	def get_log_prior_function(self):
+		"""Return prior function for hierarchical model"""
+
+		def log_prior(params):
+			# Reshape to handle parallel tempering structure
+			original_shape = params.shape
+			params_2d = params.reshape(-1, original_shape[-1])
+
+			# Calculate prior
+			prior_values = self.hierarchical_fitter.calculate_hierarchical_prior(params_2d)
+
+			# Reshape back to original shape
+			return prior_values.reshape(original_shape[:-1])
+
+		return log_prior
+
+	def setup_hierarchical_parallel_tempering(self, n_walkers=5, n_chains=12):
+		"""Setup parallel tempering for hierarchical model"""
+		return ParallelTempering(
+			log_likelihood=self.get_log_likelihood_function(),
+			log_prior=self.get_log_prior_function(),
+			n_dim=self.hierarchical_fitter.n_total_params,
+			n_walkers=n_walkers,
+			n_chains=n_chains
+		)
 ```
 
 ### 3. Create Hierarchical Analysis Functions
