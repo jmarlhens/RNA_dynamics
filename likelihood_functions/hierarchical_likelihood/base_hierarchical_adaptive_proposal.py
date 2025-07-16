@@ -32,7 +32,7 @@ class HierarchicalAdaptiveProposal:
         )
 
         # Generate random walk with same shape as radius
-        random_walk = np.random.normal(0, modified_radius * 0.01, radius.shape)
+        random_walk = np.random.normal(0, modified_radius, radius.shape)
 
         # broadcasting
         # 1sr step: (n_params,) + (n_walkers, n_chains, n_params) -> (n_walkers, n_chains, n_params)
