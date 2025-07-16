@@ -23,7 +23,7 @@ class HierarchicalCircuitFitter(CircuitFitter):
         parameters_to_fit,
         model_parameters_priors,
         calibration_data,
-        sigma_0_squared=1e1,
+        sigma_0_squared=1e-1,
         # individual_circuit_posterior_results=None,
     ):
         """Initialize with support for hierarchical structure"""
@@ -75,11 +75,6 @@ class HierarchicalCircuitFitter(CircuitFitter):
             [self.log_means[param] for param in self.parameters_to_fit]
         )
 
-        # Σ (covariance matrix for parameters)
-        self.sigma = np.diag(
-            [self.log_stds[param] ** 2 for param in self.parameters_to_fit]
-        )
-
         # Hyperpriors
         # For α: N(μ_α, Σ_α)
         self.mu_alpha = self.alpha.copy()
@@ -108,8 +103,11 @@ class HierarchicalCircuitFitter(CircuitFitter):
         #     )
         # else:
         # Original hardcoded values
-        self.nu = self.n_parameters - 6
-        self.psi = 0.1 * np.eye(self.n_parameters)
+        self.nu = self.n_parameters + 20
+        self.psi = 10e-4 * np.eye(self.n_parameters)
+        print(self.psi)
+        self.sigma = self.psi / (self.nu - self.n_parameters - 1)
+        print(f"Initial Σ condition number: {np.linalg.cond(self.sigma):.2f}")
 
         self._sigma_degree_coefficient = -0.5 * (self.nu + self.n_parameters + 1)
         self._sigma_trace_coefficient = -0.5
