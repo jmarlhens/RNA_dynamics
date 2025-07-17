@@ -8,30 +8,9 @@ from analysis_and_figures.plots_simulation import plot_circuit_simulations
 from likelihood_functions.base import MCMCAdapter
 from analysis_and_figures.mcmc_analysis import analyze_mcmc_results
 from utils.import_and_visualise_data import load_and_process_csv
-from utils.GFP_calibration import fit_gfp_calibration, get_brightness_correction_factor
 from circuits.circuit_generation.circuit_manager import CircuitManager
 from data.circuits.circuit_configs import DATA_FILES, get_circuit_conditions
-
-
-def setup_calibration():
-    # Load calibration data
-    data = pd.read_csv("../../utils/calibration_gfp/gfp_Calibration.csv")
-
-    # Fit the calibration curve
-    calibration_results = fit_gfp_calibration(
-        data,
-        concentration_col="GFP Concentration (nM)",
-        fluorescence_pattern="F.I. (a.u)",
-    )
-
-    # Get correction factor
-    correction_factor, _ = get_brightness_correction_factor("avGFP", "sfGFP")
-
-    return {
-        "slope": calibration_results["slope"],
-        "intercept": calibration_results["intercept"],
-        "brightness_correction": correction_factor,
-    }
+from utils.GFP_calibration import setup_calibration
 
 
 def fit_single_circuit(
@@ -43,8 +22,8 @@ def fit_single_circuit(
     priors,
     min_time=30,
     max_time=210,
-    n_samples=500,
-    n_walkers=10,
+    n_samples=20000,
+    n_walkers=5,
     n_chains=10,
 ):
     """
@@ -57,6 +36,8 @@ def fit_single_circuit(
         circuit_name, parameters=condition_params[first_condition]
     )
 
+    calibration_params = setup_calibration()
+
     # Create circuit configuration with single model
     circuit_config = CircuitConfig(
         model=circuit.model,
@@ -66,11 +47,11 @@ def fit_single_circuit(
         tspan=tspan,
         min_time=min_time,
         max_time=max_time,
+        calibration_params=calibration_params,
     )
 
     # Create circuit fitter with single config
     parameters_to_fit = priors.Parameter.tolist()
-    calibration_params = setup_calibration()
     circuit_fitter = CircuitFitter(
         [circuit_config], parameters_to_fit, priors, calibration_params
     )
@@ -116,13 +97,10 @@ def fit_single_circuit(
     param_df = pd.DataFrame(best_params_values, columns=parameters_to_fit)
 
     # Simulate with multiple parameter sets
-    # sim_data = circuit_fitter.simulate_parameters(param_df)
-    # Expected type 'ndarray | ndarray', got 'DataFrame' instead
     sim_data = circuit_fitter.simulate_parameters(param_df.values)
     likelihood_breakdown = (
         circuit_fitter.calculate_likelihood_from_simulation_with_breakdown(sim_data)
     )
-    log_prior = circuit_fitter.calculate_log_prior(param_df.values)
     log_prior = circuit_fitter.calculate_log_prior(param_df.values)
     results_df = organize_results(
         parameters_to_fit, param_df.values, likelihood_breakdown, log_prior
@@ -165,24 +143,24 @@ def main():
     # Fit each circuit individually
     circuits_to_fit = [
         # "constitutive sfGFP",
-        # "sense_star_6",
-        # "toehold_trigger",
+        "sense_star_6",
+        "toehold_trigger",
         # "star_antistar_1",
         # "trigger_antitrigger",
-        # "cascade",
-        # "cffl_type_1",
-        # "inhibited_incoherent_cascade",
-        # "inhibited_cascade",
-        # "or_gate_c1ffl",
+        "cascade",
+        "cffl_type_1",
+        "inhibited_incoherent_cascade",
+        "inhibited_cascade",
+        "or_gate_c1ffl",
         "iffl_1",
         "cffl_12",
     ]
 
-    for circuit_name in ["cffl_12", "iffl_1", "inhibited_cascade"]:
-        conditions = get_circuit_conditions(circuit_name)
-        print(f"\n{circuit_name} conditions:")
-        for cond_name, params in conditions.items():
-            print(f"  {cond_name}: {params}")
+    # for circuit_name in ["cffl_12", "iffl_1", "inhibited_cascade"]:
+    #     conditions = get_circuit_conditions(circuit_name)
+    #     print(f"\n{circuit_name} conditions:")
+    #     for cond_name, params in conditions.items():
+    #         print(f"  {cond_name}: {params}")
 
     for circuit_name in circuits_to_fit:
         if circuit_name in available_circuits:
