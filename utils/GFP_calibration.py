@@ -212,8 +212,53 @@ def convert_au_to_nm(
 
 
 if __name__ == "__main__":
-    import requests
+    # First, let's check what proteins are available in the API
+    api = FPbaseAPI()
+    df = api.get_protein_data()
+    if df is not None:
+        # Find GFP variants
+        gfp_variants = df[df["name"].str.contains("GFP", case=False, na=False)]
+        print("Available GFP variants:")
+        for _, row in gfp_variants.iterrows():
+            print(f"Name: {row['name']}, Slug: {row['slug']}")
 
+    # Now let's get our correction factor
+    correction_factor, protein_info = get_brightness_correction_factor(
+        "avgfp", "superfolder-gfp"
+    )
+
+    print("\nProtein properties:")
+    print("\nCalibration protein (avGFP):")
+    for key, value in protein_info["calibration"].items():
+        print(f"{key}: {value}")
+    print("\nTarget protein (sfGFP):")
+    for key, value in protein_info["target"].items():
+        print(f"{key}: {value}")
+    print(f"\nBrightness correction factor: {correction_factor:.2f}")
+
+
+def setup_calibration():
+    # Load calibration data
+    data = pd.read_csv("../../utils/calibration_gfp/gfp_Calibration.csv")
+
+    # Fit the calibration curve
+    calibration_results = fit_gfp_calibration(
+        data,
+        concentration_col="GFP Concentration (nM)",
+        fluorescence_pattern="F.I. (a.u)",
+    )
+
+    # Get correction factor
+    correction_factor, _ = get_brightness_correction_factor("avGFP", "sfGFP")
+
+    return {
+        "slope": calibration_results["slope"],
+        "intercept": calibration_results["intercept"],
+        "brightness_correction": correction_factor,
+    }
+
+
+if __name__ == "__main__":
     # First, let's check what proteins are available in the API
     api = FPbaseAPI()
     df = api.get_protein_data()
