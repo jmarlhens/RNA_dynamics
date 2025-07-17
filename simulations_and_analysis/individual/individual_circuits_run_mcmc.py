@@ -1,10 +1,7 @@
 from datetime import datetime
 import pandas as pd
-import matplotlib.pyplot as plt
 from likelihood_functions.config import CircuitConfig
 from likelihood_functions.base import CircuitFitter
-from utils.process_experimental_data import organize_results
-from analysis_and_figures.plots_simulation import plot_circuit_simulations
 from likelihood_functions.base import MCMCAdapter
 from analysis_and_figures.mcmc_analysis import analyze_mcmc_results
 from utils.import_and_visualise_data import load_and_process_csv
@@ -87,29 +84,6 @@ def fit_single_circuit(
     safe_circuit_name = circuit_name.replace("/", "_")
     filename = f"../../data/fit_data/individual_circuits/results_{safe_circuit_name}_{timestamp}.csv"
     df.to_csv(filename, index=False)
-
-    # Plot and save best fit results
-    best_params = df.sort_values(by="likelihood", ascending=False).head(100)
-    best_params_values = best_params[results["analyzer"].parameter_names].values
-
-    # Using param_values for multiple simulations
-    # Convert best_params_values to a DataFrame for easier handling
-    param_df = pd.DataFrame(best_params_values, columns=parameters_to_fit)
-
-    # Simulate with multiple parameter sets
-    sim_data = circuit_fitter.simulate_parameters(param_df.values)
-    likelihood_breakdown = (
-        circuit_fitter.calculate_likelihood_from_simulation_with_breakdown(sim_data)
-    )
-    log_prior = circuit_fitter.calculate_log_prior(param_df.values)
-    results_df = organize_results(
-        parameters_to_fit, param_df.values, likelihood_breakdown, log_prior
-    )
-
-    plt.figure(figsize=(12, 8))
-    plot_circuit_simulations(sim_data, results_df)
-    plt.savefig(f"fit_{safe_circuit_name}_{timestamp}.png")
-    plt.close()
 
     return results, df
 
