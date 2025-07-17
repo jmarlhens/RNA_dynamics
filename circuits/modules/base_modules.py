@@ -20,19 +20,45 @@ class TranscriptionType(Enum):
 
 
 class Transcription(ReactionComplex):
-    def __init__(self, sequence_name: str = None, model: Model = None):
-        rna = RNA.get_instance(sequence_name=sequence_name, model=model)
+    def __init__(
+        self,
+        sequence_name: str = None,
+        model: Model = None,
+        kinetic_parameters: dict = None,
+    ):
+        """
+        Initialize a Transcription reaction complex.
+
+        :param sequence_name:
+        :param model:
+        :param kinetic_parameters:
+        """
+        rna = RNA.get_instance(
+            sequence_name=sequence_name,
+            model=model,
+            kinetic_parameters=kinetic_parameters,
+        )
 
         super().__init__(substrate=None, product=rna, model=model)
 
-        self.k_tx = self.parameters["k_tx"]
-        self.K_tx = self.parameters["K_tx"]
-        self.k_concentration = self.parameters["k_" + sequence_name + "_concentration"]
+        trancription_parameters = ["k_tx", "K_tx", "k_rna_deg"]
+        existing_parameters = set(model.parameters.keys())
+        for param_name in trancription_parameters:
+            if param_name not in existing_parameters:
+                Parameter(param_name, kinetic_parameters[param_name])
+
+        self.k_concentration = model.parameters["k_" + sequence_name + "_concentration"]
         Expression(
             "k_tx_plasmid_" + sequence_name,
-            (self.k_concentration * self.k_tx) / (self.K_tx + self.k_concentration),
+            (
+                model.parameters["k_" + sequence_name + "_concentration"]
+                * model.parameters["k_tx"]
+            )
+            / (
+                model.parameters["K_tx"]
+                + model.parameters["k_" + sequence_name + "_concentration"]
+            ),
         )
-        self.k_deg = self.parameters["k_rna_deg"]
 
         rules = []
         # Transcription rule: RNA is produced in the unbound state
@@ -132,23 +158,51 @@ class PulsedTranscription(ReactionComplex):
 
 
 class Translation(ReactionComplex):
-    def __init__(self, rna: RNA = None, prot_name: str = None, model: Model = None):
+    def __init__(
+        self,
+        rna: RNA = None,
+        prot_name: str = None,
+        model: Model = None,
+        kinetic_parameters: dict = None,
+    ):
+        """
+        Initialize a Translation reaction complex.
+        Args:
+            rna (RNA): RNA object to be translated
+            prot_name (str): Name of the protein to be produced
+            model (Model): PySB model object
+            kinetic_parameters (dict): Kinetic parameters for translation
+        """
+
         sequence_name = rna.sequence_name if prot_name is None else prot_name
-        protein = Protein.get_instance(sequence_name=sequence_name, model=model)
+        protein = Protein.get_instance(
+            sequence_name=sequence_name,
+            model=model,
+            kinetic_parameters=kinetic_parameters,
+        )
 
         super().__init__(substrate=rna, product=protein, model=model)
 
-        self.k_tl = self.parameters["k_tl"]
-        self.K_tl = self.parameters["K_tl"]
-        self.k_mat = self.parameters["k_mat"]
-        self.k_deg = self.parameters["k_prot_deg"]
+        translation_parameters = ["k_tl", "K_tl", "k_mat", "k_prot_deg"]
+        existing_parameters = set(model.parameters.keys())
+
+        for param_name in translation_parameters:
+            if param_name not in existing_parameters:
+                Parameter(param_name, kinetic_parameters[param_name])
+        # self.k_tl = self.parameters["k_tl"]
+        # self.K_tl = self.parameters["K_tl"]
+        # self.k_mat = self.parameters["k_mat"]
+        # self.k_deg = self.parameters["k_prot_deg"]
         Observable(
             "obs_RNA_" + sequence_name,
             model.monomers["RNA_" + sequence_name](state="full"),
         )
         Expression(
             "k_tl_eff_" + sequence_name,
-            self.k_tl / (self.K_tl + model.observables["obs_RNA_" + sequence_name]),
+            model.parameters["k_tl"]
+            / (
+                model.parameters["K_tl"] + model.observables["obs_RNA_" + sequence_name]
+            ),
         )
 
         rules = []
@@ -307,7 +361,20 @@ class MassActionTranscription(ReactionComplex):
 
 
 class MassActionTranslation(ReactionComplex):
-    def __init__(self, rna: RNA = None, prot_name: str = None, model: Model = None):
+    def __init__(
+        self,
+        rna: RNA = None,
+        prot_name: str = None,
+        model: Model = None,
+        kinetic_parameters: dict = None,
+    ):
+        """
+
+        :param rna:
+        :param prot_name:
+        :param model:
+        :param kinetic_parameters:
+        """
         sequence_name = rna.sequence_name if prot_name is None else prot_name
         protein = Protein.get_instance(sequence_name=sequence_name, model=model)
 
@@ -370,6 +437,7 @@ class TranscriptionFactory:
         transcription_type: TranscriptionType,
         sequence_name: str,
         model: Model,
+        kinetic_parameters: Dict,
         pulse_config: Optional[Dict] = None,
         kinetics_type: KineticsType = KineticsType.MICHAELIS_MENTEN,
     ) -> Union[Transcription, PulsedTranscription, MassActionTranscription]:
@@ -380,6 +448,7 @@ class TranscriptionFactory:
             transcription_type: Type of transcription (constant or pulsed)
             sequence_name: Name of the sequence being transcribed
             model: PySB model object
+            kinetic_parameters: Kinetic parameters for transcription
             pulse_config: Configuration for pulse behavior (required if type is PULSED)
             kinetics_type: Type of kinetics to use (MICHAELIS_MENTEN or MASS_ACTION)
 
@@ -388,7 +457,11 @@ class TranscriptionFactory:
         """
         if kinetics_type == KineticsType.MICHAELIS_MENTEN:
             if transcription_type == TranscriptionType.CONSTANT:
-                return Transcription(sequence_name=sequence_name, model=model)
+                return Transcription(
+                    sequence_name=sequence_name,
+                    model=model,
+                    kinetic_parameters=kinetic_parameters,
+                )
             elif transcription_type == TranscriptionType.PULSED:
                 if pulse_config is None:
                     raise ValueError(
@@ -420,6 +493,7 @@ class TranslationFactory:
         rna: RNA,
         prot_name: str,
         model: Model,
+        kinetic_parameters: Dict,
         kinetics_type: KineticsType = KineticsType.MICHAELIS_MENTEN,
     ) -> Union[Translation, MassActionTranslation]:
         """
@@ -435,8 +509,18 @@ class TranslationFactory:
             Instance of translation class
         """
         if kinetics_type == KineticsType.MICHAELIS_MENTEN:
-            return Translation(rna=rna, prot_name=prot_name, model=model)
+            return Translation(
+                rna=rna,
+                prot_name=prot_name,
+                model=model,
+                kinetic_parameters=kinetic_parameters,
+            )
         elif kinetics_type == KineticsType.MASS_ACTION:
-            return MassActionTranslation(rna=rna, prot_name=prot_name, model=model)
+            return MassActionTranslation(
+                rna=rna,
+                prot_name=prot_name,
+                model=model,
+                kinetic_parameters=kinetic_parameters,
+            )
         else:
             raise ValueError(f"Unknown kinetics type: {kinetics_type}")

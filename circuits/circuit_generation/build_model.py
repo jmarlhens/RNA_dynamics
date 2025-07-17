@@ -1,4 +1,4 @@
-from pysb import Model, Parameter, Observable, Rule
+from pysb import Model, Observable, Rule, Parameter
 from circuits.modules.star import STAR
 from circuits.modules.base_modules import (
     TranscriptionFactory,
@@ -15,6 +15,7 @@ from circuits.modules.molecules import RNA
 def setup_model(
     plasmids,
     parameters,
+    plasmid_concentration_parameters,
     bindings=None,
     use_pulses=False,
     pulse_config=None,
@@ -27,6 +28,7 @@ def setup_model(
 
     :param plasmids: List of plasmids to be processed in format [(name, tx_control, tl_control, cds), ...]
     :param parameters: Dictionary of model parameters.
+    :param plasmid_concentration_parameters: Dictionary of plasmid concentration parameters.
     :param bindings: Optional list of tuples specifying sequestration reactions between species.
     :param use_pulses: Boolean indicating whether to use pulsed transcription.
     :param pulse_indices: List of indices indicating which plasmids should be pulsed.
@@ -36,6 +38,10 @@ def setup_model(
     :return: PySB Model object.
     """
     model = Model()
+
+    # Add the plasmid concentrations
+    for param_name, param_value in plasmid_concentration_parameters.items():
+        Parameter(param_name, param_value)
 
     # Filter out parameters that will be replaced by expressions for pulsed plasmids
     filtered_parameters = parameters.copy()
@@ -94,8 +100,8 @@ def setup_model(
                 filtered_parameters.pop(param_name)
 
     # Add filtered parameters to the model
-    for param_name, param_value in filtered_parameters.items():
-        Parameter(param_name, param_value)
+    # for param_name, param_value in filtered_parameters.items():
+    #     Parameter(param_name, param_value)
 
     # Process each plasmid
     for idx, plasmid in enumerate(plasmids):
@@ -123,13 +129,19 @@ def setup_model(
             model,
             use_pulses=apply_pulse,
             pulse_config=pulse_config,
+            kinetic_parameters=filtered_parameters,
             kinetics_type=kinetics_type,
         )
 
     # Process sequestration (binding and unbinding) reactions if specified
     if bindings:
         for species1_name, species2_name in bindings:
-            Sequestration(species1_name, species2_name, model)
+            Sequestration(
+                species1_name,
+                species2_name,
+                model,
+                kinetic_parameters=filtered_parameters,
+            )
 
     # Generate observables for the model
     generate_observables(model)
@@ -145,6 +157,7 @@ def process_plasmid(
     model,
     use_pulses=False,
     pulse_config=None,
+    kinetic_parameters=None,
     kinetics_type=KineticsType.MICHAELIS_MENTEN,
 ):
     """
@@ -182,6 +195,7 @@ def process_plasmid(
             sequence_name=rna_name,
             transcriptional_control=transcriptional_control,
             model=model,
+            kinetic_parameters=kinetic_parameters,
             kinetics_type=kinetics_type,
         )
         rna = star.product
@@ -203,6 +217,7 @@ def process_plasmid(
                 transcription_type=TranscriptionType.CONSTANT,
                 sequence_name=rna_name,
                 model=model,
+                kinetic_parameters=kinetic_parameters,
                 kinetics_type=kinetics_type,
             )
         rna = transcription.product
@@ -223,6 +238,7 @@ def process_plasmid(
             rna=rna,
             product_rna_names=cleavage_set,
             model=model,
+            kinetic_parameters=kinetic_parameters,
             kinetics_type=kinetics_type,
         )
         products = csy4.product
@@ -255,6 +271,7 @@ def process_plasmid(
                     translational_control=translational_control,
                     prot_name=seq,
                     model=model,
+                    kinetic_parameters=kinetic_parameters,
                     kinetics_type=kinetics_type,
                 )
             else:
@@ -262,6 +279,7 @@ def process_plasmid(
                     rna=translated_rna,
                     prot_name=seq,
                     model=model,
+                    kinetic_parameters=kinetic_parameters,
                     kinetics_type=kinetics_type,
                 )
 

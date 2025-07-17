@@ -1,10 +1,13 @@
-from pysb import Rule, Model
+from pysb import Rule, Model, Parameter
 from circuits.modules.reactioncomplex import ReactionComplex
 from circuits.modules.molecules import RNA
+from typing import Dict
 
 
 class Sequestration(ReactionComplex):
-    def __init__(self, species1_name, species2_name, model: Model):
+    def __init__(
+        self, species1_name, species2_name, model: Model, kinetic_parameters: Dict
+    ):
         """
         Sequestration reaction between two species involving binding and unbinding.
 
@@ -19,13 +22,11 @@ class Sequestration(ReactionComplex):
         # Initialize parent class with the model only
         super().__init__(model=model)
 
-        # Define binding and unbinding rates
-        self.k_bind = model.parameters.get(
-            "k_sequestration_bind", 1
-        )  # Default rate for binding
-        self.k_unbind = model.parameters.get(
-            "k_sequestration_unbind", 0.1
-        )  # Default rate for unbinding
+        parameters_sequestration = ["k_sequestration_bind", "k_sequestration_unbind"]
+        existing_parameters = set(model.parameters.keys())
+        for param in parameters_sequestration:
+            if param not in existing_parameters:
+                Parameter(param, kinetic_parameters[param])
 
         # Determine the site to use for binding based on the regulation type
         # dont like the way it is, needs to change later
@@ -47,7 +48,7 @@ class Sequestration(ReactionComplex):
             + species2(state="full", **{binding_site: None})
             >> species1(state="full", **{binding_site: 1})
             % species2(state="full", **{binding_site: 1}),
-            self.k_bind,
+            model.parameters["k_sequestration_bind"],
         )
 
         unbinding_rule = Rule(
@@ -56,7 +57,7 @@ class Sequestration(ReactionComplex):
             % species2(state="full", **{binding_site: 1})
             >> species1(state="full", **{binding_site: None})
             + species2(state="full", **{binding_site: None}),
-            self.k_unbind,
+            model.parameters["k_sequestration_unbind"],
         )
 
         # Add rules to the model

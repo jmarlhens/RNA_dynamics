@@ -1,4 +1,4 @@
-from pysb import Rule, Model, Expression, Monomer, Observable, Initial
+from pysb import Rule, Model, Expression, Monomer, Observable, Initial, Parameter
 from circuits.modules.molecules import RNA
 from circuits.modules.reactioncomplex import ReactionComplex
 from circuits.modules.base_modules import KineticsType
@@ -10,13 +10,18 @@ class STAR(ReactionComplex):
         sequence_name: str = None,
         transcriptional_control: tuple = None,
         model: Model = None,
+        kinetic_parameters: dict = None,
         kinetics_type: KineticsType = KineticsType.MICHAELIS_MENTEN,
     ):
         assert sequence_name is not None
         assert transcriptional_control is not None
 
         # Get the RNA instances
-        rna = RNA.get_instance(sequence_name=sequence_name, model=model)
+        rna = RNA.get_instance(
+            sequence_name=sequence_name,
+            model=model,
+            kinetic_parameters=kinetic_parameters,
+        )
         regulated = rna  # Regulated RNA
         regulator = RNA.get_instance(
             sequence_name=transcriptional_control[1], model=model
@@ -29,6 +34,7 @@ class STAR(ReactionComplex):
         self.rna_name = rna.sequence_name
         self.regulator_name = self.star_name
         self.kinetics_type = kinetics_type
+        self.kinetic_parameters = kinetic_parameters
 
         # Choose which implementation to use based on kinetics_type
         if kinetics_type == KineticsType.MICHAELIS_MENTEN:
@@ -47,17 +53,39 @@ class STAR(ReactionComplex):
         Set up STAR regulation with the original Michaelis-Menten style kinetics.
         This preserves the original implementation's behavior.
         """
+
+        star_parameter_names = [
+            "k_tx_init",
+            "k_star_bind",
+            "k_star_unbind",
+            "k_star_act",
+            "k_star_act_reg",
+            "k_star_stop",
+            "k_star_stop_reg",
+            "k_rna_deg",
+        ]
+        existing_parameters = set(model.parameters.keys())
+
+        for param_name in star_parameter_names:
+            if param_name not in existing_parameters:
+                Parameter(param_name, self.kinetic_parameters[param_name])
+
+        Expression(
+            "k_tx_plasmid_" + sequence_name,
+            self.model.parameters["k_" + sequence_name + "_concentration"],
+        )
+
         # Parameters
-        self.k_init = self.parameters["k_tx_init"]
-        self.k_concentration = self.parameters["k_" + sequence_name + "_concentration"]
-        Expression("k_tx_plasmid_" + sequence_name, self.k_concentration * self.k_init)
-        self.k_bind = self.parameters["k_star_bind"]
-        self.k_unbind = self.parameters["k_star_unbind"]
-        self.k_act = self.parameters["k_star_act"]
-        self.k_act_reg = self.parameters["k_star_act_reg"]
-        self.k_stop = self.parameters["k_star_stop"]
-        self.k_stop_reg = self.parameters["k_star_stop_reg"]
-        self.k_deg = self.parameters["k_rna_deg"]
+        # self.k_init = self.parameters["k_tx_init"]
+        # self.k_concentration = self.parameters["k_" + sequence_name + "_concentration"]
+        # Expression("k_tx_plasmid_" + sequence_name, self.k_concentration * self.k_init)
+        # self.k_bind = self.parameters["k_star_bind"]
+        # self.k_unbind = self.parameters["k_star_unbind"]
+        # self.k_act = self.parameters["k_star_act"]
+        # self.k_act_reg = self.parameters["k_star_act_reg"]
+        # self.k_stop = self.parameters["k_star_stop"]
+        # self.k_stop_reg = self.parameters["k_star_stop_reg"]
+        # self.k_deg = self.parameters["k_rna_deg"]
 
         rules = []
 
@@ -74,7 +102,7 @@ class STAR(ReactionComplex):
             f"STAR_RNA_regulator_binding_{regulated.name}_{regulator.name}",
             regulated(sense=None) + regulator(state="full", sense=None)
             >> regulated(sense=1) % regulator(state="full", sense=1),
-            self.k_bind,
+            model.parameters["k_star_bind"],
         )
         rules.append(binding_rule)
 
@@ -83,7 +111,7 @@ class STAR(ReactionComplex):
             f"STAR_RNA_regulator_unbinding_full_{regulated.name}_{regulator.name}",
             regulated(sense=1) % regulator(state="full", sense=1)
             >> regulated(sense=None) + regulator(state="full", sense=None),
-            self.k_unbind,
+            model.parameters["k_star_unbind"],
         )
         rules.append(unbinding_rule)
 
@@ -92,7 +120,7 @@ class STAR(ReactionComplex):
             f"STAR_RNA_full_transcription_reg_{regulated.name}_{regulator.name}",
             regulated(state="init", sense=1) % regulator(state="full", sense=1)
             >> regulated(state="full", sense=1) % regulator(state="full", sense=1),
-            self.k_act_reg,
+            model.parameters["k_star_act_reg"],
         )
         rules.append(full_transcription_with_regulator_rule)
 
@@ -100,7 +128,7 @@ class STAR(ReactionComplex):
         full_transcription_rule = Rule(
             f"STAR_RNA_full_transcription_{regulated.name}",
             regulated(state="init", sense=None) >> regulated(state="full", sense=None),
-            self.k_act,
+            model.parameters["k_star_act"],
         )
         rules.append(full_transcription_rule)
 
@@ -109,7 +137,7 @@ class STAR(ReactionComplex):
             f"STAR_RNA_partial_transcription_reg_{regulated.name}_{regulator.name}",
             regulated(state="init", sense=1) % regulator(state="full", sense=1)
             >> regulated(state="partial", sense=1) % regulator(state="full", sense=1),
-            self.k_stop_reg,
+            model.parameters["k_star_stop_reg"],
         )
         rules.append(partial_transcription_with_regulator_rule)
 
@@ -118,7 +146,7 @@ class STAR(ReactionComplex):
             f"STAR_RNA_partial_transcription_{regulated.name}",
             regulated(state="init", sense=None)
             >> regulated(state="partial", sense=None),
-            self.k_stop,
+            model.parameters["k_star_stop"],
         )
         rules.append(partial_transcription_rule)
 

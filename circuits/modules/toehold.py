@@ -1,4 +1,4 @@
-from pysb import Rule, Model, Monomer, Observable, Initial
+from pysb import Rule, Model, Monomer, Observable, Initial, Parameter
 from circuits.modules.molecules import RNA, Protein
 from circuits.modules.reactioncomplex import ReactionComplex
 from circuits.modules.base_modules import KineticsType
@@ -11,19 +11,25 @@ class Toehold(ReactionComplex):
         translational_control: tuple = None,
         prot_name: str = None,
         model: Model = None,
+        kinetic_parameters: dict = None,
         kinetics_type: KineticsType = KineticsType.MICHAELIS_MENTEN,
     ):
         assert rna is not None
         assert translational_control is not None
 
         sequence_name = rna.sequence_name if prot_name is None else prot_name
-        protein = Protein.get_instance(sequence_name=sequence_name, model=model)
+        protein = Protein.get_instance(
+            sequence_name=sequence_name,
+            model=model,
+            kinetic_parameters=kinetic_parameters,
+        )
 
         super().__init__(substrate=rna, product=protein, model=model)
 
         self.toehold_name = translational_control[0]
         self.trigger_name = translational_control[1]
         self.kinetics_type = kinetics_type
+        self.kinetic_parameters = kinetic_parameters
 
         # Retrieve or create the trigger RNA instance
         trigger = RNA.get_instance(sequence_name=self.trigger_name, model=model)
@@ -42,7 +48,7 @@ class Toehold(ReactionComplex):
             f"TOEHOLD_{trigger.name}_binding_to_{rna.name}",
             trigger(state="full", toehold=None) + rna(state="full", toehold=None)
             >> trigger(state="full", toehold=1) % rna(state="full", toehold=1),
-            self.k_toehold_binding,
+            self.model.parameters["k_trigger_binding"],
         )
         rules.append(binding_rule)
 
@@ -51,7 +57,7 @@ class Toehold(ReactionComplex):
             f"TOEHOLD_{trigger.name}_unbinding_from_{rna.name}",
             trigger(state="full", toehold=1) % rna(state="full", toehold=1)
             >> trigger(state="full", toehold=None) + rna(state="full", toehold=None),
-            self.k_toehold_unbinding,
+            self.model.parameters["k_trigger_unbinding"],
         )
         rules.append(unbinding_rule)
 
@@ -62,11 +68,21 @@ class Toehold(ReactionComplex):
         Set up the toehold switch with the original Michaelis-Menten style kinetics.
         This preserves the original implementation's behavior.
         """
-        # Parameters
-        self.k_tl_unbound = self.parameters["k_tl_unbound_toehold"]
-        self.k_tl_bound = self.parameters["k_tl_bound_toehold"]
-        self.k_toehold_binding = self.parameters["k_trigger_binding"]
-        self.k_toehold_unbinding = self.parameters["k_trigger_unbinding"]
+        parameters_toehold = [
+            "k_tl_unbound_toehold",
+            "k_tl_bound_toehold",
+            "k_trigger_binding",
+            "k_trigger_unbinding",
+        ]
+        existing_parameters = set(self.model.parameters.keys())
+        for param in parameters_toehold:
+            if param not in existing_parameters:
+                Parameter(param, self.kinetic_parameters[param])
+        # # Parameters
+        # self.k_tl_unbound = self.parameters["k_tl_unbound_toehold"]
+        # self.k_tl_bound = self.parameters["k_tl_bound_toehold"]
+        # self.k_toehold_binding = self.parameters["k_trigger_binding"]
+        # self.k_toehold_unbinding = self.parameters["k_trigger_unbinding"]
         rules = []
 
         # Binding and unbinding rules
@@ -77,7 +93,7 @@ class Toehold(ReactionComplex):
             f"TOEHOLD_unbound_translation_of_{rna.name}_to_{protein.name}",
             rna(state="full", toehold=None)
             >> rna(state="full", toehold=None) + protein(state="immature"),
-            self.k_tl_unbound,
+            self.model.parameters["k_tl_unbound_toehold"],
         )
         rules.append(unbound_translation_rule)
 
@@ -87,7 +103,7 @@ class Toehold(ReactionComplex):
             trigger(state="full", toehold=1) % rna(state="full", toehold=1)
             >> trigger(state="full", toehold=1) % rna(state="full", toehold=1)
             + protein(state="immature"),
-            self.k_tl_bound,
+            self.model.parameters["k_tl_bound_toehold"],
         )
         rules.append(bound_translation_rule)
 

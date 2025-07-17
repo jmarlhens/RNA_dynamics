@@ -16,7 +16,7 @@ class Circuit:
         self,
         name,
         plasmids,
-        parameters=None,
+        plasmid_concentration_parameters=None,
         use_pulses=False,
         pulse_config=None,
         pulse_indices=None,
@@ -27,7 +27,7 @@ class Circuit:
     ):
         self.name = name
         self.plasmids = plasmids
-        self.user_parameters = parameters or {}
+        self.plasmid_concentration_parameters = plasmid_concentration_parameters or {}
         self.use_pulses = use_pulses
         self.pulse_config = pulse_config
 
@@ -69,6 +69,7 @@ class Circuit:
             model = setup_model(
                 self.plasmids,
                 self.parameters,
+                self.plasmid_concentration_parameters,
                 bindings=self.bindings,
                 use_pulses=True,
                 pulse_config=self.pulse_config,
@@ -80,6 +81,7 @@ class Circuit:
             model = setup_model(
                 self.plasmids,
                 self.parameters,
+                self.plasmid_concentration_parameters,
                 bindings=self.bindings,
                 kinetics_type=self.kinetics_type,
             )
@@ -145,7 +147,7 @@ class Circuit:
         model_parameters = dict(zip(parameters_df["Parameter"], parameters_df["Mean"]))
 
         # Update with user-provided parameters
-        model_parameters.update(self.user_parameters)
+        # model_parameters.update(self.plasmid_concentration_parameters)
 
         # If using pulses, remove the concentration parameters for pulsed plasmids
         if self.use_pulses:
@@ -153,7 +155,8 @@ class Circuit:
             for param in params_to_remove:
                 if param in model_parameters:
                     print(f"Removing {param} parameter for pulsed plasmid")
-                    model_parameters.pop(param, None)
+                    self.plasmid_concentration_parameters.pop(param, None)
+                    # the structure could now be made easier as we now take self.plasmid_concentration_parameters separately
 
         return model_parameters
 

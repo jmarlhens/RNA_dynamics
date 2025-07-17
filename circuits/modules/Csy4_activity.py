@@ -1,4 +1,4 @@
-from pysb import Rule, Model
+from pysb import Rule, Model, Parameter
 from circuits.modules.reactioncomplex import ReactionComplex
 from circuits.modules.molecules import RNA
 from circuits.modules.base_modules import KineticsType
@@ -10,6 +10,7 @@ class Csy4Activity(ReactionComplex):
         rna: RNA = None,
         product_rna_names: [str] = None,
         model: Model = None,
+        kinetic_parameters: dict = None,
         kinetics_type: KineticsType = KineticsType.MICHAELIS_MENTEN,
     ):
         # Retrieve RNA products based on provided names
@@ -19,6 +20,10 @@ class Csy4Activity(ReactionComplex):
         ]
 
         super().__init__(substrate=rna, product=products, model=model)
+
+        existing_parameters = set(model.parameters.keys())
+        if "k_csy4" not in existing_parameters:
+            Parameter("k_csy4", kinetic_parameters["k_csy4"])
 
         self.k_csy4 = self.parameters["k_csy4"]
 
@@ -35,7 +40,7 @@ class Csy4Activity(ReactionComplex):
                     ],
                     None,
                 ),
-                self.k_csy4,
+                model.parameters["k_csy4"],
             )
         elif kinetics_type == KineticsType.MASS_ACTION:
             rule = Rule(
@@ -48,7 +53,7 @@ class Csy4Activity(ReactionComplex):
                     ],
                     None,
                 ),
-                self.k_csy4,
+                model.parameters["k_csy4"],
             )
         else:
             raise ValueError(f"Unknown kinetics type: {kinetics_type}")

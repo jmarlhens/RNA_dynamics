@@ -128,7 +128,7 @@ class CircuitManager:
                 json_cds = json_plasmid["cds"]
             else:
                 # Legacy format: [tx_control, tl_control, cds]
-                plasmid_name = f"plasmid_{len(plasmids)}"  # Auto-generate a name
+                plasmid_name = f"plasmid_{len(plasmids)}"
                 json_tx_control, json_tl_control, json_cds = json_plasmid
 
             tx_control = tuple(json_tx_control) if json_tx_control else None
@@ -187,9 +187,9 @@ class CircuitManager:
         config = self.get_circuit_config(name)
 
         # Merge default parameters with custom parameters
-        merged_parameters = config["default_parameters"].copy()
+        plasmid_concentration_parameters = config["default_parameters"].copy()
         if parameters:
-            merged_parameters.update(parameters)
+            plasmid_concentration_parameters.update(parameters)
 
         # Use provided bindings or get from config
         circuit_bindings = (
@@ -213,11 +213,11 @@ class CircuitManager:
         return Circuit(
             name=name,
             plasmids=config["plasmids"],
-            parameters=merged_parameters,
+            plasmid_concentration_parameters=plasmid_concentration_parameters,
             use_pulses=use_pulses,
             pulse_config=pulse_config,
-            pulse_indices=pulse_indices,  # For backward compatibility
-            pulse_plasmids=pulse_plasmids,  # New parameter
+            pulse_indices=pulse_indices,
+            pulse_plasmids=pulse_plasmids,
             parameters_file=self.parameters_file,
             kinetics_type=kinetics_type,
             bindings=circuit_bindings,
