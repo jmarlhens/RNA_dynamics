@@ -49,6 +49,15 @@ def fit_single_circuit(
 
     # Create circuit fitter with single config
     parameters_to_fit = priors.Parameter.tolist()
+
+    # Only keep the parameters that are actually part of the model ([parameter_name.name for parameter_name in circuit_config.model.parameters])
+    parameter_in_the_model = [
+        parameter_name.name for parameter_name in circuit_config.model.parameters
+    ]
+    parameters_to_fit = [
+        param for param in parameters_to_fit if param in parameter_in_the_model
+    ]
+
     circuit_fitter = CircuitFitter(
         [circuit_config], parameters_to_fit, priors, calibration_params
     )
@@ -117,12 +126,12 @@ def main():
     # Fit each circuit individually
     circuits_to_fit = [
         # "constitutive sfGFP",
-        "sense_star_6",
-        "toehold_trigger",
+        # "sense_star_6",
+        # "toehold_trigger",
         # "star_antistar_1",
         # "trigger_antitrigger",
-        "cascade",
-        "cffl_type_1",
+        # "cascade",
+        # "cffl_type_1",
         "inhibited_incoherent_cascade",
         "inhibited_cascade",
         "or_gate_c1ffl",
