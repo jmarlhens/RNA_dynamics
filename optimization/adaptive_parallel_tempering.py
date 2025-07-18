@@ -118,6 +118,8 @@ class ParallelTempering(OptimizationAlgorithm):
                                              axis=0) - target_acceptance_ratio
                 scaling_params = np.exp(0.5 * acc_rate_deviation)
                 self.variance = self.variance * np.expand_dims(scaling_params, axis=-1)
+                if iN % 50 == 0:
+                    print(f"Iteration {iN}:\n", np.mean(step_accepts[max(iN - 100 + 1, 0):iN + 1], axis=0))
 
             ###############################
             # Adaptive Temperature Ladder #
@@ -289,8 +291,8 @@ def test_smile():
     print(f"Potential Scale Reduction: {R_hat}")
 
     # animate_parameter_trace_2D(parameters[:, :, 0])
-    for iW in range(n_walkers):
-        plot_traces(data=parameters[:, iW, 0], file_path=f"traces_walker{iW}.pdf", param_names=["x1", "x2"])
+    # for iW in range(n_walkers):
+    plot_traces(data=parameters, file_path=f"traces_walker.pdf", param_names=["x1", "x2"])
 
     # R_hat value below 1.2 are favorable
     # tau = integrated_autocorrelation_time(parameters)

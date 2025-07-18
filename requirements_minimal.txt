@@ -1,0 +1,12 @@
+# Minimal set of requirements to run simulations_and_analysis/indidivudal/individual_circuits_run_mcmc.py
+pandas
+scipy
+numpy
+pysb
+matplotlib
+seaborn
+setuptools # A replacement to distutils
+tqdm
+requests
+bionetgen
+cython

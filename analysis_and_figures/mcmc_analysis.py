@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 from analysis_and_figures.plots_simulation import plot_circuit_simulations
+from optimization.mcmc_utils import convergence_test
 from utils.process_experimental_data import organize_results
 
 
@@ -300,13 +301,21 @@ def analyze_mcmc_results(
     print(f"Log Prior: {best_params['prior']:.3f}")
     print(f"Log Posterior: {best_params['posterior']:.3f}")
 
+    R_hat = convergence_test(parameters[int(len(parameters) / 2):], per_parameter_test=True)
+
+
+
     # Compute and print statistics
     stats = analyzer.compute_statistics()
     print("\nParameter Statistics:")
+    iP = 0
     for param, stat_dict in stats.items():
         print(f"\n{param}:")
         for stat_name, value in stat_dict.items():
             print(f"  {stat_name}: {value:.3e}")
+
+        print(f"  R_hat: {R_hat[iP]:.3e}")
+        iP += 1
 
     # Generate plots
     trace_fig = analyzer.plot_traces()

@@ -15,6 +15,7 @@ from analysis_and_figures.mcmc_analysis_hierarchical import (
     analyze_hierarchical_mcmc_results,
 )
 from analysis_and_figures.visualization_hierarchical import plot_hierarchical_results
+from optimization.mcmc_utils import plot_traces
 
 
 def run_hierarchical_mcmc_with_adaptive_sampling():
@@ -92,6 +93,8 @@ def run_hierarchical_mcmc_with_adaptive_sampling():
         proposal_function=hierarchical_adaptive_proposal,
     )
 
+
+
     # Get initial parameters
     initial_parameters = adapter.get_initial_parameters()
 
@@ -107,6 +110,9 @@ def run_hierarchical_mcmc_with_adaptive_sampling():
         target_acceptance_ratio=0.4,
         adaptive_temperature=True,
     )
+
+    for iW in range(parameters.shape[1]):
+        plot_traces(parameters[:, iW, 0], file_path=f"Traces_Plot_Walker-{iW}.pdf")
 
     print("MCMC completed!")
 

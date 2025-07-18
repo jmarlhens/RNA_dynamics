@@ -81,6 +81,8 @@ def fit_multiple_circuits(
         circuit_configs, parameters_to_fit, priors, calibration_params
     )
 
+
+
     print(f"Fitting circuits together: {circuit_names}")
     print("Total experimental data points across all circuits:")
     for config in circuit_configs:

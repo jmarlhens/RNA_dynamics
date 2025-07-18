@@ -1,9 +1,13 @@
+import argparse
+import os
+import sys
 from datetime import datetime
 import pandas as pd
 from likelihood_functions.config import CircuitConfig
 from likelihood_functions.base import CircuitFitter
 from likelihood_functions.base import MCMCAdapter
 from analysis_and_figures.mcmc_analysis import analyze_mcmc_results
+from optimization.mcmc_utils import convergence_test, plot_traces
 from utils.import_and_visualise_data import load_and_process_csv
 from circuits.circuit_generation.circuit_manager import CircuitManager
 from data.circuits.circuit_configs import DATA_FILES, get_circuit_conditions
@@ -11,17 +15,17 @@ from utils.GFP_calibration import setup_calibration
 
 
 def fit_single_circuit(
-    circuit_manager,
-    circuit_name,
-    condition_params,
-    experimental_data,
-    tspan,
-    priors,
-    min_time=30,
-    max_time=210,
-    n_samples=20000,
-    n_walkers=5,
-    n_chains=10,
+        circuit_manager,
+        circuit_name,
+        condition_params,
+        experimental_data,
+        tspan,
+        priors,
+        min_time=30,  # 30
+        max_time=210,  # 210
+        n_samples=20000,
+        n_walkers=5,  # 5
+        n_chains=10,  # 10
 ):
     """
     Fit a single circuit and save its results using the new CircuitManager system
@@ -94,94 +98,124 @@ def fit_single_circuit(
     filename = f"../../data/fit_data/individual_circuits/results_{safe_circuit_name}_{timestamp}.csv"
     df.to_csv(filename, index=False)
 
+
+    plot_traces(data=parameters, file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_full.pdf", param_names=parameters_to_fit)
+
+    for size in [10000, 8000, 6000, 4000, 2000]:
+        plot_traces(data=parameters[len(parameters) - size:],
+                    file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_{size}.pdf",
+                    param_names=parameters_to_fit)
+
+
     return results, df
 
 
-def main():
+def main(circuits_to_fit=None):
     # Initialize CircuitManager with existing circuits file
     circuit_manager = CircuitManager(
         parameters_file="../../data/prior/model_parameters_priors_updated_tighter.csv",
         json_file="../../data/circuits/circuits.json",
     )
 
-    # List available circuits to verify
-    available_circuits = circuit_manager.list_circuits()
-    print(f"Available circuits: {available_circuits}")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    with open(f"{'-'.join(circuits_to_fit).replace('/', '-')}_{timestamp}.out", "w") as log:
+        sys.stdout = log
+        sys.stderr = log
 
-    # Define maximum simulation time
-    min_time = 30
-    max_time = 210
+        # List available circuits to verify
+        available_circuits = circuit_manager.list_circuits()
+        print(f"Available circuits: {available_circuits}")
 
-    # Load data for all circuits in central configuration
-    circuit_data = {}
-    for circuit_name, data_file in DATA_FILES.items():
-        data, tspan = load_and_process_csv(data_file)
-        circuit_data[circuit_name] = {"experimental_data": data, "tspan": tspan}
-        print(f"Loaded data for {circuit_name}")
+        # Define maximum simulation time
+        min_time = 30
+        max_time = 210
 
-    # Load priors
-    priors = pd.read_csv("../../data/prior/model_parameters_priors_updated_tighter.csv")
-    priors = priors[priors["Parameter"] != "k_prot_deg"]
+        # Load data for all circuits in central configuration
+        circuit_data = {}
+        for circuit_name, data_file in DATA_FILES.items():
+            data, tspan = load_and_process_csv(data_file)
+            circuit_data[circuit_name] = {"experimental_data": data, "tspan": tspan}
+            print(f"Loaded data for {circuit_name}")
 
-    # Fit each circuit individually
-    circuits_to_fit = [
-        # "constitutive sfGFP",
-        # "sense_star_6",
-        # "toehold_trigger",
-        # "star_antistar_1",
-        # "trigger_antitrigger",
-        # "cascade",
-        # "cffl_type_1",
-        "inhibited_incoherent_cascade",
-        "inhibited_cascade",
-        "or_gate_c1ffl",
-        "iffl_1",
-        "cffl_12",
-    ]
+        # Load priors
+        priors = pd.read_csv("../../data/prior/model_parameters_priors_updated_tighter.csv")
+        priors = priors[priors["Parameter"] != "k_prot_deg"]
 
-    # for circuit_name in ["cffl_12", "iffl_1", "inhibited_cascade"]:
-    #     conditions = get_circuit_conditions(circuit_name)
-    #     print(f"\n{circuit_name} conditions:")
-    #     for cond_name, params in conditions.items():
-    #         print(f"  {cond_name}: {params}")
+        # Fit each circuit individually
+        if circuits_to_fit is None:
+            circuits_to_fit = [
+                # "constitutive sfGFP",                   # J
+                # "sense_star_6",                       # J
+                # "toehold_trigger",                    # J
+                # "star_antistar_1",                    # J
+                # "trigger_antitrigger",                # J
+                "cascade",
+                "cffl_type_1",
+                "inhibited_incoherent_cascade",
+                "inhibited_cascade",
+                "or_gate_c1ffl",
+                "iffl_1",
+                "cffl_12",
+            ]
 
-    for circuit_name in circuits_to_fit:
-        if circuit_name in available_circuits:
-            print(f"\nFitting {circuit_name}...")
+        # for circuit_name in ["cffl_12", "iffl_1", "inhibited_cascade"]:
+        #     conditions = get_circuit_conditions(circuit_name)
+        #     print(f"\n{circuit_name} conditions:")
+        #     for cond_name, params in conditions.items():
+        #         print(f"  {cond_name}: {params}")
 
-            # Get condition parameters from centralized configuration
-            condition_params = get_circuit_conditions(circuit_name)
-            if not condition_params:
-                print(
-                    f"Warning: No conditions defined for circuit '{circuit_name}' in configuration, skipping."
+        for circuit_name in circuits_to_fit:
+            if circuit_name in available_circuits:
+                print(f"\nFitting {circuit_name}...")
+
+                # Get condition parameters from centralized configuration
+                condition_params = get_circuit_conditions(circuit_name)
+                if not condition_params:
+                    print(
+                        f"Warning: No conditions defined for circuit '{circuit_name}' in configuration, skipping."
+                    )
+                    continue
+
+                # Get the experimental data for this circuit
+                if circuit_name not in circuit_data:
+                    print(
+                        f"Warning: No data loaded for circuit '{circuit_name}', skipping."
+                    )
+                    continue
+
+                data_info = circuit_data[circuit_name]
+
+                # Fit the circuit
+                _, _ = fit_single_circuit(
+                    circuit_manager=circuit_manager,
+                    circuit_name=circuit_name,
+                    condition_params=condition_params,
+                    experimental_data=data_info["experimental_data"],
+                    tspan=data_info["tspan"],
+                    priors=priors,
+                    min_time=min_time,
+                    max_time=max_time,
                 )
-                continue
+                print(f"Completed fitting {circuit_name}")
 
-            # Get the experimental data for this circuit
-            if circuit_name not in circuit_data:
-                print(
-                    f"Warning: No data loaded for circuit '{circuit_name}', skipping."
-                )
-                continue
-
-            data_info = circuit_data[circuit_name]
-
-            # Fit the circuit
-            _, _ = fit_single_circuit(
-                circuit_manager=circuit_manager,
-                circuit_name=circuit_name,
-                condition_params=condition_params,
-                experimental_data=data_info["experimental_data"],
-                tspan=data_info["tspan"],
-                priors=priors,
-                min_time=min_time,
-                max_time=max_time,
-            )
-            print(f"Completed fitting {circuit_name}")
-
-        else:
-            print(f"Warning: Circuit '{circuit_name}' not found in available circuits.")
+            else:
+                print(f"Warning: Circuit '{circuit_name}' not found in available circuits.")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        prog='Individual Circuits Run MCMC',
+        description='Model calibration of individual circuits')
+
+    parser.add_argument('-c', '--circuitnames', nargs="*", type=str, default=None)  # optional argument
+
+
+    args = parser.parse_args()
+    circuits_to_fit = args.circuitnames
+    if circuits_to_fit:
+        print("The following circuits have been provided by the user to calibrate")
+        for elem in circuits_to_fit:
+            print(elem)
+
+
+    main(circuits_to_fit=circuits_to_fit)

@@ -226,7 +226,9 @@ def plot_traces(data, file_path, param_names=[], N=200):
     # Code created with the help of Perplexity
 
     data = np.array(data)
-    num_plots = data.shape[-1]
+    num_plots = data.shape[3]
+    num_chains = data.shape[2]
+    num_walkers = data.shape[1]
     num_samples = data.shape[0]
     X = np.arange(num_samples)
     with PdfPages(file_path) as pdf:
@@ -242,15 +244,19 @@ def plot_traces(data, file_path, param_names=[], N=200):
                 plot_idx = page * plots_per_page + i
                 if plot_idx < num_plots:
                     ax = axes[i]
-                    ax.plot(X, data[:, plot_idx], color=COLORS_MAIN[0], zorder=2)
-                    sliding_window = [data[iX: iX + N + 1, plot_idx] for iX in range(data.shape[0] - N)]
-                    mean = np.array(list(map(np.mean, sliding_window)))
-                    std_dev = np.array(list(map(np.std, sliding_window)))
-                    ax.plot(X[N:], mean, "--", color="#808080", alpha=1, zorder=1)  # COLORS_MAIN[0])
-                    ax.fill_between(X[N:], mean - std_dev, mean + std_dev, color="#E0E0E0", zorder=0)
+                    for iW in range(num_walkers):
+                        ax.plot(X, data[:, iW, 0, plot_idx], lw=1, zorder=2, alpha=0.8)
+
+                        sliding_window = [data[iX: iX + N + 1, iW, 0, plot_idx] for iX in range(data.shape[0] - N)]
+                        mean = np.array(list(map(np.mean, sliding_window)))
+                        std_dev = np.array(list(map(np.std, sliding_window)))
+                        ax.plot(X[N:], mean, "--", lw=1, alpha=0.4, zorder=1)  # COLORS_MAIN[0])
+                        ax.fill_between(X[N:], mean - std_dev, mean + std_dev, zorder=0, alpha=0.2)
 
                     if len(param_names) > plot_idx:
                         ax.set_title(f'{param_names[plot_idx]}', fontsize=14)
+                    else:
+                        ax.set_title(f'Parameter {plot_idx}', fontsize=14)
                     ax.grid(True, alpha=0.3)
                     ax.set_xlabel("Iteration")
                 else:
