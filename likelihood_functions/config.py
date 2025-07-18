@@ -18,9 +18,9 @@ class CircuitConfig:
     condition_params: Dict[str, Dict[str, float]]
     experimental_data: pd.DataFrame
     tspan: np.ndarray
+    calibration_params: Dict
     max_time: Optional[float] = None
     min_time: Optional[float] = None
-    calibration_params: Optional[Dict] = None
 
     def __post_init__(self):
         """Process the data after initialization to apply time limits, negative control subtraction,
@@ -30,17 +30,22 @@ class CircuitConfig:
             self.experimental_data, self.tspan, self.min_time, self.max_time
         )
 
+        # Convert fluorescence from AU to nM if calibration params are provided
+        self.experimental_data["fluorescence"] = convert_au_to_nm(
+            self.experimental_data["fluorescence"],
+            self.calibration_params["slope"],
+            self.calibration_params["intercept"],
+            self.calibration_params["brightness_correction"],
+        )
+
         # Process negative controls (data still in AU)
         self.experimental_data = process_background_fluorescence(self.experimental_data)
 
-        # Convert fluorescence from AU to nM if calibration params are provided
-        if self.calibration_params is not None:
-            self.experimental_data["fluorescence"] = convert_au_to_nm(
-                self.experimental_data["fluorescence"],
-                self.calibration_params["slope"],
-                self.calibration_params["intercept"],
-                self.calibration_params["brightness_correction"],
-            )
+        # import matplotlib.pyplot as plt
+        # self.experimental_data.plot(
+        #     x="time", y="fluorescence", kind="line", title=f"{self.name} - Fluorescence"
+        # )
+        # plt.show()
 
     @classmethod
     def from_data(
