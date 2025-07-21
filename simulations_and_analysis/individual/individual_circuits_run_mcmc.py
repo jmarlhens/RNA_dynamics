@@ -23,7 +23,7 @@ def fit_single_circuit(
         priors,
         min_time=30,  # 30
         max_time=210,  # 210
-        n_samples=20000,
+        n_samples=20000,  # 20000,
         n_walkers=5,  # 5
         n_chains=10,  # 10
 ):
@@ -70,6 +70,13 @@ def fit_single_circuit(
     adapter = MCMCAdapter(circuit_fitter)
     initial_parameters = adapter.get_initial_parameters()
 
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Only replace invalid filename characters but preserve case
+    safe_circuit_name = circuit_name.replace("/", "_")
+    os.makedirs("../../data/fit_data/individual_circuits_buffer/", exist_ok=True)
+    os.makedirs("../../data/fit_data/individual_circuits/", exist_ok=True)
+    os.makedirs("../../data/fit_data/individual_circuits/trajectories/", exist_ok=True)
+
     # Setup and run parallel tempering
     pt = adapter.setup_parallel_tempering(n_walkers=n_walkers, n_chains=n_chains)
     parameters, priors_out, likelihoods, step_accepts, swap_accepts = pt.run(
@@ -77,7 +84,11 @@ def fit_single_circuit(
         n_samples=n_samples,
         target_acceptance_ratio=0.4,
         adaptive_temperature=True,
+        path=f"../../data/fit_data/individual_circuits_buffer/buffer_{safe_circuit_name}_{timestamp}.csv",
+        param_names=parameters_to_fit,
     )
+
+    print("Completed Model Calibration")
 
     # Analyze results
     results = analyze_mcmc_results(
@@ -91,21 +102,20 @@ def fit_single_circuit(
     )
 
     # Save results
+    print("Write out results")
     df = results["analyzer"].to_dataframe()
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    # Only replace invalid filename characters but preserve case
-    safe_circuit_name = circuit_name.replace("/", "_")
     filename = f"../../data/fit_data/individual_circuits/results_{safe_circuit_name}_{timestamp}.csv"
     df.to_csv(filename, index=False)
+    print(f"Results saved to {filename}")
 
-
-    plot_traces(data=parameters, file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_full.pdf", param_names=parameters_to_fit)
+    plot_traces(data=parameters,
+                file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_full.pdf",
+                param_names=parameters_to_fit)
 
     for size in [10000, 8000, 6000, 4000, 2000]:
         plot_traces(data=parameters[len(parameters) - size:],
                     file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_{size}.pdf",
                     param_names=parameters_to_fit)
-
 
     return results, df
 
@@ -117,8 +127,13 @@ def main(circuits_to_fit=None):
         json_file="../../data/circuits/circuits.json",
     )
 
+    if not isinstance(circuits_to_fit, list):
+        circuits_to_fit = [circuits_to_fit]
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    with open(f"{'-'.join(circuits_to_fit).replace('/', '-')}_{timestamp}.out", "w") as log:
+    output_dir = "outputs/"
+    os.makedirs(output_dir, exist_ok=True)
+    with open(f"{output_dir}{'-'.join(circuits_to_fit).replace('/', '-')}_{timestamp}.out", "w") as log:
         sys.stdout = log
         sys.stderr = log
 
@@ -209,13 +224,11 @@ if __name__ == "__main__":
 
     parser.add_argument('-c', '--circuitnames', nargs="*", type=str, default=None)  # optional argument
 
-
     args = parser.parse_args()
     circuits_to_fit = args.circuitnames
     if circuits_to_fit:
         print("The following circuits have been provided by the user to calibrate")
         for elem in circuits_to_fit:
             print(elem)
-
 
     main(circuits_to_fit=circuits_to_fit)

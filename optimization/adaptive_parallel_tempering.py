@@ -1,3 +1,6 @@
+import os.path
+
+import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
@@ -53,15 +56,24 @@ class ParallelTempering(OptimizationAlgorithm):
             proposal_function = adaptive_proposal
 
         self.proposal_function = proposal_function
+        self.file = None
 
     def run(self, initial_parameters=None, n_samples=10 ** 3,
             target_acceptance_ratio=None,
-            adaptive_temperature=True):
+            adaptive_temperature=True,
+            path=None,
+            param_names=None):
         # Variance -> Will be adapted per chain, how to adapt per parameter (e.g. one could use gradient evaluation once in a while to choose variance in dependence to current gradient)
         # ? How to adapt number of chains dynamically so that also there a desired acceptance rate is achieved?
 
         n_walkers = self.n_walkers
         n_chains = self.n_chains
+
+        save_to_file = path is not None
+        self.save_to_file = save_to_file
+        self.param_names = param_names
+        if save_to_file:
+            self.init_file(path)
 
         if initial_parameters is None:
             initial_parameters = self.proposal_function()
@@ -142,12 +154,20 @@ class ParallelTempering(OptimizationAlgorithm):
                 pass
 
             # print(iN)
+            if save_to_file and iN % 1000 == 0:
+                self.save_state_in_file(parameters, priors, likelihoods, step_accepts, swap_accepts, index=iN)
+
             pass
+        if save_to_file:
+            self.save_state_in_file(parameters, priors, likelihoods, step_accepts, swap_accepts, index=iN)
+            self.close_file()
+
         parameters = np.array(parameters)
         priors = np.array(priors)
         likelihoods = np.array(likelihoods)
         step_accepts = np.array(step_accepts)
         swap_accepts = np.array(swap_accepts)
+
         # print(f"max_iN: {max_iN}")
         return parameters, priors, likelihoods, step_accepts, swap_accepts
 
@@ -218,6 +238,116 @@ class ParallelTempering(OptimizationAlgorithm):
 
         return new_params, new_prior, new_likelihood, accept
 
+    def init_file(self, path):
+
+        abspath = os.path.abspath(path)
+        if self.file is not None and os.path.abspath(self.file.name) != abspath:
+            self.close_file()
+
+        self.file = open(abspath, "a")
+        print(f"Opened file {self.file.name}")
+
+        param_names = self.param_names
+        if param_names is None:
+            param_names = [f"Parameter {iX}" for iX in range(self.n_dim)]
+        self.write_to_file(
+            lines=["iteration,walker,chain," + ",".join(param_names) + ",likelihood,prior,posterior,step_accepted\n"])
+        self.start_index = 0
+
+    def write_to_file(self, lines):
+        self.file.writelines(lines)
+        self.file.flush()
+        print(f"Updated file {self.file.name}")
+
+    def save_state_in_file(self, parameters, priors, likelihoods, step_accepts, swap_accepts, index):
+        start_index = self.start_index
+        end_index = index + 1
+
+        cur_parameters = parameters[start_index:end_index]
+        cur_likelihoods = likelihoods[start_index:end_index]
+        cur_priors = priors[start_index:end_index]
+        cur_step_accepts = step_accepts[start_index:end_index]
+
+        iterations = np.arange(start_index, end_index)
+        walkers = np.arange(self.n_walkers)
+        chains = np.arange(self.n_chains)
+
+        # Create meshgrid for all combinations
+        iter_grid, walker_grid, chain_grid = np.meshgrid(
+            iterations, walkers, chains, indexing="ij"
+        )
+
+        cols = []
+        cols += [iter_grid.flatten(),
+                 walker_grid.flatten(),
+                 chain_grid.flatten()]
+        cols += [cur_parameters[..., iP].flatten() for iP in range(self.n_dim)]
+        cols += [cur_likelihoods.flatten(),
+                 cur_priors.flatten(),
+                 (cur_priors.flatten() + cur_likelihoods.flatten()),
+                 cur_step_accepts.flatten()]
+
+        data = np.concatenate([np.expand_dims(col, axis=1) for col in cols], axis=1)
+
+        encoded_data = list(map(lambda row: ",".join(row.astype(str)) + "\n", data))
+
+        self.write_to_file(lines=encoded_data)
+        # if end_index - start_index >= 1:
+        self.start_index = end_index
+
+        pass
+
+        # #######
+        # # Create dictionary to store data
+        # data = {
+        #     "iteration": iter_grid.flatten(),
+        #     "walker": walker_grid.flatten(),
+        #     "chain": chain_grid.flatten(),
+        # }
+        #
+        # # Add parameters
+        # for i, param_name in enumerate(self.parameter_names):
+        #     data[param_name] = self.parameters[..., i].flatten()
+        #
+        # # Add likelihood, prior, posterior
+        # data["likelihood"] = self.likelihoods.flatten()
+        # data["prior"] = self.priors.flatten()
+        # data["posterior"] = self.likelihoods.flatten() + self.priors.flatten()
+        #
+        # # Add step acceptance
+        # data["step_accepted"] = self.step_accepts.flatten()
+
+    def close_file(self):
+        if self.file is not None:
+            self.file.close()
+            print(f"Closed file {self.file.name}")
+            self.file = None
+
+    @staticmethod
+    def load_state_from_file(path):
+        abspath = os.path.abspath(path)
+
+        swap_accepts = None
+
+        df = pd.read_csv(abspath)
+
+        data = df.values
+        n_samples = int(np.max(data[:,0])) + 1
+        n_walkers = int(np.max(data[:, 1])) + 1
+        n_chains = int(np.max(data[:, 2])) + 1
+
+        data = data.reshape((n_samples, n_walkers, n_chains, -1))
+
+
+        parameters= data[..., 3:data.shape[-1] - 4]
+        likelihoods = data[..., -4]
+        priors = data[..., -3]
+        posterior = data[..., -2]
+        step_accepts = data[..., -1]
+        index = n_samples - 1
+
+        return parameters, priors, likelihoods, step_accepts, swap_accepts, index
+
 
 def log_smile_adapt(params):
     val = np.exp(-0.5 * (np.sum(np.power(params, 2), axis=-1) - 1) ** 2 / (0.01))
@@ -267,13 +397,31 @@ def test_smile():
 
     proposal_function = AdaptiveProposal(func=lambda x: np.random.normal(loc=x ** 2))
 
+    storage_path = "data.csv"
+    if os.path.exists(storage_path):
+        os.remove(storage_path)
+
     pt = ParallelTempering(log_likelihood=log_likelihood, log_prior=log_prior,
                            n_dim=n_dim, n_walkers=n_walkers, n_chains=n_chains,
                            proposal_function=proposal_function)
     prev_parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=[0, 0],
                                                                               n_samples=n_samples,
                                                                               target_acceptance_ratio=target_acceptance_ratio,
-                                                                              adaptive_temperature=adaptive_temperature)
+                                                                              adaptive_temperature=adaptive_temperature,
+                                                                              path=storage_path,
+                                                                              param_names=["x1", "x2"])
+
+    prev_parameters_2, priors_2, likelihoods_2, step_accepts_2, swap_accepts, index = ParallelTempering.load_state_from_file(path=storage_path)
+
+    if not np.all(np.abs(prev_parameters - prev_parameters_2) < 10**(-12)):
+        print("Parameters are different")
+    if not np.all(np.abs(priors - priors_2) < 10**(-12)):
+        print("Priors are different")
+    if not np.all(np.abs(likelihoods - likelihoods_2) < 10**(-12)):
+        print("Likelihoods are different")
+    if not np.all(np.abs(step_accepts - step_accepts_2) < 10**(-12)):
+        print("Step Accepts are different")
+
     parameters = prev_parameters
 
     # By not reinitializing the parallel tempering object, the previous state will persist
@@ -282,7 +430,9 @@ def test_smile():
     parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=prev_parameters[-1],
                                                                          n_samples=n_samples,
                                                                          target_acceptance_ratio=target_acceptance_ratio,
-                                                                         adaptive_temperature=False)
+                                                                         adaptive_temperature=False,
+                                                                         path="data.csv",
+                                                                         param_names=["x1", "x2"])
 
     print(f"Completed Sampling ({len(parameters)})")
 

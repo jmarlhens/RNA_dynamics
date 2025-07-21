@@ -222,7 +222,7 @@ def sliding_average(x, N):
     return (cumsum[N:] - cumsum[:-N]) / float(N)
 
 
-def plot_traces(data, file_path, param_names=[], N=200):
+def plot_traces(data, file_path, param_names=[], N=1000, include_histogram=True):
     # Code created with the help of Perplexity
 
     data = np.array(data)
@@ -236,7 +236,8 @@ def plot_traces(data, file_path, param_names=[], N=200):
         num_pages = int(np.ceil(num_plots / plots_per_page))
 
         for page in range(num_pages):
-            fig, axes = plt.subplots(plots_per_page, 1, figsize=(15, 10), squeeze=False)  # Landscape mode
+            ncols = 2 if include_histogram else 1
+            fig, axes = plt.subplots(nrows=plots_per_page, ncols=ncols, figsize=(15, 10), squeeze=False)  # Landscape mode
 
             axes = axes[:, 0]
 
