@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# List of arguments
+my_list=("constitutive sfGFP" "sense_star_6" "toehold_trigger" "star_antistar_1" "trigger_antitrigger" "cascade" "cffl_type_1" "inhibited_incoherent_cascade" "inhibited_cascade" "or_gate_c1ffl" "iffl_1" "cffl_12")
+
+# Base command
+CMD="PYTHONPATH='../../' python individual_circuits_run_mcmc_emmy.py -c"
+
+# Output directory
+OUTPUT_DIR="outputs"
+mkdir -p $OUTPUT_DIR
+
+for arg in "${my_list[@]}"
+do
+  echo "Starting" "$arg"
+  # Run the command in the background, redirect output uniquely
+  $CMD "$arg" > "$OUTPUT_DIR/output_${arg}.txt" 2>&1 &
+done
+
+# Wait for all background jobs to finish
+wait
+
+echo "All jobs finished."

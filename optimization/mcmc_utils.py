@@ -3,6 +3,7 @@ from matplotlib import pyplot as plt, animation
 from matplotlib.colors import LinearSegmentedColormap
 from numpy.fft import fft, ifft
 from matplotlib.backends.backend_pdf import PdfPages
+from numpy.ma.core import squeeze
 
 COLORS = [(0.30, 0.56, 1.00), (0.35, 0.24, 1.00), (1.00, 0.00, 0.42), (1.00, 0.40, 0.10), (1.00, 0.65, 0.19)]
 COLORS_DARK = [(0.00, 0.24, 0.90), (0.28, 0.00, 0.84), (0.80, 0.00, 0.27), (0.90, 0.24, 0.00), (1.00, 0.50, 0.00)]
@@ -222,7 +223,7 @@ def sliding_average(x, N):
     return (cumsum[N:] - cumsum[:-N]) / float(N)
 
 
-def plot_traces(data, file_path, param_names=[], N=1000, include_histogram=True):
+def plot_traces(data, file_path, param_names=[], N=1000, add_histogram=True):
     # Code created with the help of Perplexity
 
     data = np.array(data)
@@ -236,23 +237,23 @@ def plot_traces(data, file_path, param_names=[], N=1000, include_histogram=True)
         num_pages = int(np.ceil(num_plots / plots_per_page))
 
         for page in range(num_pages):
-            ncols = 2 if include_histogram else 1
-            fig, axes = plt.subplots(nrows=plots_per_page, ncols=ncols, figsize=(15, 10), squeeze=False)  # Landscape mode
-
-            axes = axes[:, 0]
+            ncols = 2 if add_histogram else 1
+            # height_ratios = [1, 1, 1]
+            width_ratios = [5, 1] if add_histogram else [1]
+            fig, axes = plt.subplots(nrows=plots_per_page, ncols=ncols, figsize=(15, 10), squeeze=False, width_ratios=width_ratios)  # Landscape mode
 
             for i in range(plots_per_page):
                 plot_idx = page * plots_per_page + i
                 if plot_idx < num_plots:
-                    ax = axes[i]
+                    ax = axes[i, 0]
                     for iW in range(num_walkers):
-                        ax.plot(X, data[:, iW, 0, plot_idx], lw=1, zorder=2, alpha=0.8)
+                        ax.plot(X, data[:, iW, 0, plot_idx], color=COLORS[iW], lw=1, zorder=2, alpha=0.8)
 
                         sliding_window = [data[iX: iX + N + 1, iW, 0, plot_idx] for iX in range(data.shape[0] - N)]
                         mean = np.array(list(map(np.mean, sliding_window)))
                         std_dev = np.array(list(map(np.std, sliding_window)))
-                        ax.plot(X[N:], mean, "--", lw=1, alpha=0.4, zorder=1)  # COLORS_MAIN[0])
-                        ax.fill_between(X[N:], mean - std_dev, mean + std_dev, zorder=0, alpha=0.2)
+                        ax.plot(X[N:], mean, "--", color=COLORS[iW], lw=1, alpha=0.4, zorder=1)  # COLORS_MAIN[0])
+                        ax.fill_between(X[N:], mean - std_dev, mean + std_dev, color=COLORS[iW], zorder=0, alpha=0.2)
 
                     if len(param_names) > plot_idx:
                         ax.set_title(f'{param_names[plot_idx]}', fontsize=14)
@@ -260,9 +261,25 @@ def plot_traces(data, file_path, param_names=[], N=1000, include_histogram=True)
                         ax.set_title(f'Parameter {plot_idx}', fontsize=14)
                     ax.grid(True, alpha=0.3)
                     ax.set_xlabel("Iteration")
+                    ylim = ax.get_ylim()
+                    if add_histogram:
+                        ax = axes[i, 1]
+                        bins = np.linspace(ylim[0], ylim[1], 100)
+                        n_samples = data.shape[0]
+                        offset = n_samples // 2
+                        # Prior Hist
+                        ax.hist(data[offset:, :, -1, plot_idx].flatten(), bins=bins, color="k",
+                                orientation="horizontal", alpha=0.5)
+
+                        for iW in range(num_walkers):
+                            ax.hist(data[offset:, iW, 0, plot_idx].flatten(), bins=bins, color=COLORS[iW], orientation="horizontal", alpha=0.5)
+
+
+
                 else:
                     # Hide unused subplots
-                    axes[i].axis('off')
+                    axes[i, 0].axis('off')
+                    axes[i, 1].axis('off')
             plt.tight_layout()
             pdf.savefig(fig)
             plt.close(fig)

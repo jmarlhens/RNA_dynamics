@@ -36,6 +36,16 @@ def main(num_processes=1, waiting_time=5):
             results.append(res)
         p.close()
         print("SUBMITTED ALL CIRCUITS, WAITING FOR JOIN")
+        do_wait = True
+        while do_wait:
+            do_wait = False
+            for iC, res in enumerate(results):
+                is_ready = res.ready()
+                do_wait = do_wait or not is_ready
+                if is_ready:
+                    print(f"Circuit {circuits_to_fit[iC]} is ready.")
+            time.sleep(60)
+
         p.join()
     print("COMPLETED EXECUTION OF ALL CIRCUITS")
 
