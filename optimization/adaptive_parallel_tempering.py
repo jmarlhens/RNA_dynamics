@@ -88,7 +88,7 @@ class ParallelTempering(OptimizationAlgorithm):
 
         if adaptive_temperature and n_chains <= 2:
             print(
-                f"Disabling adaptive temperature for n_chains={n_chains}. Minimal number of chains for adaptive temperature is 3, but more chains are recommended.")
+                f"PT: Disabling adaptive temperature for n_chains={n_chains}. Minimal number of chains for adaptive temperature is 3, but more chains are recommended.")
             adaptive_temperature = False
 
         adaptive_proposal_distribution = target_acceptance_ratio is not None and target_acceptance_ratio > 0 and target_acceptance_ratio < 1.0
@@ -131,7 +131,7 @@ class ParallelTempering(OptimizationAlgorithm):
                 scaling_params = np.exp(0.5 * acc_rate_deviation)
                 self.variance = self.variance * np.expand_dims(scaling_params, axis=-1)
                 if iN % 50 == 0:
-                    print(f"Iteration {iN}:\n", np.mean(step_accepts[max(iN - 100 + 1, 0):iN + 1], axis=0))
+                    print(f"PT: Iteration {iN}:\n", np.mean(step_accepts[max(iN - 100 + 1, 0):iN + 1], axis=0))
 
             ###############################
             # Adaptive Temperature Ladder #
@@ -158,9 +158,12 @@ class ParallelTempering(OptimizationAlgorithm):
                 self.save_state_in_file(parameters, priors, likelihoods, step_accepts, swap_accepts, index=iN)
 
             pass
+
+        print("PT: Sampling completed")
         if save_to_file:
             self.save_state_in_file(parameters, priors, likelihoods, step_accepts, swap_accepts, index=iN)
             self.close_file()
+
 
         parameters = np.array(parameters)
         priors = np.array(priors)
@@ -168,6 +171,7 @@ class ParallelTempering(OptimizationAlgorithm):
         step_accepts = np.array(step_accepts)
         swap_accepts = np.array(swap_accepts)
 
+        print("PT: Wrapping up completed.")
         # print(f"max_iN: {max_iN}")
         return parameters, priors, likelihoods, step_accepts, swap_accepts
 
