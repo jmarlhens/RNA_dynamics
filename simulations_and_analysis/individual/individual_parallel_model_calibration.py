@@ -44,8 +44,8 @@ def main(num_processes=1, waiting_time=5):
             print("CHECK ON PROCESS STATE")
             for iC, res in enumerate(results):
                 circuit_id = circuits_to_fit[iC]
-                if circuit_id in completed_circuits:
-                    continue
+                # if circuit_id in completed_circuits:
+                #    continue
 
                 is_ready = res.ready()
 

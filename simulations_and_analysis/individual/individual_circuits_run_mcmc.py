@@ -25,7 +25,7 @@ def fit_single_circuit(
         max_time=210,  # 210
         n_samples=20000,  # 20000,
         n_walkers=5,  # 5
-        n_chains=10,  # 10
+        n_chains=12,  # 10
 ):
     """
     Fit a single circuit and save its results using the new CircuitManager system
