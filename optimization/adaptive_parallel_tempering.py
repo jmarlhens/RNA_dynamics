@@ -1,4 +1,5 @@
 import os.path
+import time
 
 import pandas as pd
 import seaborn as sns
@@ -106,6 +107,7 @@ class ParallelTempering(OptimizationAlgorithm):
         likelihood = self.log_likelihood(params)
         prior = self.log_prior(params)
         # max_iN = 0
+        start = time.time()
         for iN in tqdm(range(n_samples)):
             self.beta = 1 / np.expand_dims(self.temperatures, axis=0)
 
@@ -158,8 +160,8 @@ class ParallelTempering(OptimizationAlgorithm):
                 self.save_state_in_file(parameters, priors, likelihoods, step_accepts, swap_accepts, index=iN)
 
             pass
-
-        print("PT: Sampling completed")
+        end = time.time()
+        print(f"PT: Sampling completed (Duration {end - start})")
         if save_to_file:
             self.save_state_in_file(parameters, priors, likelihoods, step_accepts, swap_accepts, index=iN)
             self.close_file()
@@ -171,7 +173,7 @@ class ParallelTempering(OptimizationAlgorithm):
         step_accepts = np.array(step_accepts)
         swap_accepts = np.array(swap_accepts)
 
-        print("PT: Wrapping up completed.")
+        print("PT: Wrapping up completed.", flush=True)
         # print(f"max_iN: {max_iN}")
         return parameters, priors, likelihoods, step_accepts, swap_accepts
 
@@ -181,8 +183,11 @@ class ParallelTempering(OptimizationAlgorithm):
 
         proposal = self.proposal_function(prev_state=params, radius=np.sqrt(self.variance))
 
-        proposal_likelihood = self.log_likelihood(proposal)
-        proposal_prior = self.log_prior(proposal)
+        # proposal_likelihood = self.log_likelihood(proposal)
+        # proposal_prior = self.log_prior(proposal)
+
+        proposal_likelihood = likelihood
+        proposal_prior = prior
         proposal_tempered_likelihood = self.beta * proposal_likelihood
         # proposal_tempered_likelihood[np.isnan(proposal_tempered_likelihood)] = -np.inf
         proposal_tempered_likelihood[np.tile(self.beta, (proposal_tempered_likelihood.shape[0], 1)) == 0] = 0
@@ -299,27 +304,6 @@ class ParallelTempering(OptimizationAlgorithm):
         # if end_index - start_index >= 1:
         self.start_index = end_index
 
-        pass
-
-        # #######
-        # # Create dictionary to store data
-        # data = {
-        #     "iteration": iter_grid.flatten(),
-        #     "walker": walker_grid.flatten(),
-        #     "chain": chain_grid.flatten(),
-        # }
-        #
-        # # Add parameters
-        # for i, param_name in enumerate(self.parameter_names):
-        #     data[param_name] = self.parameters[..., i].flatten()
-        #
-        # # Add likelihood, prior, posterior
-        # data["likelihood"] = self.likelihoods.flatten()
-        # data["prior"] = self.priors.flatten()
-        # data["posterior"] = self.likelihoods.flatten() + self.priors.flatten()
-        #
-        # # Add step acceptance
-        # data["step_accepted"] = self.step_accepts.flatten()
 
     def close_file(self):
         if self.file is not None:

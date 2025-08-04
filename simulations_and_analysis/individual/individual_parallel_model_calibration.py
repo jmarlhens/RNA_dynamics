@@ -38,10 +38,11 @@ def main(num_processes=1, waiting_time=5):
         print("SUBMITTED ALL CIRCUITS, WAITING FOR JOIN")
         do_wait = True
         completed_circuits = []
+        iX = 0
         while do_wait:
             time.sleep(60)
             do_wait = False
-            print("CHECK ON PROCESS STATE")
+            print(f"CHECK ON PROCESS STATE {iX}")
             for iC, res in enumerate(results):
                 circuit_id = circuits_to_fit[iC]
                 # if circuit_id in completed_circuits:
@@ -49,11 +50,16 @@ def main(num_processes=1, waiting_time=5):
 
                 is_ready = res.ready()
 
+
                 do_wait = do_wait or not is_ready
                 if is_ready:
+                    is_successful = res.successful()
                     completed_circuits.append(circuit_id)
-                    print(f"CIRCUIT {circuit_id} is READY and finished {'SUCCESSFULL' if res.successful() else 'WITH EXCEPTION'}.")
+                    print(f"CIRCUIT {circuit_id} is READY and finished {'SUCCESSFUL' if is_successful else 'WITH EXCEPTION'}.")
+                    if not is_successful:
+                        print(f"EXCEPTION in {circuit_id}.")
 
+            iX += 1
         p.join()
     print("COMPLETED EXECUTION OF ALL CIRCUITS")
 

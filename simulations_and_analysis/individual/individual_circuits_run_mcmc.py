@@ -23,7 +23,7 @@ def fit_single_circuit(
         priors,
         min_time=30,  # 30
         max_time=210,  # 210
-        n_samples=20000,  # 20000,
+        n_samples=100000,  # 20000,
         n_walkers=5,  # 5
         n_chains=12,  # 10
 ):
@@ -127,13 +127,14 @@ def main(circuits_to_fit=None):
         json_file="../../data/circuits/circuits.json",
     )
 
-    if not isinstance(circuits_to_fit, list):
+    if not isinstance(circuits_to_fit, list) and not circuits_to_fit is None:
         circuits_to_fit = [circuits_to_fit]
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = "outputs/"
     os.makedirs(output_dir, exist_ok=True)
-    with open(f"{output_dir}{'-'.join(circuits_to_fit).replace('/', '-')}_{timestamp}.out", "w") as log:
+    circs_ident = '-'.join(circuits_to_fit).replace('/', '-') if circuits_to_fit is not None else "ALL_AVAILABLE"
+    with open(f"{output_dir}{circs_ident}_{timestamp}.out", "w") as log:
         sys.stdout = log
         sys.stderr = log
 
