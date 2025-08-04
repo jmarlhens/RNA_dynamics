@@ -88,7 +88,18 @@ def fit_single_circuit(
         param_names=parameters_to_fit,
     )
 
-    print("Completed Model Calibration")
+    print("Completed Model Calibration", flush=True)
+
+    plot_traces(data=parameters,
+                file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_full.pdf",
+                param_names=parameters_to_fit)
+
+    for size in [10000, 8000, 6000, 4000, 2000]:
+        plot_traces(data=parameters[len(parameters) - size:],
+                    file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_{size}.pdf",
+                    param_names=parameters_to_fit)
+
+    print("Ploted trajectories", flush=True)
 
     # Analyze results
     results = analyze_mcmc_results(
@@ -108,14 +119,7 @@ def fit_single_circuit(
     df.to_csv(filename, index=False)
     print(f"Results saved to {filename}")
 
-    plot_traces(data=parameters,
-                file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_full.pdf",
-                param_names=parameters_to_fit)
 
-    for size in [10000, 8000, 6000, 4000, 2000]:
-        plot_traces(data=parameters[len(parameters) - size:],
-                    file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_{size}.pdf",
-                    param_names=parameters_to_fit)
 
     return results, df
 
