@@ -173,23 +173,16 @@ class ParallelTempering(OptimizationAlgorithm):
         return parameters, priors, likelihoods, step_accepts, swap_accepts
 
     def step(self, params, prior, likelihood, index):
-        # move = np.random.normal(loc=0, scale=np.sqrt(self.variance))
-        # proposal = params + move
-
         proposal = self.proposal_function(prev_state=params, radius=np.sqrt(self.variance))
 
-        # proposal_likelihood = self.log_likelihood(proposal)
-        # proposal_prior = self.log_prior(proposal)
+        proposal_likelihood = self.log_likelihood(proposal)
+        proposal_prior = self.log_prior(proposal)
 
-        proposal_likelihood = likelihood
-        proposal_prior = prior
         proposal_tempered_likelihood = self.beta * proposal_likelihood
         # proposal_tempered_likelihood[np.isnan(proposal_tempered_likelihood)] = -np.inf
         proposal_tempered_likelihood[np.tile(self.beta, (proposal_tempered_likelihood.shape[0], 1)) == 0] = 0
         proposal_prob = proposal_tempered_likelihood + proposal_prior
 
-        # likelihood = self.log_likelihood(params)
-        # prior = self.log_prior(params)
         tempered_likelihood = self.beta * likelihood
         # tempered_likelihood[np.isnan(tempered_likelihood)] = -np.inf
         tempered_likelihood[np.tile(self.beta, (tempered_likelihood.shape[0], 1)) == 0] = 0
