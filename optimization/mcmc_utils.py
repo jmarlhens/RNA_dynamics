@@ -1,4 +1,7 @@
+import os
+
 import numpy as np
+import pandas as pd
 from matplotlib import pyplot as plt, animation
 from matplotlib.colors import LinearSegmentedColormap
 from numpy.fft import fft, ifft
@@ -284,7 +287,107 @@ def plot_traces(data, file_path, param_names=[], N=1000, add_histogram=True):
             pdf.savefig(fig)
             plt.close(fig)
 
-    print(f"Saved plots file to '{file_path}'.")
+    print(f"Saved plots file to '{file_path}'.", flush=True)
+
+
+
+
+class MCMCResultsWriter:
+
+    file = None
+
+    def __init__(self, path, param_names=None):
+        abspath = os.path.abspath(path)
+        if self.file is not None and os.path.abspath(self.file.name) != abspath:
+            self.close()
+
+        self.file = open(abspath, "a")
+        print(f"Opened file {self.file.name}")
+
+
+        if param_names is None:
+            param_names = [f"Parameter {iX}" for iX in range(self.n_dim)]
+        self._write_to_file(
+            lines=["iteration,walker,chain," + ",".join(param_names) + ",likelihood,prior,posterior,step_accepted\n"])
+        self.start_index = 0
+
+    def _write_to_file(self, lines):
+        self.file.writelines(lines)
+        self.file.flush()
+        print(f"Updated file {self.file.name}")
+
+    def save_state_in_file(self, parameters, priors, likelihoods, step_accepts, swap_accepts, index=None):
+        start_index = self.start_index
+        end_index = parameters.shape[0] if index is None else index + 1
+
+        n_walkers = parameters.shape[1]
+        n_chains = parameters.shape[2]
+        n_dim = parameters.shape[3]
+
+        cur_parameters = parameters[start_index:end_index]
+        cur_likelihoods = likelihoods[start_index:end_index]
+        cur_priors = priors[start_index:end_index]
+        cur_step_accepts = step_accepts[start_index:end_index]
+
+        iterations = np.arange(start_index, end_index)
+        walkers = np.arange(n_walkers)
+        chains = np.arange(n_chains)
+
+
+        # Create meshgrid for all combinations
+        iter_grid, walker_grid, chain_grid = np.meshgrid(
+            iterations, walkers, chains, indexing="ij"
+        )
+
+        cols = []
+        cols += [iter_grid.flatten(),
+                 walker_grid.flatten(),
+                 chain_grid.flatten()]
+        cols += [cur_parameters[..., iP].flatten() for iP in range(n_dim)]
+        cols += [cur_likelihoods.flatten(),
+                 cur_priors.flatten(),
+                 (cur_priors.flatten() + cur_likelihoods.flatten()),
+                 cur_step_accepts.flatten()]
+
+        data = np.concatenate([np.expand_dims(col, axis=1) for col in cols], axis=1)
+
+        encoded_data = list(map(lambda row: ",".join(row.astype(str)) + "\n", data))
+
+        self._write_to_file(lines=encoded_data)
+        # if end_index - start_index >= 1:
+        if end_index is not None:
+            self.start_index = end_index
+
+    def close(self):
+        if self.file is not None:
+            self.file.close()
+            print(f"Closed file {self.file.name}")
+            self.file = None
+
+
+def load_state_from_file(path):
+    abspath = os.path.abspath(path)
+
+    swap_accepts = None
+
+    df = pd.read_csv(abspath)
+
+    data = df.values
+    n_samples = int(np.max(data[:,0])) + 1
+    n_walkers = int(np.max(data[:, 1])) + 1
+    n_chains = int(np.max(data[:, 2])) + 1
+
+    data = data.reshape((n_samples, n_walkers, n_chains, -1))
+
+
+    parameters= data[..., 3:data.shape[-1] - 4]
+    likelihoods = data[..., -4]
+    priors = data[..., -3]
+    posterior = data[..., -2]
+    step_accepts = data[..., -1]
+    index = n_samples - 1
+
+    return parameters, priors, likelihoods, step_accepts, swap_accepts, index
 
 
 if __name__ == '__main__':

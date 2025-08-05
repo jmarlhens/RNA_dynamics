@@ -3,11 +3,13 @@ import os
 import sys
 from datetime import datetime
 import pandas as pd
+from scipy.special import result
+
 from likelihood_functions.config import CircuitConfig
 from likelihood_functions.base import CircuitFitter
 from likelihood_functions.base import MCMCAdapter
 from analysis_and_figures.mcmc_analysis import analyze_mcmc_results
-from optimization.mcmc_utils import convergence_test, plot_traces
+from optimization.mcmc_utils import convergence_test, plot_traces, MCMCResultsWriter
 from utils.import_and_visualise_data import load_and_process_csv
 from circuits.circuit_generation.circuit_manager import CircuitManager
 from data.circuits.circuit_configs import DATA_FILES, get_circuit_conditions
@@ -77,6 +79,10 @@ def fit_single_circuit(
     os.makedirs("../../data/fit_data/individual_circuits/", exist_ok=True)
     os.makedirs("../../data/fit_data/individual_circuits/trajectories/", exist_ok=True)
 
+    buffer_writer = MCMCResultsWriter(
+        path=f"../../data/fit_data/individual_circuits_buffer/buffer_{safe_circuit_name}_{timestamp}.csv",
+        param_names=parameters_to_fit)
+
     # Setup and run parallel tempering
     pt = adapter.setup_parallel_tempering(n_walkers=n_walkers, n_chains=n_chains)
     parameters, priors_out, likelihoods, step_accepts, swap_accepts = pt.run(
@@ -84,11 +90,19 @@ def fit_single_circuit(
         n_samples=n_samples,
         target_acceptance_ratio=0.4,
         adaptive_temperature=True,
-        path=f"../../data/fit_data/individual_circuits_buffer/buffer_{safe_circuit_name}_{timestamp}.csv",
-        param_names=parameters_to_fit,
+        mcmc_writer=buffer_writer,
     )
+    buffer_writer.close()
 
     print("Completed Model Calibration", flush=True)
+
+    results_path = f"../../data/fit_data/individual_circuits/results_{safe_circuit_name}_{timestamp}.csv"
+    results_writer = MCMCResultsWriter(path=results_path,
+                                    param_names=parameters_to_fit)
+    results_writer.save_state_in_file(parameters, priors_out, likelihoods, step_accepts, swap_accepts)
+    results_writer.close()
+
+    print(f"Stored samples in:\n{results_path}", flush=True)
 
     plot_traces(data=parameters,
                 file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_full.pdf",
@@ -99,29 +113,29 @@ def fit_single_circuit(
                     file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_{size}.pdf",
                     param_names=parameters_to_fit)
 
-    print("Ploted trajectories", flush=True)
+    print("Plotted trajectories", flush=True)
 
-    # Analyze results
-    results = analyze_mcmc_results(
-        parameters=parameters,
-        priors=priors_out,
-        likelihoods=likelihoods,
-        step_accepts=step_accepts,
-        swap_accepts=swap_accepts,
-        parameter_names=circuit_fitter.parameters_to_fit,
-        circuit_fitter=circuit_fitter,
-    )
-
-    # Save results
-    print("Write out results")
-    df = results["analyzer"].to_dataframe()
-    filename = f"../../data/fit_data/individual_circuits/results_{safe_circuit_name}_{timestamp}.csv"
-    df.to_csv(filename, index=False)
-    print(f"Results saved to {filename}")
-
-
-
-    return results, df
+    # # Analyze results
+    # results = analyze_mcmc_results(
+    #     parameters=parameters,
+    #     priors=priors_out,
+    #     likelihoods=likelihoods,
+    #     step_accepts=step_accepts,
+    #     swap_accepts=swap_accepts,
+    #     parameter_names=circuit_fitter.parameters_to_fit,
+    #     circuit_fitter=circuit_fitter,
+    # )
+    #
+    # # Save results
+    # print("Write out results")
+    # df = results["analyzer"].to_dataframe()
+    # filename = f"../../data/fit_data/individual_circuits/results_{safe_circuit_name}_{timestamp}.csv"
+    # df.to_csv(filename, index=False)
+    # print(f"Results saved to {filename}")
+    #
+    #
+    # return results, df
+    return None, None
 
 
 def main(circuits_to_fit=None):
