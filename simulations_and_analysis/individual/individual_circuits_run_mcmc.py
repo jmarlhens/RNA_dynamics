@@ -3,7 +3,6 @@ import os
 import sys
 from datetime import datetime
 import pandas as pd
-from scipy.special import result
 
 from likelihood_functions.config import CircuitConfig
 from likelihood_functions.base import CircuitFitter
