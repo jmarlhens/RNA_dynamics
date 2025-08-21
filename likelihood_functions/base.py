@@ -9,12 +9,12 @@ from utils.process_experimental_data import (
 
 class CircuitFitter:
     def __init__(
-            self,
-            configs,
-            parameters_to_fit,
-            model_parameters_priors,
-            calibration_data,
-            sigma_0_squared=1e-1,
+        self,
+        configs,
+        parameters_to_fit,
+        model_parameters_priors,
+        calibration_data,
+        sigma_0_squared=1e-1,
     ):
         """
         Initialize CircuitFitter with caching of experimental data
@@ -48,7 +48,7 @@ class CircuitFitter:
             for condition_name, _ in config.condition_params.items():
                 condition_data = config.experimental_data[
                     config.experimental_data["condition"] == condition_name
-                    ]
+                ]
 
                 if len(condition_data) == 0:
                     raise ValueError(
@@ -96,14 +96,14 @@ class CircuitFitter:
         for param_name in self.parameters_to_fit:
             prior_row = self.model_parameters_priors[
                 self.model_parameters_priors["Parameter"] == param_name
-                ].iloc[0]
+            ].iloc[0]
             self.log_means[param_name] = np.log10(prior_row["Mean"])
             self.log_stds[param_name] = prior_row["log10stddev"]
 
     @staticmethod
     def log_to_linear_params(log_params: np.ndarray, param_names: list) -> pd.DataFrame:
         """Convert parameters from log space to linear space."""
-        linear_params = 10 ** log_params
+        linear_params = 10**log_params
         if log_params.ndim == 1:
             return pd.DataFrame([linear_params], columns=param_names)
         return pd.DataFrame(
@@ -171,7 +171,7 @@ class CircuitFitter:
         return results
 
     def _compute_likelihood_vectorized_unified(
-            self, circuit_simulation_dict, n_parameter_sets
+        self, circuit_simulation_dict, n_parameter_sets
     ):
         """Unified vectorized computation with breakdown reconstruction capability"""
         total_likelihood_vector = np.zeros(n_parameter_sets)
@@ -193,10 +193,27 @@ class CircuitFitter:
 
             # Align experimental means with simulation order
             experimental_means_matrix = np.zeros_like(simulation_matrix)
-            for condition_name in circuit_configuration.condition_params.keys():
-                condition_mask = condition_labels == condition_name
-                cached_experimental_means = self.experimental_data_cache[circuit_name][condition_name]["means"]
-                experimental_means_matrix[condition_mask] = cached_experimental_means
+            circuit_condition_names = list(
+                circuit_configuration.condition_params.keys()
+            )
+
+            if len(circuit_condition_names) == 1:
+                # Single condition: broadcast experimental means to all simulations
+                single_condition_name = circuit_condition_names[0]
+                cached_experimental_means = self.experimental_data_cache[circuit_name][
+                    single_condition_name
+                ]["means"]
+                experimental_means_matrix[:] = cached_experimental_means[0]
+            else:
+                # Multi-condition: vectorized alignment
+                for condition_name in circuit_condition_names:
+                    condition_mask = condition_labels == condition_name
+                    cached_experimental_means = self.experimental_data_cache[
+                        circuit_name
+                    ][condition_name]["means"]
+                    experimental_means_matrix[condition_mask.flatten()] = (
+                        cached_experimental_means
+                    )
 
             # Vectorized likelihood computation
             likelihood_per_simulation = (
@@ -227,7 +244,7 @@ class CircuitFitter:
         return total_likelihood_vector, circuit_likelihood_breakdown
 
     def _reconstruct_breakdown_matrices(
-            self, circuit_likelihood_breakdown, n_parameter_sets
+        self, circuit_likelihood_breakdown, n_parameter_sets
     ):
         """Reconstruct legacy matrix format from vectorized results"""
         n_circuits = len(circuit_likelihood_breakdown)
@@ -263,7 +280,7 @@ class CircuitFitter:
         return circuit_likelihood_matrix, condition_likelihood_arrays
 
     def _calculate_heteroscedastic_likelihood_vectorized(
-            self, simulation_values, experimental_means_matrix
+        self, simulation_values, experimental_means_matrix
     ):
         """Vectorized likelihood calculation with aligned experimental means"""
         minimum_signal_threshold = 1e-6
@@ -272,13 +289,23 @@ class CircuitFitter:
         )
 
         residuals = simulation_values - experimental_means_matrix
-        time_points_count = simulation_values.shape[1]
 
-        return (
+        if simulation_values.ndim > 1:
+            time_points_count = simulation_values.shape[1]
+            return (
                 -0.5
-                * np.sum((residuals ** 2) / heteroscedastic_variances, axis=1)
+                * np.sum((residuals**2) / heteroscedastic_variances, axis=1)
                 / time_points_count
-        )
+            )
+        else:
+            time_points_count = simulation_values.shape[0]
+            return np.array(
+                [
+                    -0.5
+                    * np.sum((residuals**2) / heteroscedastic_variances)
+                    / time_points_count
+                ]
+            )
 
     def calculate_likelihood_from_simulation(self, simulation_data: dict) -> dict:
         """Unified MCMC-optimized computation"""
@@ -293,7 +320,7 @@ class CircuitFitter:
         return {"total": total_likelihoods}
 
     def calculate_likelihood_from_simulation_with_breakdown(
-            self, simulation_data: dict
+        self, simulation_data: dict
     ) -> dict:
         """Unified computation with breakdown reconstruction"""
         first_circuit_data = next(iter(simulation_data.values()))
@@ -337,7 +364,7 @@ class CircuitFitter:
         return {"total": total_likelihoods, "circuits": circuit_breakdown}
 
     def _compute_likelihood_matrix_core(
-            self, circuit_simulation_dict, n_parameter_sets
+        self, circuit_simulation_dict, n_parameter_sets
     ):
         """Legacy interface: reconstruct matrix format"""
         total_likelihoods, circuit_breakdown_data = (
@@ -358,7 +385,7 @@ class CircuitFitter:
         return self.calculate_likelihood_from_simulation(simulation_data)
 
     def calculate_comprehensive_circuit_likelihood_analysis(
-            self, circuit_simulation_results: dict
+        self, circuit_simulation_results: dict
     ) -> dict:
         """Legacy method - redirects to breakdown calculation"""
         comprehensive_results = (
@@ -491,7 +518,7 @@ class MCMCAdapter:
 
     @staticmethod
     def _reshape_likelihood_results_from_parallel_tempering(
-            likelihood_results, original_shape
+        likelihood_results, original_shape
     ):
         """Reshape likelihood results back to parallel tempering structure"""
         return likelihood_results.reshape(original_shape[:-1])
