@@ -2,9 +2,11 @@ import os.path
 import time
 
 import pandas as pd
+import scipy.stats
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import Ellipse
 from tqdm import tqdm
 
 from optimization.mcmc_utils import convergence_test, animate_parameter_trace_2D, plot_traces
@@ -13,13 +15,15 @@ from optimization.optimization_algorithm import OptimizationAlgorithm
 
 class ParallelTempering(OptimizationAlgorithm):
 
-    def __init__(self, log_likelihood, log_prior, n_dim, n_walkers=1, n_chains=10, proposal_function=None):
+    def __init__(self, log_likelihood, log_prior, n_dim, n_walkers=1, n_chains=10, swap_round_period=200,
+                 proposal_function=None):
         self.log_likelihood = log_likelihood
         self.log_prior = log_prior
         self.n_dim = n_dim
 
         self.n_walkers = n_walkers
         self.n_chains = n_chains
+        self.swap_round_period = swap_round_period
 
         swap_mask = np.zeros(shape=(n_walkers, int(np.ceil(n_chains / 2) * 2)), dtype=bool)
         swap_mask[:, ::2] = 1
@@ -30,31 +34,67 @@ class ParallelTempering(OptimizationAlgorithm):
         # Value choice follows Vousden et al. 2016
 
         # Diffs of T_2 - T_1, ..., T_(N-1) - T_(N-2). The diff T_N - T_(N-1) is excluded by purpose following 1 < i < N for the S_i
-        variance = 0.1
-        self.variance = np.ones(shape=(self.n_walkers, self.n_chains, self.n_dim))
-        self.variance = self.variance * np.expand_dims(np.expand_dims(np.arange(1, self.n_chains + 1), axis=0), axis=-1)
-        self.variance *= variance
 
         if proposal_function is None:
-            def adaptive_proposal(prev_state=None, radius=None):
+            class AdaptiveProposal:
 
-                if prev_state is None:
-                    if radius is None:
-                        radius = 0.1
-                    state = radius * np.random.randn(n_dim)
+                def __init__(self, n_walkers, n_chains, n_dim,
+                             target_acceptance_rate=0.234,
+                             inital_variance=0.1):
 
-                else:
-                    state = np.array(prev_state)
-                    if radius is None:
-                        radius = 0.1 * np.ones(state.shape)
+                    self.target_acceptance_rate = target_acceptance_rate
 
-                    move = np.random.normal(loc=0,
-                                            scale=radius)  # The size is implicitly defined via the shape of radius
-                    state = state + move
+                    variance = np.ones(shape=(n_walkers, n_chains, n_dim, n_dim))
+                    variance = variance * np.expand_dims(np.arange(1, n_chains + 1) / n_chains * 10, axis=(0, -2, -1))
+                    variance = variance * np.eye(n_dim, n_dim)  # Make variables independent initially
+                    variance *= inital_variance
+                    self.L_variance = np.linalg.cholesky(variance)
 
-                return state
+                    self.params_shape = (n_walkers, n_chains, n_dim)
 
-            proposal_function = adaptive_proposal
+                    c = 0.5  # In the range (0, 1]
+                    e = 0.01  # In the range (0.5, 1)
+                    self.nu = lambda n: c * (n + 1) ** (-e)
+                    self.move = 0
+                    self.covariances = []
+
+                def __call__(self, prev_state=None):
+                    shape = self.params_shape
+                    # Perform multivariate batch sampling
+
+                    samples = np.random.normal(size=np.prod(shape))
+                    samples = samples.reshape(shape)
+                    L = self.L_variance
+                    move = np.squeeze(L @ np.expand_dims(samples, axis=-1))
+                    self.move = move
+
+                    if prev_state is None:
+                        state = move
+                    else:
+                        state = np.array(prev_state)
+                        state = state + move
+
+                    return state
+
+                def update_proposal(self, parameters, priors, likelihoods, step_accepts, alpha, iN):
+                    # Alternatively, check if the proposed move needs to be considered instead of the move taken
+                    raise Exception("Implement other scheme")
+                    L = self.L_variance
+
+                    U = self.move  # parameters[iN] - parameters[iN - 1] if iN > 0 else parameters[iN]
+                    M = np.expand_dims(U, 3) @ np.expand_dims(U, 2)
+                    m = np.power(np.linalg.norm(U), 2)
+                    M = M / m
+                    I = np.expand_dims(np.eye(L.shape[3]), (0, 1))
+                    COV = L @ (I + self.nu(iN) * np.expand_dims(alpha - self.target_acceptance_rate,
+                                                                (2, 3)) * M) @ np.transpose(L, axes=(0, 1, 3, 2))
+
+                    # print(COV[0][0])
+                    self.L_variance = np.linalg.cholesky(COV)
+
+                    self.covariances.append(COV)
+
+            proposal_function = AdaptiveProposal(n_walkers, n_chains, n_dim)
 
         self.proposal_function = proposal_function
         # self.file = None
@@ -106,9 +146,9 @@ class ParallelTempering(OptimizationAlgorithm):
         for iN in tqdm(range(n_samples)):
             self.beta = 1 / np.expand_dims(self.temperatures, axis=0)
 
-            params, prior, likelihood, step_accept = self.step(params, prior, likelihood, index=iN)
+            params, prior, likelihood, step_accept, alpha = self.step(params, prior, likelihood, index=iN)
             # swap_accept = np.nan * np.ones(shape=(self.n_walkers, self.n_chains - 1))
-            swap_round = iN % 10 == 9
+            swap_round = iN % self.swap_round_period == 0 and iN > 0
             if swap_round:
                 params, prior, likelihood, swap_accept = self.swap(params, prior, likelihood, index=iN)
                 swap_accepts.append(swap_accept)
@@ -121,14 +161,21 @@ class ParallelTempering(OptimizationAlgorithm):
             ##################################
             # Adaptive Proposal Distribution #
             ##################################
-            if adaptive_proposal_distribution and iN >= 100 and iN % 10 == 0:
+            if False and adaptive_proposal_distribution and iN >= 100 and iN % 10 == 0:
                 # Considers Windowed average of the last 100 steps
                 acc_rate_deviation = np.mean(step_accepts[max(iN - 100 + 1, 0):iN + 1],
                                              axis=0) - target_acceptance_ratio
                 scaling_params = np.exp(0.5 * acc_rate_deviation)
                 self.variance = self.variance * np.expand_dims(scaling_params, axis=-1)
-                if iN % 50 == 0:
-                    print(f"PT: Iteration {iN}:\n", np.mean(step_accepts[max(iN - 100 + 1, 0):iN + 1], axis=0))
+            if iN % 50 == 0:
+                print(f"PT: Iteration {iN}:\n", np.mean(step_accepts[max(iN - 200 + 1, 0):iN + 1], axis=0))
+
+            if adaptive_proposal_distribution:
+                """
+                Adaptive proposal mechanism following Robust adaptive Metropolis (RAM) by Matti Vihola
+                As the computation involves derivation of the cholesky factors has complexity O(d^3), this clearly decreases performance for high dimensional spaces (i.e. d=n_dim)
+                """
+                self.proposal_function.update_proposal(parameters, priors, likelihoods, step_accepts, alpha, iN)
 
             ###############################
             # Adaptive Temperature Ladder #
@@ -161,7 +208,6 @@ class ParallelTempering(OptimizationAlgorithm):
             mcmc_writer.save_state_in_file(parameters, priors, likelihoods, step_accepts, swap_accepts, index=iN)
             mcmc_writer.close()
 
-
         parameters = np.array(parameters)
         priors = np.array(priors)
         likelihoods = np.array(likelihoods)
@@ -173,7 +219,7 @@ class ParallelTempering(OptimizationAlgorithm):
         return parameters, priors, likelihoods, step_accepts, swap_accepts
 
     def step(self, params, prior, likelihood, index):
-        proposal = self.proposal_function(prev_state=params, radius=np.sqrt(self.variance))
+        proposal = self.proposal_function(prev_state=params)
 
         proposal_likelihood = self.log_likelihood(proposal)
         proposal_prior = self.log_prior(proposal)
@@ -190,16 +236,17 @@ class ParallelTempering(OptimizationAlgorithm):
 
         log_diff = proposal_prob - prob
         log_diff[proposal_prob == prob] = 0
-        diff = np.exp(log_diff)
+        alpha = np.exp(log_diff)
+        alpha[alpha > 1] = 1
         u = np.random.uniform(size=(self.n_walkers, self.n_chains))
-        accept = u < diff
+        accept = u < alpha
 
         new_prior = np.where(accept, proposal_prior, prior)
         new_likelihood = np.where(accept, proposal_likelihood, likelihood)
 
         params_accepts = np.expand_dims(accept, -1)
         new_params = np.where(params_accepts, proposal, params)
-        return new_params, new_prior, new_likelihood, accept
+        return new_params, new_prior, new_likelihood, accept, alpha
 
     def swap(self, params, prior, likelihood, index):
         log_diff = np.diff(likelihood, axis=-1)
@@ -235,95 +282,6 @@ class ParallelTempering(OptimizationAlgorithm):
 
         return new_params, new_prior, new_likelihood, accept
 
-    # def init_file(self, path):
-    #
-    #     abspath = os.path.abspath(path)
-    #     if self.file is not None and os.path.abspath(self.file.name) != abspath:
-    #         self.close_file()
-    #
-    #     self.file = open(abspath, "a")
-    #     print(f"Opened file {self.file.name}")
-    #
-    #     param_names = self.param_names
-    #     if param_names is None:
-    #         param_names = [f"Parameter {iX}" for iX in range(self.n_dim)]
-    #     self.write_to_file(
-    #         lines=["iteration,walker,chain," + ",".join(param_names) + ",likelihood,prior,posterior,step_accepted\n"])
-    #     self.start_index = 0
-    #
-    # def write_to_file(self, lines):
-    #     self.file.writelines(lines)
-    #     self.file.flush()
-    #     print(f"Updated file {self.file.name}")
-    #
-    # def save_state_in_file(self, parameters, priors, likelihoods, step_accepts, swap_accepts, index):
-    #     start_index = self.start_index
-    #     end_index = index + 1
-    #
-    #     cur_parameters = parameters[start_index:end_index]
-    #     cur_likelihoods = likelihoods[start_index:end_index]
-    #     cur_priors = priors[start_index:end_index]
-    #     cur_step_accepts = step_accepts[start_index:end_index]
-    #
-    #     iterations = np.arange(start_index, end_index)
-    #     walkers = np.arange(self.n_walkers)
-    #     chains = np.arange(self.n_chains)
-    #
-    #     # Create meshgrid for all combinations
-    #     iter_grid, walker_grid, chain_grid = np.meshgrid(
-    #         iterations, walkers, chains, indexing="ij"
-    #     )
-    #
-    #     cols = []
-    #     cols += [iter_grid.flatten(),
-    #              walker_grid.flatten(),
-    #              chain_grid.flatten()]
-    #     cols += [cur_parameters[..., iP].flatten() for iP in range(self.n_dim)]
-    #     cols += [cur_likelihoods.flatten(),
-    #              cur_priors.flatten(),
-    #              (cur_priors.flatten() + cur_likelihoods.flatten()),
-    #              cur_step_accepts.flatten()]
-    #
-    #     data = np.concatenate([np.expand_dims(col, axis=1) for col in cols], axis=1)
-    #
-    #     encoded_data = list(map(lambda row: ",".join(row.astype(str)) + "\n", data))
-    #
-    #     self.write_to_file(lines=encoded_data)
-    #     # if end_index - start_index >= 1:
-    #     self.start_index = end_index
-    #
-    #
-    # def close_file(self):
-    #     if self.file is not None:
-    #         self.file.close()
-    #         print(f"Closed file {self.file.name}")
-    #         self.file = None
-    #
-    # @staticmethod
-    # def load_state_from_file(path):
-    #     abspath = os.path.abspath(path)
-    #
-    #     swap_accepts = None
-    #
-    #     df = pd.read_csv(abspath)
-    #
-    #     data = df.values
-    #     n_samples = int(np.max(data[:,0])) + 1
-    #     n_walkers = int(np.max(data[:, 1])) + 1
-    #     n_chains = int(np.max(data[:, 2])) + 1
-    #
-    #     data = data.reshape((n_samples, n_walkers, n_chains, -1))
-    #
-    #
-    #     parameters= data[..., 3:data.shape[-1] - 4]
-    #     likelihoods = data[..., -4]
-    #     priors = data[..., -3]
-    #     posterior = data[..., -2]
-    #     step_accepts = data[..., -1]
-    #     index = n_samples - 1
-    #
-    #     return parameters, priors, likelihoods, step_accepts, swap_accepts, index
-
 
 def log_smile_adapt(params):
     val = np.exp(-0.5 * (np.sum(np.power(params, 2), axis=-1) - 1) ** 2 / (0.01))
@@ -347,31 +305,59 @@ def test_smile():
     def log_prior(params):
         return np.log(np.all(np.logical_and(params <= 2, params >= -2), axis=-1) * 1)
 
-    class AdaptiveProposal:
-        def __init__(self, func=None):
-            if func is None:
-                func = lambda x: np.random.normal(loc=x ** 2)
-            self.func = func
+    # class AdaptiveProposal:
+    #
+    #     def __init__(self, n_walkers, n_chains, n_dim, target_acceptance_rate = 0.234, func=None, inital_variance = 0.1):
+    #         if func is None:
+    #             func = lambda x: np.random.normal(loc=x ** 2)
+    #         self.func = func
+    #
+    #         self.target_acceptance_rate = target_acceptance_rate
+    #
+    #         variance = np.ones(shape=(n_walkers, n_chains, n_dim, n_dim))
+    #         variance = variance * np.expand_dims(np.arange(1, n_chains + 1), axis=(0, -2, -1))
+    #         variance = variance * np.eye(n_dim, n_dim)  # Make variables independent initially
+    #         variance *= inital_variance
+    #         self.L_variance = np.linalg.cholesky(variance)
+    #
+    #         self.params_shape = (n_walkers, n_chains, n_dim)
+    #
+    #         c = 0.5 # In the range (0, 1]
+    #         e = 0.5 # In the range (0.5, 1)
+    #         self.nu = lambda n: c * (n + 1)**(-e)
+    #
+    #     def __call__(self, prev_state=None):
+    #         shape = self.params_shape
+    #         # Perform multivariate batch sampling
+    #
+    #         samples = np.random.normal(size=np.prod(shape))
+    #         samples = samples.reshape(shape)
+    #         L = self.L_variance
+    #         move = np.squeeze(L @ np.expand_dims(samples, axis=-1))
+    #         if prev_state is None:
+    #             state = move
+    #         else:
+    #             state = np.array(prev_state)
+    #
+    #             state = state + move
+    #
+    #         return state
+    #
+    #     def update_proposal(self, parameters, priors, likelihoods, step_accepts, alpha, iN):
+    #         if iN <= 0:
+    #             return
+    #         L = self.L_variance
+    #
+    #         U = parameters[iN] - parameters[iN - 1]
+    #         M = np.expand_dims(U, 3) @ np.expand_dims(U, 2)
+    #         m = np.power(np.linalg.norm(U), 2)
+    #         M = M / m
+    #         I = np.expand_dims(np.eye(L.shape[3]), (0, 1))
+    #         COV = L @ (I + self.nu(iN) * np.expand_dims(alpha - self.target_acceptance_rate, (2, 3)) * M) @ np.transpose(L, axes=(0, 1, 3, 2))
+    #         self.L_variance = np.linalg.cholesky(COV)
 
-        def __call__(self, prev_state=None, radius=None):
-            if prev_state is None:
-                state = radius * np.random.randn(n_dim)
-            else:
-                state = np.array(prev_state)
-                if radius is None:
-                    radius = 0.1 * np.ones(state.shape)
-
-                move = np.random.normal(loc=0, scale=radius)  # The size is implicitly defined via the shape of radius
-                state = state + move
-
-                # if len(state.shape) > 1:
-                #     state[..., 1:] = self.func(state[..., 0:1])
-                # else:
-                #     state[1] = self.func(state[0])
-
-            return state
-
-    proposal_function = AdaptiveProposal(func=lambda x: np.random.normal(loc=x ** 2))
+    # proposal_function = AdaptiveProposal(func=lambda x: np.random.normal(loc=x ** 2))
+    # proposal_function = AdaptiveProposal(n_walkers, n_chains, n_dim, target_acceptance_rate = 0.234, func=None, inital_variance = 0.1)
 
     storage_path = "data.csv"
     if os.path.exists(storage_path):
@@ -379,36 +365,34 @@ def test_smile():
 
     pt = ParallelTempering(log_likelihood=log_likelihood, log_prior=log_prior,
                            n_dim=n_dim, n_walkers=n_walkers, n_chains=n_chains,
-                           proposal_function=proposal_function)
+                           proposal_function=None)
     prev_parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=[0, 0],
                                                                               n_samples=n_samples,
                                                                               target_acceptance_ratio=target_acceptance_ratio,
-                                                                              adaptive_temperature=adaptive_temperature,
-                                                                              path=storage_path,
-                                                                              param_names=["x1", "x2"])
+                                                                              adaptive_temperature=adaptive_temperature)
 
-    prev_parameters_2, priors_2, likelihoods_2, step_accepts_2, swap_accepts, index = ParallelTempering.load_state_from_file(path=storage_path)
+    # prev_parameters_2, priors_2, likelihoods_2, step_accepts_2, swap_accepts, index = ParallelTempering.load_state_from_file(path=storage_path)
 
-    if not np.all(np.abs(prev_parameters - prev_parameters_2) < 10**(-12)):
-        print("Parameters are different")
-    if not np.all(np.abs(priors - priors_2) < 10**(-12)):
-        print("Priors are different")
-    if not np.all(np.abs(likelihoods - likelihoods_2) < 10**(-12)):
-        print("Likelihoods are different")
-    if not np.all(np.abs(step_accepts - step_accepts_2) < 10**(-12)):
-        print("Step Accepts are different")
+    # if not np.all(np.abs(prev_parameters - prev_parameters_2) < 10**(-12)):
+    #     print("Parameters are different")
+    # if not np.all(np.abs(priors - priors_2) < 10**(-12)):
+    #     print("Priors are different")
+    # if not np.all(np.abs(likelihoods - likelihoods_2) < 10**(-12)):
+    #     print("Likelihoods are different")
+    # if not np.all(np.abs(step_accepts - step_accepts_2) < 10**(-12)):
+    #     print("Step Accepts are different")
 
     parameters = prev_parameters
 
     # By not reinitializing the parallel tempering object, the previous state will persist
     # One thing to note is, that the adaptive temperature schedule will be activated again.
     # To circumvent this, either set adaptive temperature to False or drop half of the samples generated.
-    parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=prev_parameters[-1],
-                                                                         n_samples=n_samples,
-                                                                         target_acceptance_ratio=target_acceptance_ratio,
-                                                                         adaptive_temperature=False,
-                                                                         path="data.csv",
-                                                                         param_names=["x1", "x2"])
+    # parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=prev_parameters[-1],
+    #                                                                      n_samples=n_samples,
+    #                                                                      target_acceptance_ratio=target_acceptance_ratio,
+    #                                                                      adaptive_temperature=False,
+    #                                                                      path="data.csv",
+    #                                                                      param_names=["x1", "x2"])
 
     print(f"Completed Sampling ({len(parameters)})")
 
@@ -428,6 +412,100 @@ def test_smile():
     step_acceptance_rates = np.mean(step_accepts, axis=0)
     swap_acceptance_rates = np.mean(swap_accepts, axis=0)
     for parameters in [parameters, prev_parameters]:
+        print("Creating Figures")
+        fig, ax = plt.subplots()
+        for iW in range(n_walkers):
+            ax.scatter(parameters[:, iW, 0, 0].reshape(-1), parameters[:, iW, 0, 1].reshape(-1), alpha=0.1)
+            ax.scatter(parameters[:, iW, 1:, 0].reshape(-1), parameters[:, iW, 1:, 1].reshape(-1), marker=".",
+                       alpha=0.1)
+        plt.show()
+
+        fig, axes = plt.subplots(ncols=n_chains, sharex=True, sharey=True)
+        for iC in range(n_chains):
+            ax = axes
+            if hasattr(axes, "shape"):
+                ax = axes[iC]
+
+            # ax.scatter(parameters[:, :, iC, 0].reshape(-1), parameters[:, :, iC, 1].reshape(-1), alpha=0.1)
+            sns.kdeplot(x=parameters[::10, :, iC, 0].reshape(-1), y=parameters[::10, :, iC, 1].reshape(-1), ax=ax,
+                        cmap="Reds")
+        plt.show()
+
+    fig, axes = plt.subplots(ncols=n_chains, sharex=True, sharey=True)
+    for iC in range(n_chains):
+        ax = axes[iC]
+        for iW in range(n_walkers):
+            ax.plot(parameters[:, iW, iC, 0].reshape(-1), parameters[:, iW, iC, 1].reshape(-1), alpha=0.1)
+            ax.scatter(parameters[:, iW, iC, 0].reshape(-1), parameters[:, iW, iC, 1].reshape(-1), alpha=0.1)
+    plt.show()
+
+
+def test_multivariate_normal():
+    mean = [0.5, 0.5]
+    cov = [[0.5, -0.24],
+           [-0.24, 0.25]]
+
+    dist = scipy.stats.multivariate_normal(mean=mean, cov=cov)
+
+    ref_samples = dist.rvs(size=10 ** 5)
+
+    def log_multivariate_normal(params):
+        val = dist.pdf(params)
+        return np.log(val)
+
+    n_dim = 2
+    n_walkers = 4
+    n_chains = 10
+    n_samples = 10 ** 3
+    target_acceptance_ratio = 0.234
+    log_likelihood = log_multivariate_normal
+
+    adaptive_temperature = True
+
+    def log_prior(params):
+        return np.log(np.all(np.logical_and(params <= 2, params >= -2), axis=-1) * 1)
+
+    storage_path = "data.csv"
+    if os.path.exists(storage_path):
+        os.remove(storage_path)
+
+    pt = ParallelTempering(log_likelihood=log_likelihood, log_prior=log_prior,
+                           n_dim=n_dim, n_walkers=n_walkers, n_chains=n_chains,
+                           proposal_function=None)
+    parameters, priors, likelihoods, step_accepts, swap_accepts = pt.run(initial_parameters=[0, 0],
+                                                                         n_samples=n_samples,
+                                                                         target_acceptance_ratio=target_acceptance_ratio,
+                                                                         adaptive_temperature=adaptive_temperature)
+
+    print(f"Completed Sampling ({len(parameters)})")
+
+    R_hat = convergence_test(parameters[int(len(parameters) / 2):], per_parameter_test=True)
+
+    print(f"Potential Scale Reduction: {R_hat}")
+
+    # animate_parameter_trace_2D(parameters[:, :, 0])
+    # for iW in range(n_walkers):
+    plot_traces(data=parameters, file_path=f"traces_walker.pdf", param_names=["x1", "x2"])
+
+    # R_hat value below 1.2 are favorable
+    # tau = integrated_autocorrelation_time(parameters)
+    # print("Average Integrated Correlation Times")
+    # print(np.mean(tau, axis=0))
+
+    samples = parameters[n_samples // 2:, :, 0]
+
+    fig, ax = plt.subplots()
+    sns.kdeplot(x=samples[..., 0].reshape(-1), y=samples[..., 1].reshape(-1), ax=ax, cmap="Reds")
+    sns.kdeplot(x=ref_samples[..., 0].reshape(-1), y=ref_samples[..., 1].reshape(-1), ax=ax, cmap="Blues")
+
+    plt.show()
+
+    covariances = np.array(pt.proposal_function.covariances)[:, :, 0]
+    visualize_covariance_evolution(means=parameters[:, 0, 0], covariances=covariances[:, 0])
+
+    step_acceptance_rates = np.mean(step_accepts, axis=0)
+    swap_acceptance_rates = np.mean(swap_accepts, axis=0)
+    for parameters in [parameters]:
         print("Creating Figures")
         fig, ax = plt.subplots()
         for iW in range(n_walkers):
@@ -540,7 +618,78 @@ def sampling_test():
         print(f"Mean {np.mean(samps)}, Variance {np.var(samps)}")
 
 
+def visualize_covariance_evolution(means, covariances):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as patches
+    import matplotlib.animation as animation
+
+    xlim = np.min(means[:, 0] - 4 * np.sqrt(covariances[:, 0, 0])), np.max(means[:, 0] + 4 * np.sqrt(covariances[:, 0, 0]))
+    ylim = np.min(means[:, 1] - 4 * np.sqrt(covariances[:, 1, 1])), np.max(means[:, 1] + 4 * np.sqrt(covariances[:, 1, 1]))
+
+    def confidence_ellipse(ax, mean, cov, n_std=1.0, **kwargs):
+        from matplotlib.transforms import Affine2D
+        eigvals, eigvecs = np.linalg.eigh(cov)
+        order = eigvals.argsort()[::-1]
+        eigvals, eigvecs = eigvals[order], eigvecs[:, order]
+        angle = np.degrees(np.arctan2(*eigvecs[:, 0][::-1]))
+        width, height = 2 * n_std * np.sqrt(eigvals)
+        ellipse = patches.Ellipse(mean, width, height, angle=angle, fill=False, **kwargs)
+        ax.add_patch(ellipse)
+
+    def plot_cov_matrix(axs, data_mean, cov_matrix, sigmas=[1, 2, 3]):
+        d = len(data_mean)
+        for i in range(d):
+            for j in range(d):
+                ax = axs[i, j]
+                ax.clear()
+                if i == j:
+                    mu = data_mean[i]
+                    std = np.sqrt(cov_matrix[i, i])
+                    ax.plot([mu] * 2, [mu - 3 * std, mu + 3 * std], color="black")
+                    for s in sigmas:
+                        ax.axhline(mu + s * std, color="red", linestyle='--')
+                        ax.axhline(mu - s * std, color="red", linestyle='--')
+                    ax.set_xlim(mu - 4 * std, mu + 4 * std)
+                    ax.set_ylim(mu - 4 * std, mu + 4 * std)
+                else:
+                    mean = [data_mean[j], data_mean[i]]
+                    subcov = cov_matrix[np.ix_([j, i], [j, i])]
+                    ax.scatter(*mean, color="black")
+                    for s in sigmas:
+                        confidence_ellipse(ax, mean, subcov, n_std=s, edgecolor="blue", alpha=0.3)
+                    ax.set_xlim(xlim)
+                    ax.set_ylim(ylim)
+                ax.set_xticks([])
+                ax.set_yticks([])
+
+    # Dummy covariance evolution data (replace with your own)
+    # timesteps = 30
+    # dims = 4
+    # np.random.seed(42)
+    # means = np.cumsum(np.random.randn(timesteps, dims), axis=0)
+    # covs = np.array([np.eye(dims) + 0.4 * np.random.randn(dims, dims) for _ in range(timesteps)])
+    # for i in range(timesteps):
+    #     covs[i] = (covs[i] + covs[i].T) / 2 + dims * np.eye(dims)  # Symmetrize and ensure positive-definite
+    dims = covariances.shape[-1]
+    timesteps = len(covariances)
+
+    fig, axs = plt.subplots(dims, dims, figsize=(2.5 * dims, 2.5 * dims))
+
+    plt.tight_layout()
+
+
+    def update(frame):
+        plot_cov_matrix(axs, means[frame], covariances[frame])
+        fig.suptitle(f"Covariance Evolution: timestep {frame}")
+
+    ani = animation.FuncAnimation(fig, update, frames=timesteps, interval=0.1)
+    ani.save("covariance_evolution.mp4", writer="ffmpeg")  # Remove/save as needed
+    plt.show()
+
+
 if __name__ == '__main__':
-    test_smile()
+    test_multivariate_normal()
+    # test_smile()
     # sampling_test()
     pass

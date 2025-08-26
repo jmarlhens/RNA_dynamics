@@ -152,8 +152,8 @@ def main(circuits_to_fit=None):
     os.makedirs(output_dir, exist_ok=True)
     circs_ident = '-'.join(circuits_to_fit).replace('/', '-') if circuits_to_fit is not None else "ALL_AVAILABLE"
     with open(f"{output_dir}{circs_ident}_{timestamp}.out", "w") as log:
-        sys.stdout = log
-        sys.stderr = log
+        # sys.stdout = log
+        # sys.stderr = log
 
         # List available circuits to verify
         available_circuits = circuit_manager.list_circuits()

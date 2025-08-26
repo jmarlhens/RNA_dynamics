@@ -7,11 +7,11 @@ from simulations_and_analysis.individual import individual_circuits_run_mcmc
 
 def main(num_processes=1, waiting_time=5):
     circuits_to_fit = [
-        # "constitutive sfGFP",                   # J
-        # "sense_star_6",                       # J
-        # "toehold_trigger",                    # J
-        # "star_antistar_1",                    # J
-        # "trigger_antitrigger",                # J
+        "constitutive sfGFP",                   # J
+        "sense_star_6",                       # J
+        "toehold_trigger",                    # J
+        "star_antistar_1",                    # J
+        "trigger_antitrigger",                # J
         "cascade",
         "cffl_type_1",
         "inhibited_incoherent_cascade",
