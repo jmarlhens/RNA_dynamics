@@ -1,21 +1,20 @@
 import os.path
 import time
 
-import pandas as pd
 import scipy.stats
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import Ellipse
 from tqdm import tqdm
 
 from optimization.mcmc_utils import convergence_test, animate_parameter_trace_2D, plot_traces
 from optimization.optimization_algorithm import OptimizationAlgorithm
+from optimization.proposal_methods import RAMProposal, GeneralizedAdaptiveProposal
 
 
 class ParallelTempering(OptimizationAlgorithm):
 
-    def __init__(self, log_likelihood, log_prior, n_dim, n_walkers=1, n_chains=10, swap_round_period=200,
+    def __init__(self, log_likelihood, log_prior, n_dim, n_walkers=1, n_chains=10, swap_round_period=100,
                  proposal_function=None):
         self.log_likelihood = log_likelihood
         self.log_prior = log_prior
@@ -29,72 +28,15 @@ class ParallelTempering(OptimizationAlgorithm):
         swap_mask[:, ::2] = 1
         self.swap_mask = swap_mask
 
-        self.temperatures = np.power(2, np.arange(self.n_chains), dtype=float)
+        self.temperatures = np.power(4, np.arange(self.n_chains), dtype=float)
         self.temperatures[-1] = np.inf
         # Value choice follows Vousden et al. 2016
 
         # Diffs of T_2 - T_1, ..., T_(N-1) - T_(N-2). The diff T_N - T_(N-1) is excluded by purpose following 1 < i < N for the S_i
 
         if proposal_function is None:
-            class AdaptiveProposal:
-
-                def __init__(self, n_walkers, n_chains, n_dim,
-                             target_acceptance_rate=0.234,
-                             inital_variance=0.1):
-
-                    self.target_acceptance_rate = target_acceptance_rate
-
-                    variance = np.ones(shape=(n_walkers, n_chains, n_dim, n_dim))
-                    variance = variance * np.expand_dims(np.arange(1, n_chains + 1) / n_chains * 10, axis=(0, -2, -1))
-                    variance = variance * np.eye(n_dim, n_dim)  # Make variables independent initially
-                    variance *= inital_variance
-                    self.L_variance = np.linalg.cholesky(variance)
-
-                    self.params_shape = (n_walkers, n_chains, n_dim)
-
-                    c = 0.5  # In the range (0, 1]
-                    e = 0.01  # In the range (0.5, 1)
-                    self.nu = lambda n: c * (n + 1) ** (-e)
-                    self.move = 0
-                    self.covariances = []
-
-                def __call__(self, prev_state=None):
-                    shape = self.params_shape
-                    # Perform multivariate batch sampling
-
-                    samples = np.random.normal(size=np.prod(shape))
-                    samples = samples.reshape(shape)
-                    L = self.L_variance
-                    move = np.squeeze(L @ np.expand_dims(samples, axis=-1))
-                    self.move = move
-
-                    if prev_state is None:
-                        state = move
-                    else:
-                        state = np.array(prev_state)
-                        state = state + move
-
-                    return state
-
-                def update_proposal(self, parameters, priors, likelihoods, step_accepts, alpha, iN):
-                    # Alternatively, check if the proposed move needs to be considered instead of the move taken
-                    raise Exception("Implement other scheme")
-                    L = self.L_variance
-
-                    U = self.move  # parameters[iN] - parameters[iN - 1] if iN > 0 else parameters[iN]
-                    M = np.expand_dims(U, 3) @ np.expand_dims(U, 2)
-                    m = np.power(np.linalg.norm(U), 2)
-                    M = M / m
-                    I = np.expand_dims(np.eye(L.shape[3]), (0, 1))
-                    COV = L @ (I + self.nu(iN) * np.expand_dims(alpha - self.target_acceptance_rate,
-                                                                (2, 3)) * M) @ np.transpose(L, axes=(0, 1, 3, 2))
-
-                    # print(COV[0][0])
-                    self.L_variance = np.linalg.cholesky(COV)
-
-                    self.covariances.append(COV)
-
-            proposal_function = AdaptiveProposal(n_walkers, n_chains, n_dim)
+            # proposal_function = RAMProposal(n_walkers, n_chains, n_dim)
+            proposal_function = GeneralizedAdaptiveProposal(n_walkers, n_chains, n_dim)
 
         self.proposal_function = proposal_function
         # self.file = None
@@ -624,8 +566,10 @@ def visualize_covariance_evolution(means, covariances):
     import matplotlib.patches as patches
     import matplotlib.animation as animation
 
-    xlim = np.min(means[:, 0] - 4 * np.sqrt(covariances[:, 0, 0])), np.max(means[:, 0] + 4 * np.sqrt(covariances[:, 0, 0]))
-    ylim = np.min(means[:, 1] - 4 * np.sqrt(covariances[:, 1, 1])), np.max(means[:, 1] + 4 * np.sqrt(covariances[:, 1, 1]))
+    xlim = np.min(means[:, 0] - 4 * np.sqrt(covariances[:, 0, 0])), np.max(
+        means[:, 0] + 4 * np.sqrt(covariances[:, 0, 0]))
+    ylim = np.min(means[:, 1] - 4 * np.sqrt(covariances[:, 1, 1])), np.max(
+        means[:, 1] + 4 * np.sqrt(covariances[:, 1, 1]))
 
     def confidence_ellipse(ax, mean, cov, n_std=1.0, **kwargs):
         from matplotlib.transforms import Affine2D
@@ -677,7 +621,6 @@ def visualize_covariance_evolution(means, covariances):
     fig, axs = plt.subplots(dims, dims, figsize=(2.5 * dims, 2.5 * dims))
 
     plt.tight_layout()
-
 
     def update(frame):
         plot_cov_matrix(axs, means[frame], covariances[frame])

@@ -13,12 +13,12 @@ def main(num_processes=1, waiting_time=5):
         "star_antistar_1",                    # J
         "trigger_antitrigger",                # J
         "cascade",
-        "cffl_type_1",
-        "inhibited_incoherent_cascade",
-        "inhibited_cascade",
-        "or_gate_c1ffl",
-        "iffl_1",
-        "cffl_12",
+        # "cffl_type_1",
+        # "inhibited_incoherent_cascade",
+        # "inhibited_cascade",
+        # "or_gate_c1ffl",
+        # "iffl_1",
+        # "cffl_12",
     ]
 
     print(f"STARTING EXECUTION OF ALL CIRCUITS WITH {num_processes} PROCESSES")

@@ -24,7 +24,7 @@ def fit_single_circuit(
         priors,
         min_time=30,  # 30
         max_time=210,  # 210
-        n_samples=100000,  # 20000,
+        n_samples=50000,  # 20000,
         n_walkers=5,  # 5
         n_chains=12,  # 10
 ):
@@ -183,12 +183,12 @@ def main(circuits_to_fit=None):
                 # "star_antistar_1",                    # J
                 # "trigger_antitrigger",                # J
                 "cascade",
-                "cffl_type_1",
-                "inhibited_incoherent_cascade",
-                "inhibited_cascade",
-                "or_gate_c1ffl",
-                "iffl_1",
-                "cffl_12",
+                # "cffl_type_1",
+                # "inhibited_incoherent_cascade",
+                # "inhibited_cascade",
+                # "or_gate_c1ffl",
+                # "iffl_1",
+                # "cffl_12",
             ]
 
         # for circuit_name in ["cffl_12", "iffl_1", "inhibited_cascade"]:
