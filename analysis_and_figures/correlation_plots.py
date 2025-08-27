@@ -27,7 +27,8 @@ def create_circuit_correlation_matrices(
     elif n_rows == 1:
         axes = axes.reshape(1, -1)
 
-    axes = axes.flatten()
+    if n_circuits > n_rows * n_cols:
+        axes = axes.flatten()
 
     for idx, (circuit_name, circuit_data) in enumerate(individual_circuit_fits.items()):
         ax = axes[idx]

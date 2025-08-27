@@ -91,6 +91,7 @@ def create_hierarchical_histogram_grid(
     ridge_offset: float = -1.0,
     ridge_bw_adjust: float = 0.5,
     ridge_label_pad: float = 1.1,
+    true_theta: pd.DataFrame = None,
 ):
     """
     Grid of parameter distributions (Circuits vs Priors) with enhanced global alpha visualization
@@ -119,6 +120,8 @@ def create_hierarchical_histogram_grid(
     }
 
     for idx, param in enumerate(parameter_names_list):
+        print(f"Plotting parameter: {param}")
+
         ax = axes[idx]
 
         # Look up Prior μ and σ
@@ -127,19 +130,11 @@ def create_hierarchical_histogram_grid(
         if not prior_data.empty and not np.isnan(prior_data[param].iloc[0]):
             prior_mean = prior_data[param].iloc[0]
 
-            std_candidates = [
-                f"{param}_log10stdev",
-                f"{param}_log10stdv",
-                "log10stdev",
-                "log10stdv",
-                f"{param}_stdev",
-                f"{param}_stdv",
-                f"{param}_std",
-            ]
-            prior_std = next(
-                (prior_data[c].iloc[0] for c in std_candidates if c in prior_data),
-                np.nan,
-            )
+            # prior_parameter_mean = prior_data[param].iloc[0]
+
+            # Get prior standard deviation directly
+            std_column_name = f"{param}_log10stdev"
+            prior_std = prior_data[std_column_name].iloc[0]
 
         # Determine the left-most x coordinate
         circuit_and_global_min = circuit_and_global_data[param].min()
@@ -186,17 +181,36 @@ def create_hierarchical_histogram_grid(
 
             if not np.isnan(prior_std):
                 ax.axvline(
-                    prior_mean - prior_std,
+                    prior_mean - 1.96 * prior_std,
                     ls=":",
                     lw=1.0,
                     color="red",
-                    label=("±1 σ" if idx == 1 else None),
+                    label=("±1.96 σ" if idx == 1 else None),
                     zorder=9,
                 )
+                print(f"Prior {param} mean: {prior_mean}, std: {prior_std}")
                 ax.axvline(
-                    prior_mean + prior_std, ls=":", lw=1.0, color="red", zorder=9
+                    prior_mean + 1.96 * prior_std, ls=":", lw=1.0, color="red", zorder=9
                 )
 
+            # Add true theta line if provided
+            if true_theta is not None and param in true_theta.columns:
+                true_theta_value = true_theta[param].iloc[0]
+                ax.axvline(
+                    true_theta_value,
+                    ls="--",
+                    lw=1.5,
+                    color="blue",
+                    label=("True θ" if idx == 1 else None),
+                    zorder=9,
+                )
+                print(f"True {param} value: {true_theta_value}")
+
+        print(
+            f"Parameter {param} min: {circuit_and_global_min}, prior lower: {prior_lower}"
+        )
+        print(f"Label anchor for {param}: {label_anchor}")
+        print(f"X-axis range for {param}: {ax.get_xlim()}")
         ax.set_xlim(left=min(label_anchor, ax.get_xlim()[0]))
         ax.set_title(param, fontsize=10)
 
@@ -234,6 +248,7 @@ def create_circuit_prior_comparison_pairplot(
     pairplot_filepath,
     diagonal_visualization_type="kde",
     offdiagonal_visualization_type="scatter",
+    true_theta=None,
 ):
     """
     diagonal_visualization_type: 'hist', 'kde', 'auto'
@@ -301,10 +316,29 @@ def create_circuit_prior_comparison_pairplot(
                     zorder=10,
                 )
 
+                # Add true theta line if provided
+                if true_theta is not None:
+                    true_theta_x_coordinate = true_theta[col_parameter_name].iloc[0]
+                    true_theta_y_coordinate = true_theta[row_parameter_name].iloc[0]
+                    subplot_axis.scatter(
+                        true_theta_x_coordinate,
+                        true_theta_y_coordinate,
+                        marker="o",
+                        s=120,
+                        c="blue",
+                        linewidths=4,
+                        label="True θ",
+                        zorder=10,
+                    )
+
             else:  # Diagonal histograms
                 prior_parameter_mean = prior_mean_coordinates[row_parameter_name].iloc[
                     0
                 ]
+
+                # Get prior standard deviation directly
+                std_column_name = f"{row_parameter_name}_log10stdev"
+                prior_parameter_std = prior_mean_coordinates[std_column_name].iloc[0]
 
                 # Add vertical line at prior mean
                 subplot_axis.axvline(
@@ -316,19 +350,48 @@ def create_circuit_prior_comparison_pairplot(
                     zorder=10,
                 )
 
-    pairplot_figure.fig.suptitle(
-        "Circuit-Specific Parameters vs Prior Means\n"
-        "Red crosses: Prior means, Distributions: Circuit posteriors",
-        y=1.02,
-        fontsize=14,
-    )
+                if not np.isnan(prior_parameter_std):
+                    subplot_axis.axvline(
+                        prior_parameter_mean - 1.96 * prior_parameter_std,
+                        color="red",
+                        linestyle=":",
+                        linewidth=2,
+                        label="±1.96 σ" if row_param_index == 0 else None,
+                        zorder=10,
+                    )
+                    subplot_axis.axvline(
+                        prior_parameter_mean + 1.96 * prior_parameter_std,
+                        color="red",
+                        linestyle=":",
+                        linewidth=2,
+                        zorder=10,
+                    )
 
-    # Adjust legend
-    pairplot_figure._legend.set_title("Parameter Groups")
-    pairplot_figure._legend.set_bbox_to_anchor((1.05, 0.8))
+                # true theta line
+                if true_theta is not None:
+                    true_theta_value = true_theta[row_parameter_name].iloc[0]
+                    subplot_axis.axvline(
+                        true_theta_value,
+                        color="blue",
+                        linestyle="--",
+                        linewidth=3,
+                        label="True θ",
+                        zorder=10,
+                    )
+
+    # pairplot_figure.fig.suptitle(
+    #     "Circuit-Specific Parameters vs Prior Means\n"
+    #     "Red crosses: Prior means, Distributions: Circuit posteriors",
+    #     y=1.02,
+    #     fontsize=14,
+    # )
+    #
+    # # Adjust legend
+    # pairplot_figure._legend.set_title("Parameter Groups")
+    # pairplot_figure._legend.set_bbox_to_anchor((1.05, 0.8))
 
     # plt.tight_layout()
-    plt.savefig(pairplot_filepath, dpi=300, bbox_inches="tight")
+    plt.savefig(pairplot_filepath, dpi=200, bbox_inches="tight")
     plt.close()
 
     print(f"Circuit-prior comparison pairplot saved: {pairplot_filepath}")

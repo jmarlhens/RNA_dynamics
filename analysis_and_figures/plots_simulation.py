@@ -4,6 +4,262 @@ import pandas as pd
 from typing import Optional, Literal
 
 
+def plot_single_circuit_two_column(
+    circuit_key: str,
+    circuit_data: dict,
+    circuit_trajectory_data: pd.DataFrame,
+    results_dataframe: pd.DataFrame,
+    simulation_mode: Literal["individual", "summary"] = "individual",
+    summary_type: Literal["median_iqr", "mean_std"] = "median_iqr",
+    percentile_bounds: tuple = (25, 75),
+    individual_alpha: float = 0.15,
+    ribbon_alpha: float = 0.25,
+    figsize: Optional[tuple] = None,
+) -> plt.Figure:
+    """
+    Plot single circuit with experimental | simulation two-column layout.
+    Extracted core logic from plot_circuit_conditions_overlay for single circuit.
+    """
+    circuit_config = circuit_data["config"]
+    condition_names = list(circuit_config.condition_params.keys())
+
+    if figsize is None:
+        figsize = (12, 4)
+
+    figure = plt.figure(figsize=figsize)
+
+    # Generate consistent colors for conditions
+    condition_colors = plt.cm.Set1(np.linspace(0, 1, len(condition_names)))
+    condition_color_mapping = dict(zip(condition_names, condition_colors))
+
+    # Extract y-limits and summary data using existing helpers
+    experimental_y_limits = extract_circuit_experimental_ylimits(
+        {circuit_key: circuit_data}
+    )
+    summary_dataframe = compute_trajectory_statistical_summaries(
+        circuit_trajectory_data, simulation_mode, summary_type, percentile_bounds
+    )
+
+    # Create subplot pair: experimental | simulation
+    experimental_axis = plt.subplot(1, 2, 1)
+    simulation_axis = plt.subplot(1, 2, 2)
+
+    for condition_name in condition_names:
+        condition_color = condition_color_mapping[condition_name]
+
+        # Plot experimental data (left subplot)
+        condition_experimental_data = circuit_config.experimental_data[
+            circuit_config.experimental_data["condition"] == condition_name
+        ]
+
+        experimental_axis.scatter(
+            condition_experimental_data["time"],
+            condition_experimental_data["fluorescence"],
+            color=condition_color,
+            alpha=0.7,
+            s=15,
+            label=condition_name,
+            marker="o",
+        )
+
+        # Plot simulation data (right subplot)
+        if simulation_mode == "individual":
+            condition_trajectories = circuit_trajectory_data[
+                circuit_trajectory_data["condition"] == condition_name
+            ]
+
+            for param_set_idx in condition_trajectories["param_set_idx"].unique():
+                param_trajectory = condition_trajectories[
+                    condition_trajectories["param_set_idx"] == param_set_idx
+                ]
+
+                simulation_axis.plot(
+                    param_trajectory["time"],
+                    param_trajectory["protein_concentration"],
+                    color=condition_color,
+                    alpha=individual_alpha,
+                    zorder=1,
+                )
+
+            # Add condition label only once per condition
+            if len(condition_trajectories) > 0:
+                simulation_axis.plot(
+                    [], [], color=condition_color, label=condition_name, linewidth=2
+                )
+
+        else:  # summary mode
+            condition_summary = summary_dataframe[
+                summary_dataframe["condition"] == condition_name
+            ]
+
+            if len(condition_summary) > 0:
+                simulation_axis.plot(
+                    condition_summary["time"],
+                    condition_summary["central"],
+                    color=condition_color,
+                    linewidth=2,
+                    label=condition_name,
+                )
+                simulation_axis.fill_between(
+                    condition_summary["time"],
+                    condition_summary["lower"],
+                    condition_summary["upper"],
+                    alpha=ribbon_alpha,
+                    color=condition_color,
+                )
+
+    # Set axis properties
+    for axis, title_suffix in [
+        (experimental_axis, "Experimental"),
+        (simulation_axis, "Simulation"),
+    ]:
+        axis.set_ylim(*experimental_y_limits[circuit_key])
+        axis.set_xlabel("Time (min)")
+        axis.set_ylabel("Protein Concentration (nM)")
+        axis.set_title(f"{circuit_config.name} - {title_suffix}")
+        axis.grid(True, alpha=0.3)
+        axis.legend(loc="upper right", fontsize="small")
+
+    # Set figure title
+    mode_label = (
+        "Individual Trajectories"
+        if simulation_mode == "individual"
+        else f"{summary_type.replace('_', ' ').title()}"
+    )
+    plt.suptitle(f"{circuit_config.name}: Experimental | {mode_label}", fontsize=14)
+    plt.tight_layout()
+
+    return figure
+
+
+def plot_single_circuit_overlay(
+    circuit_key: str,
+    circuit_data: dict,
+    circuit_trajectory_data: pd.DataFrame,
+    results_dataframe: pd.DataFrame,
+    simulation_mode: Literal["individual", "summary"] = "individual",
+    summary_type: Literal["median_iqr", "mean_std"] = "median_iqr",
+    percentile_bounds: tuple = (25, 75),
+    individual_alpha: float = 0.15,
+    ribbon_alpha: float = 0.25,
+    figsize: Optional[tuple] = None,
+    title_true: bool = True,
+) -> plt.Figure:
+    """
+    Plot single circuit with experimental and simulation overlaid in one subplot.
+    """
+    circuit_config = circuit_data["config"]
+    condition_names = list(circuit_config.condition_params.keys())
+
+    if figsize is None:
+        figsize = (8, 6)
+
+    figure, axis = plt.subplots(figsize=figsize)
+
+    # Generate consistent colors for conditions
+    condition_colors = plt.cm.Set1(np.linspace(0, 1, len(condition_names)))
+    condition_color_mapping = dict(zip(condition_names, condition_colors))
+
+    # Extract y-limits and summary data using existing helpers
+    experimental_y_limits = extract_circuit_experimental_ylimits(
+        {circuit_key: circuit_data}
+    )
+    summary_dataframe = compute_trajectory_statistical_summaries(
+        circuit_trajectory_data, simulation_mode, summary_type, percentile_bounds
+    )
+
+    for condition_name in condition_names:
+        condition_color = condition_color_mapping[condition_name]
+
+        # Plot experimental data
+        condition_experimental_data = circuit_config.experimental_data[
+            circuit_config.experimental_data["condition"] == condition_name
+        ]
+
+        axis.scatter(
+            condition_experimental_data["time"],
+            condition_experimental_data["fluorescence"],
+            color=condition_color,
+            alpha=0.8,
+            s=25,
+            label=condition_name,
+            marker="o",
+            zorder=3,
+        )
+
+        # Plot simulation data
+        if simulation_mode == "individual":
+            condition_trajectories = circuit_trajectory_data[
+                circuit_trajectory_data["condition"] == condition_name
+            ]
+
+            for param_set_idx in condition_trajectories["param_set_idx"].unique():
+                param_trajectory = condition_trajectories[
+                    condition_trajectories["param_set_idx"] == param_set_idx
+                ]
+
+                axis.plot(
+                    param_trajectory["time"],
+                    param_trajectory["protein_concentration"],
+                    color=condition_color,
+                    alpha=individual_alpha,
+                    zorder=1,
+                )
+
+            # Add condition label for simulation trajectories
+            # if len(condition_trajectories) > 0:
+            #     axis.plot(
+            #         [], [], color=condition_color, label=f"{condition_name} (Sim)",
+            #         linewidth=2, alpha=0.7
+            #     )
+
+        else:  # summary mode
+            condition_summary = summary_dataframe[
+                summary_dataframe["condition"] == condition_name
+            ]
+
+            if len(condition_summary) > 0:
+                axis.plot(
+                    condition_summary["time"],
+                    condition_summary["central"],
+                    color=condition_color,
+                    linewidth=2,
+                    label=f"{condition_name} (Sim)",
+                    alpha=0.8,
+                )
+                axis.fill_between(
+                    condition_summary["time"],
+                    condition_summary["lower"],
+                    condition_summary["upper"],
+                    alpha=ribbon_alpha,
+                    color=condition_color,
+                )
+
+    # Set axis properties
+    axis.set_ylim(*experimental_y_limits[circuit_key])
+    axis.set_xlabel("Time (min)", fontsize=14)
+    # x label fontsize
+    axis.tick_params(axis="x", labelsize=12)
+    axis.tick_params(axis="y", labelsize=12)
+    axis.set_ylabel("Protein Concentration (nM)", fontsize=14)
+    axis.grid(True, alpha=0.3)
+    axis.legend(loc="upper left", fontsize="small")
+
+    # Set title
+    mode_label = (
+        "Individual Trajectories"
+        if simulation_mode == "individual"
+        else f"{summary_type.replace('_', ' ').title()}"
+    )
+    if title_true:
+        plt.title(
+            f"{circuit_config.name}: Experimental & {mode_label} Overlay", fontsize=14
+        )
+    plt.tight_layout()
+
+    return figure
+
+
 def extract_circuit_experimental_ylimits(simulation_data_dict: dict) -> dict:
     """Extract y-axis limits from experimental fluorescence data per circuit."""
     experimental_ylimits = {}
@@ -81,6 +337,14 @@ def extract_trajectory_data(
 
                 # Get likelihood
                 likelihood_col = ("likelihood", circuit_config.name, condition_name)
+                # print(f"Circuit: {circuit_key}")
+                # print(f"Config name: '{circuit_config.name}'")
+                # print(f"Condition: '{condition_name}'")
+                # print(f"param_set_idx: {param_set_idx}, df length: {len(results_dataframe)}")
+                # print(f"Likelihood column exists: {likelihood_col in results_dataframe.columns}")
+                # if likelihood_col in results_dataframe.columns:
+                #     print(f"Likelihood value: {results_dataframe.loc[param_set_idx, likelihood_col]}")
+                # print("---")
                 log_likelihood = (
                     results_dataframe.loc[param_set_idx, likelihood_col]
                     if likelihood_col in results_dataframe.columns
@@ -113,6 +377,7 @@ def plot_circuit_conditions_overlay(
     individual_alpha: float = 0.15,
     ribbon_alpha: float = 0.25,
     figsize: Optional[tuple] = None,
+    show_title: bool = True,
 ) -> plt.Figure:
     """
     Plot circuits with conditions overlaid: experimental scatter (left) | simulations (right).
@@ -234,18 +499,22 @@ def plot_circuit_conditions_overlay(
             axis.set_ylabel("Protein Concentration (nM)")
             axis.set_title(f"{circuit_config.name} - {title_suffix}")
             axis.grid(True, alpha=0.3)
-            axis.legend(loc="upper right", fontsize="small")
+            axis.legend(loc="upper left", fontsize="small")
 
     # Set figure title
-    if simulation_mode == "individual":
-        figure_title = (
-            "Circuit Conditions Overlay: Experimental | Individual Trajectories"
-        )
-    else:
-        summary_label = "Median ± IQR" if summary_type == "median_iqr" else "Mean ± Std"
-        figure_title = f"Circuit Conditions Overlay: Experimental | {summary_label}"
+    if show_title:
+        if simulation_mode == "individual":
+            figure_title = (
+                "Circuit Conditions Overlay: Experimental | Individual Trajectories"
+            )
+        else:
+            summary_label = (
+                "Median ± IQR" if summary_type == "median_iqr" else "Mean ± Std"
+            )
+            figure_title = f"Circuit Conditions Overlay: Experimental | {summary_label}"
 
-    plt.suptitle(figure_title, fontsize=16, y=0.98)
+        plt.suptitle(figure_title, fontsize=16, y=0.98)
+
     plt.tight_layout()
     return figure
 
@@ -260,6 +529,8 @@ def plot_circuit_simulations(
     individual_alpha: float = 0.3,
     ribbon_alpha: float = 0.25,
     figsize: Optional[tuple] = None,
+    show_title: bool = True,
+    normalize_fluorescence: bool = False,
 ) -> plt.Figure:
     """
     Unified function to plot circuit simulation results.
@@ -290,8 +561,14 @@ def plot_circuit_simulations(
     plt.Figure
         The generated figure
     """
-
-    trajectory_df = extract_trajectory_data(simulation_data_dict, results_dataframe)
+    # param = "K_tl"
+    trajectory_dataframe = extract_trajectory_data(
+        simulation_data_dict, results_dataframe
+    )
+    if normalize_fluorescence:
+        trajectory_dataframe["protein_concentration"] = trajectory_dataframe.groupby(
+            "param_set_idx"
+        )["protein_concentration"].transform(lambda x: x / x.max())
 
     # Setup subplot grid
     circuit_count = len(simulation_data_dict)
@@ -306,8 +583,14 @@ def plot_circuit_simulations(
 
     # Extract experimental y-limits and statistical summaries using helpers
     experimental_y_limits = extract_circuit_experimental_ylimits(simulation_data_dict)
+    if normalize_fluorescence:
+        # Normalize experimental data if required
+        experimental_y_limits = {
+            circuit_key: (0, 1.05) for circuit_key in experimental_y_limits.keys()
+        }
+
     summary_df = compute_trajectory_statistical_summaries(
-        trajectory_df, plot_mode, summary_type, percentile_bounds
+        trajectory_dataframe, plot_mode, summary_type, percentile_bounds
     )
 
     # Plot each circuit
@@ -320,6 +603,39 @@ def plot_circuit_simulations(
         # Generate colors for conditions (used in summary mode)
         condition_colors = plt.cm.Set1(np.linspace(0, 1, len(condition_names)))
 
+        # Calculate circuit-level likelihood normalization once per row
+        circuit_likelihood_norm = None
+        cmap = plt.cm.viridis
+        if plot_mode == "individual":
+            circuit_trajectory_data = trajectory_dataframe[
+                trajectory_dataframe["circuit"] == circuit_key
+            ]
+            circuit_likelihoods = circuit_trajectory_data["log_likelihood"]
+            circuit_likelihood_min = np.percentile(
+                circuit_likelihoods, likelihood_percentile_range
+            )
+            circuit_likelihood_max = np.percentile(
+                circuit_likelihoods, 100 - likelihood_percentile_range
+            )
+            circuit_likelihood_norm = plt.Normalize(
+                vmin=circuit_likelihood_min, vmax=circuit_likelihood_max
+            )
+
+            # parameter_values = results_dataframe["log_parameters"][param]
+            # circuit_likelihood_norm = plt.Normalize(vmin=np.percentile(parameter_values, likelihood_percentile_range),
+            #                                vmax=np.percentile(parameter_values, 100 - likelihood_percentile_range))
+            #
+
+        # Normalize experimental data if required
+        if normalize_fluorescence:
+            circuit_experimental_max = circuit_config.experimental_data[
+                "fluorescence"
+            ].max()
+            circuit_config.experimental_data["fluorescence"] = (
+                circuit_config.experimental_data["fluorescence"]
+                / circuit_experimental_max
+            )
+
         for condition_idx, condition_name in enumerate(condition_names):
             ax = plt.subplot(
                 circuit_count,
@@ -329,44 +645,37 @@ def plot_circuit_simulations(
 
             # Plot simulation data based on mode
             if plot_mode == "individual":
-                circuit_trajectories = trajectory_df[
-                    trajectory_df["circuit"] == circuit_key
+                circuit_trajectory_data = trajectory_dataframe[
+                    trajectory_dataframe["circuit"] == circuit_key
                 ]
-                condition_trajectories = circuit_trajectories[
-                    circuit_trajectories["condition"] == condition_name
+                condition_trajectories = circuit_trajectory_data[
+                    circuit_trajectory_data["condition"] == condition_name
                 ]
 
                 if len(condition_trajectories) > 0:
-                    # Setup likelihood colormap
-                    likelihoods = condition_trajectories["log_likelihood"]
-                    min_ll = np.percentile(likelihoods, likelihood_percentile_range)
-                    max_ll = np.percentile(
-                        likelihoods, 100 - likelihood_percentile_range
-                    )
-                    norm = plt.Normalize(vmin=min_ll, vmax=max_ll)
-                    cmap = plt.cm.viridis
-
-                    # Plot individual trajectories
+                    # Plot individual trajectories using circuit-level normalization
                     for param_set_idx in condition_trajectories[
                         "param_set_idx"
                     ].unique():
                         param_data = condition_trajectories[
                             condition_trajectories["param_set_idx"] == param_set_idx
                         ]
+
                         likelihood = param_data["log_likelihood"].iloc[0]
+                        # likelihood = results_dataframe["log_parameters", param].loc[param_set_idx]
 
                         ax.plot(
                             param_data["time"],
                             param_data["protein_concentration"],
-                            color=cmap(norm(likelihood)),
+                            color=cmap(circuit_likelihood_norm(likelihood)),
                             alpha=individual_alpha,
                             zorder=1,
                         )
 
                     plt.colorbar(
-                        plt.cm.ScalarMappable(norm=norm, cmap=cmap),
+                        plt.cm.ScalarMappable(norm=circuit_likelihood_norm, cmap=cmap),
                         ax=ax,
-                        label="Log-likelihood",
+                        # label=param,
                     )
 
             else:  # summary mode
@@ -423,7 +732,15 @@ def plot_circuit_simulations(
             # Set common axis properties
             ax.set_ylim(*experimental_y_limits[circuit_key])
             ax.set_xlabel("Time (min)")
-            ax.set_ylabel("Protein Concentration (nM)" if condition_idx == 0 else "")
+
+            if normalize_fluorescence:
+                ax.set_ylabel(
+                    "Normalized Protein Concentration" if condition_idx == 0 else ""
+                )
+            else:
+                ax.set_ylabel(
+                    "Protein Concentration (nM)" if condition_idx == 0 else ""
+                )
 
             if plot_mode == "individual":
                 ax.set_title(condition_name)
@@ -433,17 +750,20 @@ def plot_circuit_simulations(
             ax.grid(True, alpha=0.3)
 
     # Set figure title based on mode
-    if plot_mode == "individual":
-        plt.suptitle(
-            "Individual Circuit Trajectories (colored by likelihood)",
-            fontsize=16,
-            y=0.98,
-        )
-    else:
-        summary_label = "Median ± IQR" if summary_type == "median_iqr" else "Mean ± Std"
-        plt.suptitle(
-            f"Circuit Simulation Results ({summary_label})", fontsize=16, y=0.98
-        )
+    if show_title:
+        if plot_mode == "individual":
+            plt.suptitle(
+                "Individual Circuit Trajectories (colored by likelihood)",
+                fontsize=16,
+                y=0.98,
+            )
+        else:
+            summary_label = (
+                "Median ± IQR" if summary_type == "median_iqr" else "Mean ± Std"
+            )
+            plt.suptitle(
+                f"Circuit Simulation Results ({summary_label})", fontsize=16, y=0.98
+            )
 
     plt.tight_layout()
     return fig
