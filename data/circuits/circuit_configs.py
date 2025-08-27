@@ -12,6 +12,7 @@ DATA_FILES = {
     "cffl_type_1": "../../data/data_parameter_estimation/c1_ffl_and.csv",
     "star_antistar_1": "../../data/data_parameter_estimation/star_antistar.csv",
     "constitutive sfGFP": "../../data/data_parameter_estimation/positive_control_sfGFP.csv",
+    "constitutive sfGFP sim": "../../data/data_parameter_estimation/constitutive_sfGFP_simulated_data_au.csv",
     "cffl_12": "../../data/data_parameter_estimation/C-1,2-FFL.csv",
     "c-1fffl_or": "../../data/data_parameter_estimation/SI C-1FFL OR-based.csv",
     "inhibited_cascade": "../../data/data_parameter_estimation/antiTrigger with Cascade.csv",
@@ -32,6 +33,13 @@ CIRCUIT_CONDITIONS = {
             "k_sfGFP_concentration": 3,
             "k_Sense6_Trigger3_concentration": 5,
             "k_Star6_concentration": 15,
+        },
+    },
+    "constitutive sfGFP sim": {
+        "sfGFP 3 nM": {
+            "k_sfGFP_concentration": 3,
+            "k_Sense6_Trigger3_concentration": 0,
+            "k_Star6_concentration": 0,
         },
     },
     "trigger_antitrigger": {
