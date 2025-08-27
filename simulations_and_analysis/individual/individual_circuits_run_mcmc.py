@@ -2,7 +2,10 @@ import argparse
 import os
 import sys
 from datetime import datetime
+
+import numpy as np
 import pandas as pd
+import scipy.signal
 
 from likelihood_functions.config import CircuitConfig
 from likelihood_functions.base import CircuitFitter
@@ -77,6 +80,7 @@ def fit_single_circuit(
     os.makedirs("../../data/fit_data/individual_circuits_buffer/", exist_ok=True)
     os.makedirs("../../data/fit_data/individual_circuits/", exist_ok=True)
     os.makedirs("../../data/fit_data/individual_circuits/trajectories/", exist_ok=True)
+    os.makedirs("../../data/fit_data/individual_circuits/analysis_trajectories/", exist_ok=True)
 
     buffer_writer = MCMCResultsWriter(
         path=f"../../data/fit_data/individual_circuits_buffer/buffer_{safe_circuit_name}_{timestamp}.csv",
@@ -111,6 +115,18 @@ def fit_single_circuit(
         plot_traces(data=parameters[len(parameters) - size:],
                     file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_{size}.pdf",
                     param_names=parameters_to_fit)
+
+    N = 100
+    convolve = scipy.signal.convolve
+    plot_traces(data=np.expand_dims(convolve(step_accepts, np.expand_dims(np.ones(N)/N, axis=(1, 2)), mode='same'), axis=2),
+                file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/step_accepts_{safe_circuit_name}_{timestamp}.pdf",
+                param_names=[f"Chain {iX}" for iX in range(step_accepts.shape[-1])])
+
+
+    plot_traces(data=np.expand_dims(convolve(swap_accepts, np.expand_dims(np.ones(N)/N, axis=(1, 2)), mode='same'), axis=2),
+                file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/swap_accepts_{safe_circuit_name}_{timestamp}.pdf",
+                param_names=[f"Chain {iX} and Chain {iX + 1}" for iX in range(swap_accepts.shape[-1])])
+
 
     print("Plotted trajectories", flush=True)
 
@@ -152,8 +168,8 @@ def main(circuits_to_fit=None):
     os.makedirs(output_dir, exist_ok=True)
     circs_ident = '-'.join(circuits_to_fit).replace('/', '-') if circuits_to_fit is not None else "ALL_AVAILABLE"
     with open(f"{output_dir}{circs_ident}_{timestamp}.out", "w") as log:
-        # sys.stdout = log
-        # sys.stderr = log
+        sys.stdout = log
+        sys.stderr = log
 
         # List available circuits to verify
         available_circuits = circuit_manager.list_circuits()
@@ -177,12 +193,12 @@ def main(circuits_to_fit=None):
         # Fit each circuit individually
         if circuits_to_fit is None:
             circuits_to_fit = [
-                # "constitutive sfGFP",                   # J
+                "constitutive sfGFP",                   # J
                 # "sense_star_6",                       # J
                 # "toehold_trigger",                    # J
                 # "star_antistar_1",                    # J
                 # "trigger_antitrigger",                # J
-                "cascade",
+                # "cascade",
                 # "cffl_type_1",
                 # "inhibited_incoherent_cascade",
                 # "inhibited_cascade",

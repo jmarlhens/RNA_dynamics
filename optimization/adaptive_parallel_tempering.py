@@ -7,14 +7,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 
-from optimization.mcmc_utils import convergence_test, animate_parameter_trace_2D, plot_traces
+from optimization.mcmc_utils import convergence_test, plot_traces
 from optimization.optimization_algorithm import OptimizationAlgorithm
 from optimization.proposal_methods import RAMProposal, GeneralizedAdaptiveProposal
 
 
 class ParallelTempering(OptimizationAlgorithm):
 
-    def __init__(self, log_likelihood, log_prior, n_dim, n_walkers=1, n_chains=10, swap_round_period=100,
+    def __init__(self, log_likelihood, log_prior, n_dim, n_walkers=1, n_chains=10, swap_round_period=10,
                  proposal_function=None):
         self.log_likelihood = log_likelihood
         self.log_prior = log_prior
