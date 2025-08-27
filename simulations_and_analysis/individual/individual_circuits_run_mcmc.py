@@ -10,8 +10,7 @@ import scipy.signal
 from likelihood_functions.config import CircuitConfig
 from likelihood_functions.base import CircuitFitter
 from likelihood_functions.base import MCMCAdapter
-from analysis_and_figures.mcmc_analysis import analyze_mcmc_results
-from optimization.mcmc_utils import convergence_test, plot_traces, MCMCResultsWriter
+from optimization.mcmc_utils import plot_traces, MCMCResultsWriter
 from utils.import_and_visualise_data import load_and_process_csv
 from circuits.circuit_generation.circuit_manager import CircuitManager
 from data.circuits.circuit_configs import DATA_FILES, get_circuit_conditions
@@ -19,17 +18,17 @@ from utils.GFP_calibration import setup_calibration
 
 
 def fit_single_circuit(
-        circuit_manager,
-        circuit_name,
-        condition_params,
-        experimental_data,
-        tspan,
-        priors,
-        min_time=30,  # 30
-        max_time=210,  # 210
-        n_samples=50000,  # 20000,
-        n_walkers=5,  # 5
-        n_chains=12,  # 10
+    circuit_manager,
+    circuit_name,
+    condition_params,
+    experimental_data,
+    tspan,
+    priors,
+    min_time=30,  # 30
+    max_time=210,  # 210
+    n_samples=50000,  # 20000,
+    n_walkers=5,  # 5
+    n_chains=12,  # 10
 ):
     """
     Fit a single circuit and save its results using the new CircuitManager system
@@ -80,11 +79,14 @@ def fit_single_circuit(
     os.makedirs("../../data/fit_data/individual_circuits_buffer/", exist_ok=True)
     os.makedirs("../../data/fit_data/individual_circuits/", exist_ok=True)
     os.makedirs("../../data/fit_data/individual_circuits/trajectories/", exist_ok=True)
-    os.makedirs("../../data/fit_data/individual_circuits/analysis_trajectories/", exist_ok=True)
+    os.makedirs(
+        "../../data/fit_data/individual_circuits/analysis_trajectories/", exist_ok=True
+    )
 
     buffer_writer = MCMCResultsWriter(
         path=f"../../data/fit_data/individual_circuits_buffer/buffer_{safe_circuit_name}_{timestamp}.csv",
-        param_names=parameters_to_fit)
+        param_names=parameters_to_fit,
+    )
 
     # Setup and run parallel tempering
     pt = adapter.setup_parallel_tempering(n_walkers=n_walkers, n_chains=n_chains)
@@ -100,33 +102,52 @@ def fit_single_circuit(
     print("Completed Model Calibration", flush=True)
 
     results_path = f"../../data/fit_data/individual_circuits/results_{safe_circuit_name}_{timestamp}.csv"
-    results_writer = MCMCResultsWriter(path=results_path,
-                                    param_names=parameters_to_fit)
-    results_writer.save_state_in_file(parameters, priors_out, likelihoods, step_accepts, swap_accepts)
+    results_writer = MCMCResultsWriter(path=results_path, param_names=parameters_to_fit)
+    results_writer.save_state_in_file(
+        parameters, priors_out, likelihoods, step_accepts, swap_accepts
+    )
     results_writer.close()
 
     print(f"Stored samples in:\n{results_path}", flush=True)
 
-    plot_traces(data=parameters,
-                file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_full.pdf",
-                param_names=parameters_to_fit)
+    plot_traces(
+        data=parameters,
+        file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_full.pdf",
+        param_names=parameters_to_fit,
+    )
 
     for size in [10000, 8000, 6000, 4000, 2000]:
-        plot_traces(data=parameters[len(parameters) - size:],
-                    file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_{size}.pdf",
-                    param_names=parameters_to_fit)
+        plot_traces(
+            data=parameters[len(parameters) - size :],
+            file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_{size}.pdf",
+            param_names=parameters_to_fit,
+        )
 
     N = 100
     convolve = scipy.signal.convolve
-    plot_traces(data=np.expand_dims(convolve(step_accepts, np.expand_dims(np.ones(N)/N, axis=(1, 2)), mode='same'), axis=2),
-                file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/step_accepts_{safe_circuit_name}_{timestamp}.pdf",
-                param_names=[f"Chain {iX}" for iX in range(step_accepts.shape[-1])])
+    plot_traces(
+        data=np.expand_dims(
+            convolve(
+                step_accepts, np.expand_dims(np.ones(N) / N, axis=(1, 2)), mode="same"
+            ),
+            axis=2,
+        ),
+        file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/step_accepts_{safe_circuit_name}_{timestamp}.pdf",
+        param_names=[f"Chain {iX}" for iX in range(step_accepts.shape[-1])],
+    )
 
-
-    plot_traces(data=np.expand_dims(convolve(swap_accepts, np.expand_dims(np.ones(N)/N, axis=(1, 2)), mode='same'), axis=2),
-                file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/swap_accepts_{safe_circuit_name}_{timestamp}.pdf",
-                param_names=[f"Chain {iX} and Chain {iX + 1}" for iX in range(swap_accepts.shape[-1])])
-
+    plot_traces(
+        data=np.expand_dims(
+            convolve(
+                swap_accepts, np.expand_dims(np.ones(N) / N, axis=(1, 2)), mode="same"
+            ),
+            axis=2,
+        ),
+        file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/swap_accepts_{safe_circuit_name}_{timestamp}.pdf",
+        param_names=[
+            f"Chain {iX} and Chain {iX + 1}" for iX in range(swap_accepts.shape[-1])
+        ],
+    )
 
     print("Plotted trajectories", flush=True)
 
@@ -160,13 +181,17 @@ def main(circuits_to_fit=None):
         json_file="../../data/circuits/circuits.json",
     )
 
-    if not isinstance(circuits_to_fit, list) and not circuits_to_fit is None:
+    if not isinstance(circuits_to_fit, list) and circuits_to_fit is not None:
         circuits_to_fit = [circuits_to_fit]
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = "outputs/"
     os.makedirs(output_dir, exist_ok=True)
-    circs_ident = '-'.join(circuits_to_fit).replace('/', '-') if circuits_to_fit is not None else "ALL_AVAILABLE"
+    circs_ident = (
+        "-".join(circuits_to_fit).replace("/", "-")
+        if circuits_to_fit is not None
+        else "ALL_AVAILABLE"
+    )
     with open(f"{output_dir}{circs_ident}_{timestamp}.out", "w") as log:
         sys.stdout = log
         sys.stderr = log
@@ -187,17 +212,20 @@ def main(circuits_to_fit=None):
             print(f"Loaded data for {circuit_name}")
 
         # Load priors
-        priors = pd.read_csv("../../data/prior/model_parameters_priors_updated_tighter.csv")
+        priors = pd.read_csv(
+            "../../data/prior/model_parameters_priors_updated_tighter.csv"
+        )
         priors = priors[priors["Parameter"] != "k_prot_deg"]
 
         # Fit each circuit individually
         if circuits_to_fit is None:
             circuits_to_fit = [
-                "constitutive sfGFP",                   # J
-                # "sense_star_6",                       # J
-                # "toehold_trigger",                    # J
-                # "star_antistar_1",                    # J
-                # "trigger_antitrigger",                # J
+                # "constitutive sfGFP sim",
+                "constitutive sfGFP",  # J
+                "sense_star_6",  # J
+                "toehold_trigger",  # J
+                "star_antistar_1",  # J
+                "trigger_antitrigger",  # J
                 # "cascade",
                 # "cffl_type_1",
                 # "inhibited_incoherent_cascade",
@@ -248,15 +276,20 @@ def main(circuits_to_fit=None):
                 print(f"Completed fitting {circuit_name}")
 
             else:
-                print(f"Warning: Circuit '{circuit_name}' not found in available circuits.")
+                print(
+                    f"Warning: Circuit '{circuit_name}' not found in available circuits."
+                )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        prog='Individual Circuits Run MCMC',
-        description='Model calibration of individual circuits')
+        prog="Individual Circuits Run MCMC",
+        description="Model calibration of individual circuits",
+    )
 
-    parser.add_argument('-c', '--circuitnames', nargs="*", type=str, default=None)  # optional argument
+    parser.add_argument(
+        "-c", "--circuitnames", nargs="*", type=str, default=None
+    )  # optional argument
 
     args = parser.parse_args()
     circuits_to_fit = args.circuitnames
