@@ -92,6 +92,7 @@ class GeneralizedAdaptiveProposal(AdaptiveProposal):
 
         self.L_variance = np.linalg.cholesky(variance)
         self.nu = lambda n: min(0.02, ((n + 1) / 1) ** (-1))
+        self.radii = []
 
     def update_proposal(self, parameters, priors, likelihoods, step_accepts, alpha, iN):
         if self.mean is None:
@@ -119,4 +120,5 @@ class GeneralizedAdaptiveProposal(AdaptiveProposal):
         self.mean = mean
         self.variance = COV
 
+        self.radii.append(radius)
         self.covariances.append(COV)

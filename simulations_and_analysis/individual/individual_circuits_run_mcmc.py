@@ -18,17 +18,17 @@ from utils.GFP_calibration import setup_calibration
 
 
 def fit_single_circuit(
-    circuit_manager,
-    circuit_name,
-    condition_params,
-    experimental_data,
-    tspan,
-    priors,
-    min_time=30,  # 30
-    max_time=210,  # 210
-    n_samples=50000,  # 20000,
-    n_walkers=5,  # 5
-    n_chains=12,  # 10
+        circuit_manager,
+        circuit_name,
+        condition_params,
+        experimental_data,
+        tspan,
+        priors,
+        min_time=30,  # 30
+        max_time=210,  # 210
+        n_samples=50000,  # 20000,
+        n_walkers=5,  # 5
+        n_chains=12,  # 10
 ):
     """
     Fit a single circuit and save its results using the new CircuitManager system
@@ -118,38 +118,57 @@ def fit_single_circuit(
 
     for size in [10000, 8000, 6000, 4000, 2000]:
         plot_traces(
-            data=parameters[len(parameters) - size :],
+            data=parameters[len(parameters) - size:],
             file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_{size}.pdf",
             param_names=parameters_to_fit,
         )
 
+    print("Plotted trajectories", flush=True)
+
     N = 100
     convolve = scipy.signal.convolve
+    offset = int(N/2)
+    data = convolve(step_accepts, np.expand_dims(np.ones(N) / N, axis=(1, 2)), mode="same")
+    data = data[offset:len(step_accepts) - offset]
+    data = np.expand_dims(data, axis=2,)
     plot_traces(
-        data=np.expand_dims(
-            convolve(
-                step_accepts, np.expand_dims(np.ones(N) / N, axis=(1, 2)), mode="same"
-            ),
-            axis=2,
-        ),
+        data=data,
         file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/step_accepts_{safe_circuit_name}_{timestamp}.pdf",
         param_names=[f"Chain {iX}" for iX in range(step_accepts.shape[-1])],
     )
 
+    data = convolve(swap_accepts, np.expand_dims(np.ones(N) / N, axis=(1, 2)), mode="same")
+    data = data[offset:len(step_accepts) - offset]
+    data = np.expand_dims(data, axis=2, )
     plot_traces(
-        data=np.expand_dims(
-            convolve(
-                swap_accepts, np.expand_dims(np.ones(N) / N, axis=(1, 2)), mode="same"
-            ),
-            axis=2,
-        ),
+        data=data,
         file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/swap_accepts_{safe_circuit_name}_{timestamp}.pdf",
-        param_names=[
-            f"Chain {iX} and Chain {iX + 1}" for iX in range(swap_accepts.shape[-1])
-        ],
+        param_names=[f"Chain {iX} and Chain {iX + 1}" for iX in range(swap_accepts.shape[-1])],
     )
 
-    print("Plotted trajectories", flush=True)
+    if hasattr(pt.proposal_function, "radii"):
+        radii = np.array(pt.proposal_function.radii)
+        data = radii
+        data = np.expand_dims(data, axis=2, )
+        plot_traces(
+            data=data,
+            file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/radii_{safe_circuit_name}_{timestamp}.pdf",
+            param_names=[f"Chain {iX}" for iX in range(radii.shape[-1])],
+        )
+
+    for iChain in range(n_chains):
+        radii = np.array(pt.proposal_function.radii)
+        data = np.diagonal(np.array(pt.proposal_function.covariances), axis1=3, axis2=4)[:, :, iChain]
+        data = np.expand_dims(data, axis=2, )
+        plot_traces(
+            data=data,
+            file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/covariances_{safe_circuit_name}_Chain_{iChain}_{timestamp}.pdf",
+            param_names=[f"Chain {iX}" for iX in range(radii.shape[-1])],
+        )
+
+
+    print("Plotted analytical trajectories", flush=True)
+
 
     # # Analyze results
     # results = analyze_mcmc_results(
