@@ -41,6 +41,12 @@ class CircuitConfig:
         # Process negative controls (data still in AU)
         self.experimental_data = process_background_fluorescence(self.experimental_data)
 
+        self.model_parameters = list(self.model.parameters.keys())
+        # remove k_deg parameters as they are not fitted
+        self.model_parameters = [
+            p for p in self.model_parameters if not p.startswith("k_deg")
+        ]
+
         # import matplotlib.pyplot as plt
         # self.experimental_data.plot(
         #     x="time", y="fluorescence", kind="line", title=f"{self.name} - Fluorescence"

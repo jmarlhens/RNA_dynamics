@@ -157,9 +157,7 @@ class CircuitFitter:
             # simulator = ScipyOdeSimulator(config.model, config.tspan, compiler='cython', cleanup=True)
             simulator = self.simulators[config.name]
             simulation_results = simulator.run(
-                param_values=combined_params_df.drop(
-                    ["param_set_idx", "condition"], axis=1
-                ),
+                param_values=combined_params_df[config.model_parameters],
             )
 
             results[i] = {

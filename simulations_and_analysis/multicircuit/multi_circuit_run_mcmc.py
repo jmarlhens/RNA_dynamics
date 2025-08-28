@@ -13,16 +13,16 @@ from circuits.circuit_generation.circuit_manager import CircuitManager
 from data.circuits.circuit_configs import DATA_FILES, get_circuit_conditions
 
 
-def load_best_parameters_from_csv(csv_path, parameter_names):
-    """Load best parameter set from previous MCMC run"""
-    previous_results = pd.read_csv(csv_path)
-    best_row = previous_results.loc[previous_results["likelihood"].idxmax()]
-
-    # add little nnoise (stdv 0.05)
-    import numpy as np
-
-    best_row[parameter_names] += np.random.normal(0, 0.1, size=len(parameter_names))
-    return best_row[parameter_names].values
+# def load_best_parameters_from_csv(csv_path, parameter_names):
+#     """Load best parameter set from previous MCMC run"""
+#     previous_results = pd.read_csv(csv_path)
+#     best_row = previous_results.loc[previous_results["likelihood"].idxmax()]
+#
+#     # add little nnoise (stdv 0.05)
+#     import numpy as np
+#
+#     best_row[parameter_names] += np.random.normal(0, 0.1, size=len(parameter_names))
+#     return best_row[parameter_names].values
 
 
 def fit_multiple_circuits(
@@ -68,6 +68,24 @@ def fit_multiple_circuits(
 
     # Create circuit fitter with MULTIPLE configs (shared parameters)
     parameters_to_fit = priors.Parameter.tolist()
+
+    parameter_in_the_model = []
+    for circuit_config in circuit_configs:
+        print(
+            f"Circuit '{circuit_config.name}' has {len(circuit_config.model.parameters)} parameters."
+        )
+        # Only keep the parameters that are actually part of the model ([parameter_name.name for parameter_name in circuit_config.model.parameters])
+        parameter_in_the_model += [
+            parameter_name.name for parameter_name in circuit_config.model.parameters
+        ]
+
+    parameters_to_fit = [
+        param for param in parameters_to_fit if param in parameter_in_the_model
+    ]
+
+    # keep unique entries
+    parameters_to_fit = list(set(parameters_to_fit))
+
     circuit_fitter = CircuitFitter(
         circuit_configs, parameters_to_fit, priors, calibration_params
     )
@@ -79,11 +97,11 @@ def fit_multiple_circuits(
 
     # Create MCMC adapter
     adapter = MCMCAdapter(circuit_fitter)
-    # initial_parameters = adapter.get_initial_parameters()
+    initial_parameters = adapter.get_initial_parameters()
 
     # Load initial parameters from previous run
-    previous_csv = "../../data/fit_data/shared_parameters/cross_val/results_star_antistar_1_and_trigger_antitrigger_20250716_224438.csv"
-    initial_parameters = load_best_parameters_from_csv(previous_csv, parameters_to_fit)
+    # previous_csv = "../../data/fit_data/shared_parameters/cross_val/results_star_antistar_1_and_trigger_antitrigger_20250716_224438.csv"
+    # initial_parameters = load_best_parameters_from_csv(previous_csv, parameters_to_fit)
 
     # Setup and run parallel tempering
     pt = adapter.setup_parallel_tempering(n_walkers=n_walkers, n_chains=n_chains)
@@ -201,7 +219,7 @@ def main_shared_fit():
         priors=priors,
         min_time=min_time,
         max_time=max_time,
-        n_samples=2000,
+        n_samples=30000,
         n_walkers=4,
         n_chains=12,
     )

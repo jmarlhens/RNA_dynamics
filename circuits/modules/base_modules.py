@@ -187,7 +187,10 @@ class Translation(ReactionComplex):
         existing_parameters = set(model.parameters.keys())
 
         for param_name in translation_parameters:
-            if param_name not in existing_parameters:
+            if (
+                param_name not in existing_parameters
+                and param_name in kinetic_parameters
+            ):
                 Parameter(param_name, kinetic_parameters[param_name])
         # self.k_tl = self.parameters["k_tl"]
         # self.K_tl = self.parameters["K_tl"]

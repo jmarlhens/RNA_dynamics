@@ -82,7 +82,10 @@ class Protein(MyMonomer):
         existing_parameters = set(model.parameters.keys())
 
         for param_name in protein_parameters:
-            if param_name not in existing_parameters:
+            if (
+                param_name not in existing_parameters
+                and param_name in kinetic_parameters
+            ):
                 Parameter(param_name, kinetic_parameters[param_name])
 
         rule_name_maturation = f"maturation_{self.name}"
@@ -94,10 +97,10 @@ class Protein(MyMonomer):
             self(state="immature") >> self(state="mature"),
             model.parameters["k_mat"],
         )
-        degradation_rule = Rule(
-            rule_name_degradation, self() >> None, model.parameters["k_prot_deg"]
-        )
-
-        # Add rules to the model
         model.add_component(maturation_rule)
-        model.add_component(degradation_rule)
+
+        if "k_prot_deg" in model.parameters.keys():
+            degradation_rule = Rule(
+                rule_name_degradation, self() >> None, model.parameters["k_prot_deg"]
+            )
+            model.add_component(degradation_rule)

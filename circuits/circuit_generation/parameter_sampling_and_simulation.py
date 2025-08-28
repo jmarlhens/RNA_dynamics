@@ -1,8 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from circuits.circuit_generation.circuit_manager import CircuitManager
 from circuits.circuit_generation.circuit_visualizer import CircuitVisualizer
 from circuits.modules.base_modules import KineticsType
+import math
+import matplotlib.gridspec as gridspec
 
 
 def _get_display_name(obs_name):
@@ -152,7 +153,7 @@ class ParameterSamplingManager:
         t_span=None,
         additional_params=None,
         observe_protein="obs_Protein_GFP",
-        observe_rna_species=None,  # specific RNA observable name, None = no RNA subplot
+        observe_rna_species=None,
         title=None,
         figure_size=(6, 10),
         save_path=None,
@@ -775,43 +776,922 @@ class ParameterSamplingManager:
             plt.savefig(save_path, dpi=300, bbox_inches="tight")
             print(f"Grid plot saved: {save_path}")
 
-        plt.show()
+        # plt.show()
         return figure, all_axes
 
+    def _apply_equilibrium_baseline_correction(
+        self,
+        observables_data,
+        full_time_span,
+        equilibration_time,
+        target_observable_names=None,
+    ):
+        """
+        Apply baseline correction by subtracting concentration at equilibration time.
+        Preserves structured array format for compatibility with downstream code.
 
-# Example usage
-if __name__ == "__main__":
-    # Create a circuit manager
-    manager = CircuitManager(
-        parameters_file="../../data/prior/model_parameters_priors_with_mass_action.csv",
-        json_file="../../data/circuits/circuits.json",
-    )
+        Parameters:
+        -----------
+        observables_data : list or structured array
+            Observable data from simulation results
+        full_time_span : np.ndarray
+            Complete time span including equilibration period
+        equilibration_time : float
+            Time point to use as baseline (typically end of equilibration)
+        target_observable_names : list or None
+            Specific observables to correct, None applies to all protein/RNA observables
 
-    # Create a parameter sampling manager
-    sampling_manager = ParameterSamplingManager(manager)
+        Returns:
+        --------
+        Baseline-corrected observables data in same structured array format as input
+        """
+        # Find equilibration time index
+        equilibration_time_index = np.searchsorted(full_time_span, equilibration_time)
+        equilibration_time_index = min(
+            equilibration_time_index, len(full_time_span) - 1
+        )
 
-    # Define pulse configuration
-    pulse_config = {
-        "use_pulse": True,
-        "pulse_start": 4,
-        "pulse_end": 15,
-        "pulse_concentration": 5.0,
-        "base_concentration": 0.0,
-    }
+        if isinstance(observables_data, list):
+            # Multiple parameter sets - each is a structured array
+            baseline_corrected_observables = []
 
-    # Create a temporary circuit to get plasmid names
-    temp_circuit = manager.create_circuit("toehold_trigger")
-    plasmid_names = [plasmid[0] for plasmid in temp_circuit.plasmids]
+            for parameter_set_observables in observables_data:
+                # Create copy to avoid modifying original
+                corrected_observables_array = parameter_set_observables.copy()
 
-    # Use the first plasmid for pulsing
-    pulse_plasmid = plasmid_names[1] if len(plasmid_names) > 1 else plasmid_names[0]
+                for observable_name in parameter_set_observables.dtype.names:
+                    trajectory_data = parameter_set_observables[observable_name]
 
-    # Run a parameter sweep for toehold_trigger circuit with named plasmid
-    sampling_manager.plot_parameter_sweep_with_pulse(
-        circuit_name="toehold_trigger",
-        param_df={"k_Trigger3_concentration": [0, 1, 2, 3, 4, 5]},
-        k_prot_deg=0.1,
-        pulse_configuration=pulse_config,
-        pulse_plasmids=[pulse_plasmid],  # Use named plasmid
-        save_path="toehold_parameter_sweep.png",
-    )
+                    # Apply correction to protein and RNA observables
+                    should_correct = False
+                    if target_observable_names is None:
+                        should_correct = observable_name.startswith(
+                            "obs_Protein_"
+                        ) or observable_name.startswith("obs_RNA_")
+                    else:
+                        should_correct = observable_name in target_observable_names
+
+                    if should_correct:
+                        baseline_value = trajectory_data[equilibration_time_index]
+                        corrected_observables_array[observable_name] = (
+                            trajectory_data - baseline_value
+                        )
+
+                baseline_corrected_observables.append(corrected_observables_array)
+
+            return baseline_corrected_observables
+
+        else:
+            # Single parameter set - structured array
+            corrected_observables_array = observables_data.copy()
+
+            for observable_name in observables_data.dtype.names:
+                trajectory_data = observables_data[observable_name]
+
+                # Apply correction to protein and RNA observables
+                should_correct = False
+                if target_observable_names is None:
+                    should_correct = observable_name.startswith(
+                        "obs_Protein_"
+                    ) or observable_name.startswith("obs_RNA_")
+                else:
+                    should_correct = observable_name in target_observable_names
+
+                if should_correct:
+                    baseline_value = trajectory_data[equilibration_time_index]
+                    corrected_observables_array[observable_name] = (
+                        trajectory_data - baseline_value
+                    )
+
+            return corrected_observables_array
+
+    def _compute_baseline_corrected_statistical_summaries(
+        self,
+        observables_data,
+        full_time_span,
+        equilibration_time,
+        statistical_summary_type="median_percentiles",
+        percentile_bounds=(10, 90),
+        observe_rna_species=None,
+        subtract_equilibrium_baseline=False,
+    ):
+        """
+        Compute statistical summaries with optional baseline correction.
+        Handles structured arrays consistently.
+        """
+        # Apply baseline correction if requested
+        if subtract_equilibrium_baseline:
+            target_observables = None
+            if observe_rna_species:
+                target_observables = [observe_rna_species]
+
+            corrected_observables = self._apply_equilibrium_baseline_correction(
+                observables_data, full_time_span, equilibration_time, target_observables
+            )
+        else:
+            corrected_observables = observables_data
+
+        # Extract trajectories for statistical computation
+        protein_trajectory_collection = []
+        rna_trajectory_collection = []
+
+        if isinstance(corrected_observables, list):
+            # Multiple parameter sets - each is a structured array
+            for observables_array in corrected_observables:
+                for observable_name in observables_array.dtype.names:
+                    if observable_name.startswith("obs_Protein_"):
+                        protein_trajectory_collection.append(
+                            observables_array[observable_name]
+                        )
+                    elif observable_name == observe_rna_species:
+                        rna_trajectory_collection.append(
+                            observables_array[observable_name]
+                        )
+        else:
+            # Single parameter set - structured array
+            for observable_name in corrected_observables.dtype.names:
+                if observable_name.startswith("obs_Protein_"):
+                    protein_trajectory_collection.append(
+                        corrected_observables[observable_name]
+                    )
+                elif observable_name == observe_rna_species:
+                    rna_trajectory_collection.append(
+                        corrected_observables[observable_name]
+                    )
+
+        statistical_summaries = {}
+
+        if protein_trajectory_collection:
+            protein_trajectory_matrix = np.array(protein_trajectory_collection)
+            statistical_summaries["protein"] = (
+                self._compute_trajectory_statistical_measures(
+                    protein_trajectory_matrix,
+                    statistical_summary_type,
+                    percentile_bounds,
+                )
+            )
+
+        if rna_trajectory_collection:
+            rna_trajectory_matrix = np.array(rna_trajectory_collection)
+            statistical_summaries["rna"] = (
+                self._compute_trajectory_statistical_measures(
+                    rna_trajectory_matrix, statistical_summary_type, percentile_bounds
+                )
+            )
+
+        return statistical_summaries
+
+    def plot_parameter_sweep_with_pulse_focused_display(
+        self,
+        equilibrated_simulation_result,
+        full_equilibration_time_span,
+        circuit_name,
+        pulse_configuration,
+        pulse_plasmids,
+        pre_pulse_display_minutes=10,
+        post_pulse_display_minutes=30,
+        observe_protein="obs_Protein_GFP",
+        observe_rna_species="obs_RNA_GFP",
+        use_statistical_summary=False,
+        statistical_summary_type="median_percentiles",
+        percentile_bounds=(10, 90),
+        ribbon_alpha=0.25,
+        figure_size=(10, 12),
+        save_path=None,
+        subtract_equilibrium_baseline=False,  # NEW PARAMETER
+    ):
+        """
+        Plot parameter sweep results with focused display on pulse region.
+
+        Parameters:
+        -----------
+        subtract_equilibrium_baseline : bool
+            If True, subtract concentration at equilibration_time from all time points
+        """
+
+        # Extract pulse and equilibration timing
+        pulse_start_time = pulse_configuration["pulse_start"]
+        pulse_end_time = pulse_configuration["pulse_end"]
+        equilibration_time = pulse_configuration.get("equilibration_time", 0)
+        pulse_active_concentration = pulse_configuration["pulse_concentration"]
+        pulse_baseline_concentration = pulse_configuration["base_concentration"]
+
+        # Calculate focused display window
+        display_window_start_time = pulse_start_time - pre_pulse_display_minutes
+        display_window_end_time = pulse_end_time + post_pulse_display_minutes
+
+        # Find display window indices
+        display_start_index = np.searchsorted(
+            full_equilibration_time_span, display_window_start_time
+        )
+        display_end_index = np.searchsorted(
+            full_equilibration_time_span, display_window_end_time
+        )
+
+        # Extract focused time span
+        pulse_focused_time_span = full_equilibration_time_span[
+            display_start_index : display_end_index + 1
+        ]
+
+        # Apply baseline correction to full data before extracting focused window
+        if subtract_equilibrium_baseline:
+            baseline_corrected_observables = (
+                self._apply_equilibrium_baseline_correction(
+                    equilibrated_simulation_result.observables,
+                    full_equilibration_time_span,
+                    equilibration_time,
+                )
+            )
+        else:
+            baseline_corrected_observables = equilibrated_simulation_result.observables
+
+        # Extract focused observables from baseline-corrected data
+        if isinstance(baseline_corrected_observables, list):
+            # Multiple parameter sets - each is a structured array
+            pulse_focused_observables = []
+            for observables_array in baseline_corrected_observables:
+                focused_observables_slice = observables_array[
+                    display_start_index : display_end_index + 1
+                ]
+                pulse_focused_observables.append(focused_observables_slice)
+
+            observable_field_names = baseline_corrected_observables[0].dtype.names
+        else:
+            # Single parameter set - structured array
+            pulse_focused_observables = baseline_corrected_observables[
+                display_start_index : display_end_index + 1
+            ]
+            observable_field_names = baseline_corrected_observables.dtype.names
+
+        # Create pulse concentration profile for focused window
+        pulse_concentration_profile_focused = np.full_like(
+            pulse_focused_time_span, pulse_baseline_concentration
+        )
+        pulse_active_time_mask = (pulse_focused_time_span >= pulse_start_time) & (
+            pulse_focused_time_span <= pulse_end_time
+        )
+        pulse_concentration_profile_focused[pulse_active_time_mask] = (
+            pulse_active_concentration
+        )
+
+        # Determine subplot configuration
+        subplot_components = []
+        if observe_protein:
+            subplot_components.append("protein")
+        if observe_rna_species is not None:
+            subplot_components.append("rna")
+        subplot_components.append("pulse")
+
+        subplot_count = len(subplot_components)
+
+        # Create figure
+        figure, subplot_axes = plt.subplots(
+            subplot_count, 1, figsize=figure_size, sharex=True
+        )
+        if subplot_count == 1:
+            subplot_axes = [subplot_axes]
+
+        current_subplot_index = 0
+
+        # Generate colors for individual trajectories
+        if isinstance(pulse_focused_observables, list):
+            parameter_set_count = len(pulse_focused_observables)
+        else:
+            parameter_set_count = 1
+        trajectory_colors = [plt.cm.tab10(i % 10) for i in range(parameter_set_count)]
+
+        # Compute statistical summaries for focused data
+        focused_trajectory_statistics = None
+        if use_statistical_summary:
+            # Note: baseline correction already applied, so pass False here
+            focused_trajectory_statistics = (
+                self._compute_baseline_corrected_statistical_summaries(
+                    pulse_focused_observables,
+                    pulse_focused_time_span,
+                    equilibration_time,  # Not used since correction already applied
+                    statistical_summary_type,
+                    percentile_bounds,
+                    observe_rna_species,
+                    subtract_equilibrium_baseline=False,  # Already corrected
+                )
+            )
+
+        # Plot protein concentration
+        if observe_protein:
+            protein_subplot_axis = subplot_axes[current_subplot_index]
+
+            if (
+                use_statistical_summary
+                and focused_trajectory_statistics
+                and "protein" in focused_trajectory_statistics
+            ):
+                protein_summary_data = focused_trajectory_statistics["protein"]
+
+                central_line_label = (
+                    "Median"
+                    if statistical_summary_type == "median_percentiles"
+                    else "Mean"
+                )
+                protein_subplot_axis.plot(
+                    pulse_focused_time_span,
+                    protein_summary_data["central_tendency"],
+                    color="blue",
+                    linewidth=2,
+                    label=central_line_label,
+                    zorder=3,
+                )
+
+                bounds_label = self._get_statistical_bounds_label(
+                    statistical_summary_type, percentile_bounds
+                )
+                protein_subplot_axis.fill_between(
+                    pulse_focused_time_span,
+                    protein_summary_data["lower_bound"],
+                    protein_summary_data["upper_bound"],
+                    alpha=ribbon_alpha,
+                    color="blue",
+                    label=bounds_label,
+                    zorder=1,
+                )
+                protein_subplot_axis.legend(fontsize=10)
+            else:
+                # Plot individual protein trajectories
+                if isinstance(pulse_focused_observables, list):
+                    for parameter_set_index, focused_observables_array in enumerate(
+                        pulse_focused_observables
+                    ):
+                        for observable_field_name in observable_field_names:
+                            if observable_field_name.startswith("obs_Protein_"):
+                                protein_concentration_trajectory = (
+                                    focused_observables_array[observable_field_name]
+                                )
+                                trajectory_color = trajectory_colors[
+                                    parameter_set_index % len(trajectory_colors)
+                                ]
+                                protein_subplot_axis.plot(
+                                    pulse_focused_time_span,
+                                    protein_concentration_trajectory,
+                                    color=trajectory_color,
+                                    alpha=0.15,
+                                    zorder=1,
+                                )
+                else:
+                    for observable_field_name in observable_field_names:
+                        if observable_field_name.startswith("obs_Protein_"):
+                            protein_concentration_trajectory = (
+                                pulse_focused_observables[observable_field_name]
+                            )
+                            protein_subplot_axis.plot(
+                                pulse_focused_time_span,
+                                protein_concentration_trajectory,
+                                color="blue",
+                                linewidth=2,
+                                zorder=2,
+                            )
+
+            # Set labels - adjust for baseline correction
+            ylabel = "Protein Concentration (nM)"
+            title_suffix = "(Pulse Region)"
+            if subtract_equilibrium_baseline:
+                ylabel = "Δ Protein Concentration (nM)"
+                title_suffix = "(Baseline Corrected)"
+
+            protein_subplot_axis.set_ylabel(ylabel)
+            protein_subplot_axis.set_title(f"Protein - {circuit_name} {title_suffix}")
+            protein_subplot_axis.grid(True, alpha=0.3)
+            current_subplot_index += 1
+
+        # Plot RNA concentration (similar modifications)
+        if observe_rna_species is not None:
+            rna_subplot_axis = subplot_axes[current_subplot_index]
+
+            if (
+                use_statistical_summary
+                and focused_trajectory_statistics
+                and "rna" in focused_trajectory_statistics
+            ):
+                rna_summary_data = focused_trajectory_statistics["rna"]
+
+                central_line_label = (
+                    "Median"
+                    if statistical_summary_type == "median_percentiles"
+                    else "Mean"
+                )
+                rna_subplot_axis.plot(
+                    pulse_focused_time_span,
+                    rna_summary_data["central_tendency"],
+                    color="red",
+                    linewidth=2,
+                    label=central_line_label,
+                    zorder=3,
+                )
+
+                bounds_label = self._get_statistical_bounds_label(
+                    statistical_summary_type, percentile_bounds
+                )
+                rna_subplot_axis.fill_between(
+                    pulse_focused_time_span,
+                    rna_summary_data["lower_bound"],
+                    rna_summary_data["upper_bound"],
+                    alpha=ribbon_alpha,
+                    color="red",
+                    label=bounds_label,
+                    zorder=1,
+                )
+                rna_subplot_axis.legend(fontsize=10)
+            else:
+                # Plot individual RNA trajectories
+                if isinstance(pulse_focused_observables, list):
+                    for parameter_set_index, focused_observables_array in enumerate(
+                        pulse_focused_observables
+                    ):
+                        if observe_rna_species in focused_observables_array.dtype.names:
+                            rna_concentration_trajectory = focused_observables_array[
+                                observe_rna_species
+                            ]
+                            trajectory_color = trajectory_colors[
+                                parameter_set_index % len(trajectory_colors)
+                            ]
+                            rna_subplot_axis.plot(
+                                pulse_focused_time_span,
+                                rna_concentration_trajectory,
+                                color=trajectory_color,
+                                alpha=0.15,
+                                zorder=1,
+                            )
+                else:
+                    if observe_rna_species in pulse_focused_observables.dtype.names:
+                        rna_concentration_trajectory = pulse_focused_observables[
+                            observe_rna_species
+                        ]
+                        rna_subplot_axis.plot(
+                            pulse_focused_time_span,
+                            rna_concentration_trajectory,
+                            color="red",
+                            linewidth=2,
+                            zorder=2,
+                        )
+
+            # Set labels - adjust for baseline correction
+            ylabel = "RNA Concentration (nM)"
+            title_suffix = "(Pulse Region)"
+            if subtract_equilibrium_baseline:
+                ylabel = "Δ RNA Concentration (nM)"
+                title_suffix = "(Baseline Corrected)"
+
+            rna_subplot_axis.set_ylabel(ylabel)
+            rna_subplot_axis.set_title(
+                f"RNA ({observe_rna_species}) - {circuit_name} {title_suffix}"
+            )
+            rna_subplot_axis.grid(True, alpha=0.3)
+            current_subplot_index += 1
+
+        # Plot pulse profile (unchanged)
+        pulse_profile_subplot_axis = subplot_axes[current_subplot_index]
+        pulse_plasmid_names_label = (
+            ", ".join(pulse_plasmids) if pulse_plasmids else "Pulse"
+        )
+        pulse_profile_subplot_axis.plot(
+            pulse_focused_time_span,
+            pulse_concentration_profile_focused,
+            "g-",
+            linewidth=3,
+            label=pulse_plasmid_names_label,
+        )
+        pulse_profile_subplot_axis.set_ylabel("Pulse Concentration (nM)")
+        pulse_profile_subplot_axis.set_title("Pulse Profile (Focused)")
+        pulse_profile_subplot_axis.grid(True, alpha=0.3)
+        pulse_profile_subplot_axis.legend(fontsize=10)
+
+        # Configure axis labels and figure title
+        subplot_axes[-1].set_xlabel("Time (min)")
+
+        # Adjust title for baseline correction
+        title_modifier = ""
+        if subtract_equilibrium_baseline:
+            title_modifier = " (Baseline Corrected)"
+
+        if use_statistical_summary:
+            summary_description = self._get_statistical_summary_description(
+                statistical_summary_type, percentile_bounds
+            )
+            figure.suptitle(
+                f"{circuit_name} - {summary_description}{title_modifier}",
+                fontsize=14,
+                y=0.98,
+            )
+        else:
+            figure.suptitle(
+                f"{circuit_name} - Individual Trajectories{title_modifier}",
+                fontsize=14,
+                y=0.98,
+            )
+
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.9)
+
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches="tight")
+
+        return figure
+
+    def _compute_pulse_focused_statistical_summaries(
+        self,
+        pulse_focused_observables,
+        statistical_summary_type="median_percentiles",
+        percentile_bounds=(10, 90),
+        observe_rna_species=None,
+    ):
+        """Compute statistical summaries for pulse-focused simulation data."""
+        protein_trajectory_collection = []
+        rna_trajectory_collection = []
+
+        if isinstance(pulse_focused_observables, list):
+            # Multiple parameter sets
+            for focused_observables_dict in pulse_focused_observables:
+                for (
+                    observable_field_name,
+                    trajectory_data,
+                ) in focused_observables_dict.items():
+                    if observable_field_name.startswith("obs_Protein_"):
+                        protein_trajectory_collection.append(trajectory_data)
+                    elif observable_field_name == observe_rna_species:
+                        rna_trajectory_collection.append(trajectory_data)
+        else:
+            # Single parameter set
+            for (
+                observable_field_name,
+                trajectory_data,
+            ) in pulse_focused_observables.items():
+                if observable_field_name.startswith("obs_Protein_"):
+                    protein_trajectory_collection.append(trajectory_data)
+                elif observable_field_name == observe_rna_species:
+                    rna_trajectory_collection.append(trajectory_data)
+
+        statistical_summaries = {}
+
+        if protein_trajectory_collection:
+            protein_trajectory_matrix = np.array(protein_trajectory_collection)
+            statistical_summaries["protein"] = (
+                self._compute_trajectory_statistical_measures(
+                    protein_trajectory_matrix,
+                    statistical_summary_type,
+                    percentile_bounds,
+                )
+            )
+
+        if rna_trajectory_collection:
+            rna_trajectory_matrix = np.array(rna_trajectory_collection)
+            statistical_summaries["rna"] = (
+                self._compute_trajectory_statistical_measures(
+                    rna_trajectory_matrix, statistical_summary_type, percentile_bounds
+                )
+            )
+
+        return statistical_summaries
+
+    def _compute_trajectory_statistical_measures(
+        self, trajectory_matrix, statistical_summary_type, percentile_bounds
+    ):
+        """Compute either median+percentiles or mean+std statistics for trajectory matrix."""
+        if statistical_summary_type == "mean_std":
+            trajectory_mean = np.mean(trajectory_matrix, axis=0)
+            trajectory_standard_deviation = np.std(trajectory_matrix, axis=0)
+            return {
+                "central_tendency": trajectory_mean,
+                "lower_bound": trajectory_mean - trajectory_standard_deviation,
+                "upper_bound": trajectory_mean + trajectory_standard_deviation,
+            }
+        else:  # median_percentiles
+            lower_percentile_value, upper_percentile_value = percentile_bounds
+            return {
+                "central_tendency": np.median(trajectory_matrix, axis=0),
+                "lower_bound": np.percentile(
+                    trajectory_matrix, lower_percentile_value, axis=0
+                ),
+                "upper_bound": np.percentile(
+                    trajectory_matrix, upper_percentile_value, axis=0
+                ),
+            }
+
+    def _get_statistical_bounds_label(
+        self, statistical_summary_type, percentile_bounds
+    ):
+        """Generate appropriate label for statistical summary bounds."""
+        if statistical_summary_type == "mean_std":
+            return "Mean ± Std"
+        else:
+            return f"{percentile_bounds[0]}-{percentile_bounds[1]}% range"
+
+    def _get_statistical_summary_description(
+        self, statistical_summary_type, percentile_bounds
+    ):
+        """Generate figure title description for statistical summary."""
+        if statistical_summary_type == "mean_std":
+            return "Mean ± Standard Deviation"
+        else:
+            return f"Median ± {percentile_bounds[0]}-{percentile_bounds[1]}% Range"
+
+    def plot_circuits_protein_only_grid(
+        self,
+        circuit_simulation_data,  # dict: {circuit_name: (result, t_span, param_df, pulse_plasmids)}
+        pulse_configuration=None,
+        use_statistical_summary=True,
+        statistical_summary_type="median_percentiles",
+        percentile_bounds=(10, 90),
+        ribbon_alpha=0.25,
+        pulse_shading_alpha=0.2,
+        pulse_shading_color="grey",
+        grid_layout=None,  # tuple (rows, cols) or None for auto
+        figure_size=None,  # auto-calculated if None
+        save_path=None,
+        use_focused_display=True,
+        pre_pulse_display_minutes=10,
+        post_pulse_display_minutes=30,
+    ):
+        """
+        Create protein-only grid plot with pulse period background shading.
+
+        Parameters:
+        -----------
+        circuit_simulation_data : dict
+            {circuit_name: (simulation_result, time_points, param_df, pulse_plasmids)}
+        grid_layout : tuple or None
+            (rows, cols) for explicit layout or None for automatic square-ish arrangement
+        use_focused_display : bool
+            Whether to show focused pulse region or full simulation
+        """
+
+        circuit_names = list(circuit_simulation_data.keys())
+        num_circuits = len(circuit_names)
+
+        # Determine grid layout
+        if grid_layout is None:
+            grid_cols = math.ceil(math.sqrt(num_circuits))
+            grid_rows = math.ceil(num_circuits / grid_cols)
+        else:
+            grid_rows, grid_cols = grid_layout
+
+        if grid_rows * grid_cols < num_circuits:
+            raise ValueError(
+                f"Grid layout {grid_layout} insufficient for {num_circuits} circuits"
+            )
+
+        # Auto-calculate figure size if not provided
+        if figure_size is None:
+            subplot_width = 4
+            subplot_height = 3
+            figure_size = (grid_cols * subplot_width, grid_rows * subplot_height)
+
+        # Extract pulse timing for shading
+        pulse_start_time = (
+            pulse_configuration.get("pulse_start", 0) if pulse_configuration else 0
+        )
+        pulse_end_time = (
+            pulse_configuration.get("pulse_end", 10) if pulse_configuration else 10
+        )
+
+        # Create figure with gridspec
+        figure = plt.figure(figsize=figure_size)
+        grid_spec = gridspec.GridSpec(
+            grid_rows,
+            grid_cols,
+            figure=figure,
+            hspace=0.3,
+            wspace=0.3,
+            top=0.92,
+            bottom=0.08,
+            left=0.08,
+            right=0.95,
+        )
+
+        circuit_axes_collection = {}
+
+        # Process each circuit
+        for circuit_index, circuit_name in enumerate(circuit_names):
+            row_index = circuit_index // grid_cols
+            col_index = circuit_index % grid_cols
+
+            # Create subplot
+            protein_axis = figure.add_subplot(grid_spec[row_index, col_index])
+            circuit_axes_collection[circuit_name] = protein_axis
+
+            # Extract simulation data
+            simulation_result, time_points, param_dataframe, pulse_plasmids = (
+                circuit_simulation_data[circuit_name]
+            )
+
+            # Apply focused display if requested
+            if use_focused_display and pulse_configuration:
+                display_time_points, focused_observables = (
+                    self._extract_focused_display_data(
+                        simulation_result,
+                        time_points,
+                        pulse_configuration,
+                        pre_pulse_display_minutes,
+                        post_pulse_display_minutes,
+                    )
+                )
+            else:
+                display_time_points = time_points
+                focused_observables = simulation_result.observables
+
+            # Extract observable field names
+            if isinstance(focused_observables, list) and len(focused_observables) > 0:
+                observable_field_names = focused_observables[0].dtype.names
+            elif hasattr(focused_observables, "dtype"):
+                observable_field_names = focused_observables.dtype.names
+            else:
+                continue
+
+            # Compute statistical summaries if requested
+            if use_statistical_summary:
+                protein_trajectory_statistics = (
+                    self._compute_protein_statistical_summaries(
+                        focused_observables, statistical_summary_type, percentile_bounds
+                    )
+                )
+
+            # Plot protein trajectories
+            if use_statistical_summary and protein_trajectory_statistics:
+                # Plot statistical summary
+                central_tendency_label = (
+                    "Median"
+                    if statistical_summary_type == "median_percentiles"
+                    else "Mean"
+                )
+
+                protein_axis.plot(
+                    display_time_points,
+                    protein_trajectory_statistics["central_tendency"],
+                    color="blue",
+                    linewidth=2,
+                    label=central_tendency_label,
+                    zorder=3,
+                )
+
+                bounds_label = self._get_statistical_bounds_label(
+                    statistical_summary_type, percentile_bounds
+                )
+                protein_axis.fill_between(
+                    display_time_points,
+                    protein_trajectory_statistics["lower_bound"],
+                    protein_trajectory_statistics["upper_bound"],
+                    alpha=ribbon_alpha,
+                    color="blue",
+                    label=bounds_label,
+                    zorder=2,
+                )
+            else:
+                # Plot individual trajectories
+                trajectory_colors = [
+                    plt.cm.tab10(i % 10) for i in range(len(param_dataframe))
+                ]
+
+                if isinstance(focused_observables, list):
+                    for trajectory_index, observables_array in enumerate(
+                        focused_observables
+                    ):
+                        for observable_name in observable_field_names:
+                            if observable_name.startswith("obs_Protein_"):
+                                protein_concentration = observables_array[
+                                    observable_name
+                                ]
+                                trajectory_color = trajectory_colors[
+                                    trajectory_index % len(trajectory_colors)
+                                ]
+                                protein_axis.plot(
+                                    display_time_points,
+                                    protein_concentration,
+                                    color=trajectory_color,
+                                    alpha=0.15,
+                                    zorder=1,
+                                )
+                else:
+                    for observable_name in observable_field_names:
+                        if observable_name.startswith("obs_Protein_"):
+                            protein_concentration = focused_observables[observable_name]
+                            protein_axis.plot(
+                                display_time_points,
+                                protein_concentration,
+                                color="blue",
+                                linewidth=2,
+                                zorder=2,
+                            )
+
+            # Add pulse period background shading
+            if pulse_configuration:
+                protein_axis.axvspan(
+                    pulse_start_time,
+                    pulse_end_time,
+                    alpha=pulse_shading_alpha,
+                    color=pulse_shading_color,
+                    zorder=0,
+                    label="Pulse Period",
+                )
+
+            # Configure subplot appearance
+            protein_axis.set_title(circuit_name, fontsize=11, fontweight="bold")
+            protein_axis.set_ylabel("Protein (nM)", fontsize=10)
+            protein_axis.grid(True, alpha=0.3)
+            protein_axis.tick_params(labelsize=9)
+
+            # Add legend only to first subplot to avoid clutter
+            if circuit_index == 0:
+                protein_axis.legend(fontsize=8, loc="upper right")
+
+            # Set x-label for bottom row
+            if row_index == grid_rows - 1:
+                protein_axis.set_xlabel("Time (min)", fontsize=10)
+
+        # # Generate figure title
+        # summary_description = self._get_statistical_summary_description(
+        #     statistical_summary_type, percentile_bounds
+        # )
+        # mode_description = (
+        #     "Statistical Summary"
+        #     if use_statistical_summary
+        #     else "Individual Trajectories"
+        # )
+        # display_description = (
+        #     "Pulse Region" if use_focused_display else "Full Simulation"
+        # )
+
+        # figure.suptitle(
+        #     f"Protein Response - {mode_description} ({display_description})",
+        #     fontsize=14,
+        #     fontweight="bold",
+        # )
+
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches="tight")
+            print(f"Protein grid plot saved: {save_path}")
+
+        # plt.show()
+        return figure, circuit_axes_collection
+
+    def _extract_focused_display_data(
+        self,
+        simulation_result,
+        time_points,
+        pulse_configuration,
+        pre_pulse_display_minutes,
+        post_pulse_display_minutes,
+    ):
+        """Extract focused time window data for pulse display."""
+        pulse_start_time = pulse_configuration["pulse_start"]
+        pulse_end_time = pulse_configuration["pulse_end"]
+
+        display_window_start_time = pulse_start_time - pre_pulse_display_minutes
+        display_window_end_time = pulse_end_time + post_pulse_display_minutes
+
+        # Find corresponding indices
+        display_start_index = np.searchsorted(time_points, display_window_start_time)
+        display_end_index = np.searchsorted(time_points, display_window_end_time)
+
+        # Extract focused time span
+        focused_time_points = time_points[display_start_index : display_end_index + 1]
+
+        # Extract focused observables using direct slicing
+        if isinstance(simulation_result.observables, list):
+            focused_observables = []
+            for observables_array in simulation_result.observables:
+                focused_observables.append(
+                    observables_array[display_start_index : display_end_index + 1]
+                )
+        else:
+            focused_observables = simulation_result.observables[
+                display_start_index : display_end_index + 1
+            ]
+
+        return focused_time_points, focused_observables
+
+    def _compute_protein_statistical_summaries(
+        self, observables_data, statistical_summary_type, percentile_bounds
+    ):
+        """Compute statistical summaries specifically for protein observables."""
+        protein_trajectory_collection = []
+
+        if isinstance(observables_data, list):
+            # Multiple parameter sets
+            for observables_array in observables_data:
+                for observable_name in observables_array.dtype.names:
+                    if observable_name.startswith("obs_Protein_"):
+                        protein_trajectory_collection.append(
+                            observables_array[observable_name]
+                        )
+        else:
+            # Single parameter set
+            for observable_name in observables_data.dtype.names:
+                if observable_name.startswith("obs_Protein_"):
+                    protein_trajectory_collection.append(
+                        observables_data[observable_name]
+                    )
+
+        if not protein_trajectory_collection:
+            return None
+
+        protein_trajectory_matrix = np.array(protein_trajectory_collection)
+        return self._compute_trajectory_statistical_measures(
+            protein_trajectory_matrix, statistical_summary_type, percentile_bounds
+        )
