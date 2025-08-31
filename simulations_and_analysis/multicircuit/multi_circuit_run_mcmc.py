@@ -1,10 +1,11 @@
 from datetime import datetime
 import pandas as pd
-import matplotlib.pyplot as plt
+import scipy.signal
+import numpy as np
+from optimization.mcmc_utils import plot_traces
+
 from likelihood_functions.config import CircuitConfig
 from likelihood_functions.base import CircuitFitter
-from utils.process_experimental_data import organize_results
-from analysis_and_figures.plots_simulation import plot_circuit_simulations
 from likelihood_functions.base import MCMCAdapter
 from analysis_and_figures.mcmc_analysis import analyze_mcmc_results
 from utils.import_and_visualise_data import load_and_process_csv
@@ -130,27 +131,97 @@ def fit_multiple_circuits(
     filename = f"../../data/fit_data/shared_parameters/results_{circuit_names_str}_{timestamp}.csv"
     df.to_csv(filename, index=False)
 
-    # Plot and save best fit results for ALL circuits
-    best_params = df.sort_values(by="likelihood", ascending=False).head(50)
-    best_params_values = best_params[results["analyzer"].parameter_names].values
-    param_df = pd.DataFrame(best_params_values, columns=parameters_to_fit)
-
-    # Simulate with multiple parameter sets (will simulate ALL circuits)
-    sim_data = circuit_fitter.simulate_parameters(param_df.values)
-    likelihood_breakdown = (
-        circuit_fitter.calculate_likelihood_from_simulation_with_breakdown(sim_data)
-    )
-    log_prior = circuit_fitter.calculate_log_prior(param_df.values)
-    results_df = organize_results(
-        parameters_to_fit, param_df.values, likelihood_breakdown, log_prior
+    plot_traces(
+        data=parameters,
+        file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{circuit_names_str}_{timestamp}_full.pdf",
+        param_names=parameters_to_fit,
     )
 
-    # Plot results for all circuits
-    plt.figure(figsize=(15, 8))
-    plot_circuit_simulations(sim_data, results_df)
-    plt.suptitle(f"Shared Parameter Fit: {' & '.join(circuit_names)}")
-    plt.savefig(f"fit_shared_{circuit_names_str}_{timestamp}.png")
-    plt.close()
+    for size in [10000, 8000, 6000, 4000, 2000]:
+        plot_traces(
+            data=parameters[len(parameters) - size :],
+            file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{circuit_names_str}_{timestamp}_{size}.pdf",
+            param_names=parameters_to_fit,
+        )
+
+    print("Plotted trajectories", flush=True)
+
+    N = 100
+    convolve = scipy.signal.convolve
+    offset = int(N / 2)
+    data = convolve(
+        step_accepts, np.expand_dims(np.ones(N) / N, axis=(1, 2)), mode="same"
+    )
+    data = data[offset : len(step_accepts) - offset]
+    data = np.expand_dims(
+        data,
+        axis=2,
+    )
+    plot_traces(
+        data=data,
+        file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/step_accepts_{circuit_names_str}_{timestamp}.pdf",
+        param_names=[f"Chain {iX}" for iX in range(step_accepts.shape[-1])],
+    )
+
+    data = convolve(
+        swap_accepts, np.expand_dims(np.ones(N) / N, axis=(1, 2)), mode="same"
+    )
+    data = data[offset : len(step_accepts) - offset]
+    data = np.expand_dims(
+        data,
+        axis=2,
+    )
+    plot_traces(
+        data=data,
+        file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/swap_accepts_{circuit_names_str}_{timestamp}.pdf",
+        param_names=[
+            f"Chain {iX} and Chain {iX + 1}" for iX in range(swap_accepts.shape[-1])
+        ],
+    )
+
+    if hasattr(pt.proposal_function, "radii"):
+        radii = np.array(pt.proposal_function.radii)
+        data = radii
+        data = np.expand_dims(
+            data,
+            axis=2,
+        )
+        plot_traces(
+            data=data,
+            file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/radii_{circuit_names_str}_{timestamp}.pdf",
+            param_names=[f"Chain {iX}" for iX in range(radii.shape[-1])],
+        )
+
+    for iChain in range(n_chains):
+        radii = np.array(pt.proposal_function.radii)
+        data = np.diagonal(
+            np.array(pt.proposal_function.covariances), axis1=3, axis2=4
+        )[:, :, iChain]
+        data = np.expand_dims(
+            data,
+            axis=2,
+        )
+        plot_traces(
+            data=data,
+            file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/covariances_{circuit_names_str}_Chain_{iChain}_{timestamp}.pdf",
+            param_names=[f"Chain {iX}" for iX in range(radii.shape[-1])],
+        )
+
+    print("Plotted analytical trajectories", flush=True)
+    # # Plot and save best fit results for ALL circuits
+    # best_params = df.sort_values(by="likelihood", ascending=False).head(50)
+    # best_params_values = best_params[results["analyzer"].parameter_names].values
+    # param_df = pd.DataFrame(best_params_values, columns=parameters_to_fit)
+    #
+    # # Simulate with multiple parameter sets (will simulate ALL circuits)
+    # sim_data = circuit_fitter.simulate_parameters(param_df.values)
+    # likelihood_breakdown = (
+    #     circuit_fitter.calculate_likelihood_from_simulation_with_breakdown(sim_data)
+    # )
+    # log_prior = circuit_fitter.calculate_log_prior(param_df.values)
+    # results_df = organize_results(
+    #     parameters_to_fit, param_df.values, likelihood_breakdown, log_prior
+    # )
 
     return results, df
 
@@ -219,7 +290,7 @@ def main_shared_fit():
         priors=priors,
         min_time=min_time,
         max_time=max_time,
-        n_samples=30000,
+        n_samples=100000,
         n_walkers=4,
         n_chains=12,
     )

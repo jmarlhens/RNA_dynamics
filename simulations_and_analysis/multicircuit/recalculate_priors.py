@@ -30,7 +30,7 @@ def load_best_parameters_from_csv(csv_path, parameter_names):
     previous_results = pd.read_csv(csv_path)
     best_row = previous_results.loc[previous_results["likelihood"].idxmax()]
 
-    # add little nnoise (stdv 0.05)
+    # add little noise (stdv 0.05)
     import numpy as np
 
     best_row[parameter_names] += np.random.normal(0, 0.1, size=len(parameter_names))
@@ -80,8 +80,6 @@ def fit_multiple_circuits(
     circuit_fitter = CircuitFitter(
         circuit_configs, parameters_to_fit, priors, calibration_params
     )
-
-
 
     print(f"Fitting circuits together: {circuit_names}")
     print("Total experimental data points across all circuits:")
