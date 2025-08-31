@@ -640,31 +640,6 @@
               "GFP"
             ]
           ]
-        },
-        {
-          "name": "sense6_trigger3_plasmid",
-          "tx_control": [
-            "Sense6",
-            "Star6"
-          ],
-          "tl_control": null,
-          "cds": [
-            [
-              false,
-              "Trigger3"
-            ]
-          ]
-        },
-        {
-          "name": "star6_plasmid",
-          "tx_control": null,
-          "tl_control": null,
-          "cds": [
-            [
-              false,
-              "Star6"
-            ]
-          ]
         }
       ],
       "default_parameters": {
