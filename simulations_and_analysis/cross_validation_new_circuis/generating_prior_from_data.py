@@ -11,6 +11,17 @@ import matplotlib.pyplot as plt
 from analysis_and_figures.hierarchical_pairplot_analysis import (
     create_circuit_prior_comparison_pairplot,
 )
+from circuits.circuit_generation.circuit_manager import CircuitManager
+from simulations_and_analysis.individual.individual_circuits_simulations import (
+    create_circuit_simulation_data,
+    simulate_and_organize_parameter_sets,
+)
+from analysis_and_figures.plots_simulation import (
+    extract_trajectory_data,
+    plot_single_circuit_two_column,
+)
+from utils.GFP_calibration import setup_calibration
+
 
 # Configuration
 subfolder = "/shared_parameters/star_antistar_trigger_antitrigger"
@@ -23,6 +34,7 @@ prior_parameters_filepath = (
 )
 burn_in_fraction = 0.5
 output_visualization_directory = "../../figures/calibrated_prior" + subfolder
+
 os.makedirs(output_visualization_directory, exist_ok=True)
 
 
@@ -81,7 +93,6 @@ pairplot_figure = create_circuit_prior_comparison_pairplot(
     diagonal_visualization_type="hist",
 )
 # add on top the estimated gaussian using estimated mean and covariance
-# in particuar using posterior_mean_coordinates and posterior_covariance
 for row_param_index, row_parameter_name in enumerate(parameter_names_for_plot):
     for col_param_index, col_parameter_name in enumerate(parameter_names_for_plot):
         if row_param_index != col_param_index:
@@ -124,3 +135,89 @@ pairplot_figure.savefig(
     f"{output_visualization_directory}/posterior_sampled_and_approximated_pairplot.png",
     dpi=300,
 )
+
+# create a random multivariate normal sample from the estimated posterior
+# first create the multivariate gaussian with the computed mean and covariance
+mv_normal = multivariate_normal(
+    mean=[posterior_mean_coordinates[param] for param in parameter_names],
+    cov=[
+        [posterior_covariance[i][j] for j in parameter_names] for i in parameter_names
+    ],
+)
+# sample from the multivariate normal
+num_samples = 500
+final_sample_size = 50
+
+mv_samples = mv_normal.rvs(size=num_samples)
+# transform into a dataframe
+mv_samples_df = pd.DataFrame(mv_samples, columns=parameter_names)
+# sample from there
+random_samples = mv_samples_df.sample(n=final_sample_size, random_state=42)
+
+fitted_parameter_names = parameter_names
+time_bounds_max = 130
+time_bounds_min = 30
+random_samples = samples_posterior_processed.sample(
+    n=final_sample_size, random_state=42
+)
+calibration_parameters = setup_calibration()
+
+circuit_manager = CircuitManager(
+    parameters_file=prior_parameters_filepath,
+    json_file="../../data/circuits/circuits.json",
+)
+
+circuit_names = ["trigger_antitrigger", "star_antistar_1"]
+
+for circuit_name in circuit_names:
+    circuit_configuration, circuit_fitter = create_circuit_simulation_data(
+        circuit_name,
+        fitted_parameter_names,
+        circuit_manager,
+        calibration_parameters,
+        time_bounds_max,
+        time_bounds_min,
+    )
+
+    simulation_data, results_dataframe = simulate_and_organize_parameter_sets(
+        random_samples, circuit_fitter, parameter_names
+    )
+
+    # Prepare single-circuit data structure
+    single_circuit_simulation_dict = {
+        circuit_name: {
+            "config": circuit_configuration,
+            "combined_params": simulation_data["combined_params"],
+            "simulation_results": simulation_data["simulation_results"],
+        }
+    }
+
+    trajectory_data = extract_trajectory_data(
+        single_circuit_simulation_dict, results_dataframe
+    )
+    circuit_trajectory_data = trajectory_data[
+        trajectory_data["circuit"] == circuit_name
+    ]
+    circuit_data = single_circuit_simulation_dict[circuit_name]
+
+    # Generate two-column plots (experimental | simulation)
+    for simulation_mode in ["individual", "summary"]:
+        _ = plot_single_circuit_two_column(
+            circuit_name,
+            circuit_data,
+            circuit_trajectory_data,
+            results_dataframe,
+            simulation_mode=simulation_mode,
+            summary_type="median_iqr",
+            percentile_bounds=(10, 90),
+        )
+
+        mode_suffix = "_summary" if simulation_mode == "summary" else "_individual"
+        two_column_filename = f"individual_{circuit_name}_two_column{mode_suffix}.png"
+        plt.savefig(
+            os.path.join(output_visualization_directory, two_column_filename),
+            bbox_inches="tight",
+            dpi=300,
+        )
+        plt.show()
+        plt.close()
