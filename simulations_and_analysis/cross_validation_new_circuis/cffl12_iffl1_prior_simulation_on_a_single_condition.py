@@ -27,9 +27,9 @@ os.makedirs(output_dir, exist_ok=True)
 # Define maximum simulation time
 min_time = 30
 max_time = 210
-n_samples = 10000  # 20000,
-n_walkers = 5  # 5
-n_chains = 12  # 10
+n_samples = 10000
+n_walkers = 5
+n_chains = 12
 
 
 circuit_data = {}
