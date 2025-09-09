@@ -54,6 +54,7 @@ circuit = circuit_manager.create_circuit(
 
 calibration_params = setup_calibration()
 
+
 # only keep  a single condition_params ('STAR1 5 nM')
 single_condition = "STAR1 5 nM"
 condition_params_single_condition = {
@@ -120,7 +121,7 @@ buffer_writer.close()
 
 print("Completed Model Calibration", flush=True)
 
-results_path = f"../../data/fit_data/individual_circuits/results_{safe_circuit_name}_{timestamp}.csv"
+results_path = f"../../data/fit_data/individual_circuits/results_{safe_circuit_name}_{timestamp}_literature_prior.csv"
 results_writer = MCMCResultsWriter(path=results_path, param_names=parameters_to_fit)
 results_writer.save_state_in_file(
     parameters, priors_out, likelihoods, step_accepts, swap_accepts
