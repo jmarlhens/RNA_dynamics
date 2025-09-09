@@ -17,6 +17,7 @@ from analysis_and_figures.correlation_plots import (
 from analysis_and_figures.mcmc_analysis_hierarchical import (
     process_mcmc_data,
 )
+from circuits.circuit_generation.circuit_manager import CircuitManager
 
 
 def load_individual_circuit_results(
@@ -33,7 +34,7 @@ def load_individual_circuit_results(
         circuit_name_parts = filename.split("_")[1:-2]
         circuit_name = "_".join(circuit_name_parts)
 
-        # let's not take the gfp constitutive circuit
+        # skip constitutive sfGFP
         if circuit_name == "constitutive sfGFP":
             print(f"Skipping circuit: {circuit_name}")
             continue
@@ -95,12 +96,6 @@ def convert_individual_to_theta_format(
 
         theta_formatted_samples.append(circuit_theta_parameters)
 
-    # remove some parameters: k_rna_km and k_rna_deg
-    theta_formatted_samples = [
-        df.drop(columns=["k_rna_km", "k_rna_deg"], errors="ignore")
-        for df in theta_formatted_samples
-    ]
-
     return pd.concat(theta_formatted_samples, ignore_index=True)
 
 
@@ -153,12 +148,16 @@ def generate_prior_mean_coordinates(prior_parameters_filepath, fitted_parameter_
 def execute_individual_to_hierarchical_comparison(
     individual_results_directory,
     prior_parameters_filepath,
-    fitted_parameter_names,
+    all_parameters,
     output_visualization_directory,
     target_circuit_names=None,
     weight_alpha_by_likelihood=False,
 ):
     """Execute complete individual-to-hierarchical comparison pipeline"""
+    circuit_manager = CircuitManager(
+        parameters_file="../../data/prior/model_parameters_priors_updated_tighter.csv",
+        json_file="../../data/circuits/circuits.json",
+    )
 
     os.makedirs(output_visualization_directory, exist_ok=True)
 
@@ -167,6 +166,23 @@ def execute_individual_to_hierarchical_comparison(
         individual_results_directory
     )
     available_circuit_names = list(individual_circuit_fits.keys())
+
+    parameters_to_fit = (
+        all_parameters.Parameter.tolist()
+    )  # include all parameters (some circuits may not have all)
+    parameters = []
+    for circuit_name in available_circuit_names:
+        circuit = circuit_manager.create_circuit(circuit_name)
+        # Only keep the parameters that are actually part of the model ([parameter_name.name for parameter_name in circuit_config.model.parameters])
+        parameter_in_the_model = [
+            parameter_name.name for parameter_name in circuit.model.parameters
+        ]
+        parameters += [
+            param for param in parameters_to_fit if param in parameter_in_the_model
+        ]
+
+    # keep only unique parameters
+    fitted_parameter_names = list(set(parameters))
 
     if target_circuit_names is None:
         target_circuit_names = available_circuit_names
@@ -227,10 +243,9 @@ def execute_individual_to_hierarchical_comparison(
         fitted_parameter_names,
         output_visualization_directory + "/pairplot.png",
         diagonal_visualization_type="kde",
-        offdiagonal_visualization_type="scatter",
+        offdiagonal_visualization_type="kde",
     )
 
-    # NEW: Create correlation matrices for each circuit
     print("Creating correlation matrices...")
     correlation_matrices = create_circuit_correlation_matrices(
         filtered_individual_fits, fitted_parameter_names, output_visualization_directory
@@ -254,31 +269,29 @@ def main():
     subfolder = "/rnase_competition"
     subfolder = "/10000_steps_updated"
     subfolder = "/constrained_prior_3_tighter"
-    subfolder = "/even_tighter"
+    subfolder = "/conv_AU_corr"
+    subfolder = "/shared_parameters/cross_val"
+    subfolder = "/individual_circuits/100000_steps_sim_sfGFP"
+    # subfolder = "/shared_parameters/star_antistar_trigger_antitrigger"
+    # subfolder = "/shared_parameters/cross_val_2"
 
     # Configuration
-    individual_results_directory = "../../data/fit_data/individual_circuits" + subfolder
-    prior_parameters_filepath = "../../data/prior/model_parameters_priors_updated.csv"
+    individual_results_directory = "../../data/fit_data" + subfolder
+    # individual_results_directory = "../../data/fit_data/individual_circuits" + subfolder
+    prior_parameters_filepath = (
+        "../../data/prior/model_parameters_priors_updated_tighter.csv"
+    )
     output_visualization_directory = "../../figures/individual_circuits" + subfolder
 
     # Load parameter specifications
     prior_parameters = pd.read_csv(prior_parameters_filepath)
-    fitted_parameter_names = prior_parameters[
-        prior_parameters["Parameter"] != "k_prot_deg"
-    ]["Parameter"].tolist()
-
-    # also remove rna deg and rna km
-    fitted_parameter_names = [
-        p for p in fitted_parameter_names if p not in ["k_rna_deg", "k_rna_km"]
-    ]
-
-    print(f"Fitted parameters: {fitted_parameter_names}")
+    prior_parameters = prior_parameters[prior_parameters["Parameter"] != "k_prot_deg"]
 
     # Execute comparison pipeline
     _ = execute_individual_to_hierarchical_comparison(
         individual_results_directory=individual_results_directory,
         prior_parameters_filepath=prior_parameters_filepath,
-        fitted_parameter_names=fitted_parameter_names,
+        all_parameters=prior_parameters,
         output_visualization_directory=output_visualization_directory,
         weight_alpha_by_likelihood=False,  # Set to True for likelihood-weighted α
     )

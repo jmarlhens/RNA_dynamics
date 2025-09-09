@@ -7,7 +7,7 @@ from likelihood_functions.config import CircuitConfig
 from likelihood_functions.base import CircuitFitter
 from utils.process_experimental_data import organize_results
 from utils.import_and_visualise_data import load_and_process_csv
-from utils.GFP_calibration import fit_gfp_calibration, get_brightness_correction_factor
+from utils.GFP_calibration import setup_calibration, convert_nm_to_au
 from analysis_and_figures.mcmc_analysis_hierarchical import process_mcmc_data
 from analysis_and_figures.plots_simulation import (
     plot_circuit_simulations,
@@ -21,36 +21,19 @@ from simulations_and_analysis.individual.individual_circuits_statistics import (
 )
 
 
-def setup_calibration():
-    """Set up GFP calibration parameters"""
-    calibration_data = pd.read_csv("../../utils/calibration_gfp/gfp_Calibration.csv")
-    calibration_results = fit_gfp_calibration(
-        calibration_data,
-        concentration_col="GFP Concentration (nM)",
-        fluorescence_pattern="F.I. (a.u)",
-    )
-    brightness_correction, _ = get_brightness_correction_factor("avGFP", "sfGFP")
-
-    return {
-        "slope": calibration_results["slope"],
-        "intercept": calibration_results["intercept"],
-        "brightness_correction": brightness_correction,
-    }
-
-
 def create_circuit_simulation_data(
     circuit_name,
-    mcmc_samples,
-    parameters_to_fit,
     circuit_manager,
     calibration_parameters,
     time_bounds_max,
     time_bounds_min,
+    priors_csv_path="../../data/prior/model_parameters_priors_updated_tighter.csv",
 ):
     """Create circuit configuration and simulate parameter sets"""
     circuit_conditions = get_circuit_conditions(circuit_name)
     experimental_data_file = get_data_file(circuit_name)
     experimental_data, time_span = load_and_process_csv(experimental_data_file)
+    prior_kinetic_rates = pd.read_csv(priors_csv_path)
 
     first_condition = list(circuit_conditions.keys())[0]
     circuit_instance = circuit_manager.create_circuit(
@@ -65,12 +48,19 @@ def create_circuit_simulation_data(
         tspan=time_span,
         max_time=time_bounds_max,
         min_time=time_bounds_min,
+        calibration_params=calibration_parameters,
     )
+
+    kinetic_parameters = [
+        param
+        for param in prior_kinetic_rates.Parameter.to_list()
+        if param in circuit_configuration.model_parameters
+    ]
 
     circuit_fitter = CircuitFitter(
         [circuit_configuration],
-        parameters_to_fit,
-        pd.read_csv("../../data/prior/model_parameters_priors.csv"),
+        kinetic_parameters,
+        prior_kinetic_rates,
         calibration_parameters,
     )
 
@@ -90,9 +80,11 @@ def simulate_and_organize_parameter_sets(
     )
     log_priors = circuit_fitter.calculate_log_prior(log_parameters)
 
-    linear_parameters = 10**log_parameters
     organized_results = organize_results(
-        parameters_to_fit, linear_parameters, log_likelihoods, log_priors
+        parameters_to_fit,
+        log_parameters,
+        log_likelihoods,
+        log_priors,  # Pass log space parameters
     )
 
     return simulation_results[0], organized_results
@@ -136,18 +128,16 @@ def generate_per_circuit_individual_plots(
     sample_count,
     time_bounds_max,
     time_bounds_min,
+    priors_csv_path,
 ):
     """Generate separate two-column and overlay plots for each individual circuit"""
 
     circuit_manager = CircuitManager(
-        parameters_file="../../data/prior/model_parameters_priors.csv",
+        parameters_file=priors_csv_path,
         json_file="../../data/circuits/circuits.json",
     )
 
-    model_priors = pd.read_csv("../../data/prior/model_parameters_priors.csv")
-    parameters_to_fit = model_priors[
-        model_priors["Parameter"] != "k_prot_deg"
-    ].Parameter.tolist()
+    # model_priors = pd.read_csv(priors_csv_path)
     calibration_parameters = setup_calibration()
 
     for circuit_name, mcmc_raw_samples in mcmc_results_by_circuit.items():
@@ -173,26 +163,22 @@ def generate_per_circuit_individual_plots(
         # Create circuit configuration and fitter
         circuit_configuration, circuit_fitter = create_circuit_simulation_data(
             circuit_name,
-            mcmc_raw_samples,
-            parameters_to_fit,
             circuit_manager,
             calibration_parameters,
             time_bounds_max,
             time_bounds_min,
         )
 
-        best_likelihood_samples = mcmc_final_samples.sort_values(
-            by="likelihood", ascending=False
-        )
         random_samples = mcmc_final_samples.sample(n=final_sample_size, random_state=42)
 
         # Generate plots for both sample types
         for sample_type, samples in [
-            ("best", best_likelihood_samples),
             ("random", random_samples),
         ]:
             simulation_data, results_dataframe = simulate_and_organize_parameter_sets(
-                samples, circuit_fitter, parameters_to_fit
+                samples,
+                circuit_fitter,
+                circuit_fitter.parameters_to_fit,
             )
 
             # Prepare single-circuit data structure
@@ -211,6 +197,18 @@ def generate_per_circuit_individual_plots(
                 trajectory_data["circuit"] == circuit_name
             ]
             circuit_data = single_circuit_simulation_dict[circuit_name]
+
+            circuit_trajectory_data["protein_concentration"] = convert_nm_to_au(
+                circuit_trajectory_data["protein_concentration"],
+                circuit_fitter.calibration_params["slope"],
+                circuit_fitter.calibration_params["intercept"],
+                circuit_fitter.calibration_params["brightness_correction"],
+            )
+
+            # circuit_trajectory_data.to_csv(
+            #     "../../data/data_parameter_estimation/constitutive_sfGFP_simulated_data_au.csv",
+            #     index=False,
+            # )
 
             # Generate two-column plots (experimental | simulation)
             for simulation_mode in ["individual", "summary"]:
@@ -245,6 +243,8 @@ def generate_per_circuit_individual_plots(
                     simulation_mode=simulation_mode,
                     summary_type="median_iqr",
                     percentile_bounds=(10, 90),
+                    figsize=(6, 4),
+                    title_true=False,
                 )
 
                 mode_suffix = (
@@ -267,26 +267,27 @@ def plot_fits(
     sample_count=60,
     time_bounds_max=None,
     time_bounds_min=None,
+    priors_csv_path="../../data/prior/model_parameters_priors_updated_tighter.csv",
 ):
     """Plot fits for each circuit using both best and random samples"""
 
     circuit_manager = CircuitManager(
-        parameters_file="../../data/prior/model_parameters_priors.csv",
+        parameters_file=priors_csv_path,
         json_file="../../data/circuits/circuits.json",
     )
 
-    model_priors = pd.read_csv("../../data/prior/model_parameters_priors.csv")
-    parameters_to_fit = model_priors[
-        model_priors["Parameter"] != "k_prot_deg"
-    ].Parameter.tolist()
+    # model_priors = pd.read_csv(priors_csv_path)
+
     calibration_parameters = setup_calibration()
 
-    combined_best_simulation_data = {}
     combined_random_simulation_data = {}
-    combined_best_results = []
     combined_random_results = []
 
     for circuit_name, mcmc_raw_samples in mcmc_results_by_circuit.items():
+        # skip constitutive sfGFP
+        if circuit_name == "constitutive sfGFP":
+            continue
+
         print(f"Processing circuit {circuit_name}")
 
         # Filter and sample MCMC data
@@ -304,97 +305,45 @@ def plot_fits(
             else mcmc_filtered_samples.copy()
         )
 
-        best_likelihood_samples = mcmc_final_samples.sort_values(
-            by="likelihood", ascending=False
-        )
         random_samples = mcmc_final_samples.sample(n=final_sample_size, random_state=42)
 
         # Create circuit configuration
+        # Create circuit configuration
         circuit_configuration, circuit_fitter = create_circuit_simulation_data(
             circuit_name,
-            mcmc_raw_samples,
-            parameters_to_fit,
             circuit_manager,
             calibration_parameters,
             time_bounds_max,
             time_bounds_min,
         )
 
-        # Generate individual plots
-        plot_individual_circuit(
-            best_likelihood_samples,
-            "best",
-            circuit_name,
-            circuit_fitter,
-            parameters_to_fit,
-            output_directory,
-        )
         plot_individual_circuit(
             random_samples,
             "random",
             circuit_name,
             circuit_fitter,
-            parameters_to_fit,
+            circuit_fitter.parameters_to_fit,
             output_directory,
         )
 
-        # Prepare combined plotting data
-        best_simulation_data, best_results_dataframe = (
-            simulate_and_organize_parameter_sets(
-                best_likelihood_samples, circuit_fitter, parameters_to_fit
-            )
-        )
         random_simulation_data, random_results_dataframe = (
             simulate_and_organize_parameter_sets(
-                random_samples, circuit_fitter, parameters_to_fit
+                random_samples,
+                circuit_fitter,
+                circuit_fitter.parameters_to_fit,
             )
         )
 
-        combined_best_simulation_data[circuit_name] = {
-            "config": circuit_configuration,
-            "combined_params": best_simulation_data["combined_params"],
-            "simulation_results": best_simulation_data["simulation_results"],
-        }
         combined_random_simulation_data[circuit_name] = {
             "config": circuit_configuration,
             "combined_params": random_simulation_data["combined_params"],
             "simulation_results": random_simulation_data["simulation_results"],
         }
 
-        combined_best_results.append(best_results_dataframe)
         combined_random_results.append(random_results_dataframe)
 
     # Generate combined plots
-    combined_best_dataframe = pd.concat(combined_best_results, ignore_index=True)
     combined_random_dataframe = pd.concat(combined_random_results, ignore_index=True)
-
-    print("Generating combined best fits figure...")
-    plot_circuit_simulations(
-        combined_best_simulation_data,
-        combined_best_dataframe,
-        plot_mode="individual",
-        likelihood_percentile_range=20,
-    )
-    plt.savefig(
-        os.path.join(output_directory, "all_circuits_best_fits.png"),
-        bbox_inches="tight",
-        dpi=300,
-    )
-    plt.close()
-
-    plot_circuit_simulations(
-        combined_best_simulation_data,
-        combined_best_dataframe,
-        plot_mode="summary",
-        summary_type="median_iqr",
-        percentile_bounds=(10, 90),
-    )
-    plt.savefig(
-        os.path.join(output_directory, "all_circuits_best_fits_summary.png"),
-        bbox_inches="tight",
-        dpi=300,
-    )
-    plt.close()
 
     print("Generating combined random fits figure...")
     plot_circuit_simulations(
@@ -402,6 +351,7 @@ def plot_fits(
         combined_random_dataframe,
         plot_mode="individual",
         likelihood_percentile_range=20,
+        # show_title=False,
     )
     plt.savefig(
         os.path.join(output_directory, "all_circuits_random_fits.png"),
@@ -416,38 +366,10 @@ def plot_fits(
         plot_mode="summary",
         summary_type="median_iqr",
         percentile_bounds=(10, 90),
+        show_title=False,
     )
     plt.savefig(
         os.path.join(output_directory, "all_circuits_random_fits_summary.png"),
-        bbox_inches="tight",
-        dpi=300,
-    )
-    plt.close()
-
-    # Generate overlay plots: experimental | simulation
-    print("Generating overlay plots...")
-
-    plot_circuit_conditions_overlay(
-        combined_best_simulation_data,
-        combined_best_dataframe,
-        simulation_mode="individual",
-    )
-    plt.savefig(
-        os.path.join(output_directory, "all_circuits_best_fits_overlay_individual.png"),
-        bbox_inches="tight",
-        dpi=300,
-    )
-    plt.close()
-
-    plot_circuit_conditions_overlay(
-        combined_best_simulation_data,
-        combined_best_dataframe,
-        simulation_mode="summary",
-        summary_type="median_iqr",
-        percentile_bounds=(10, 90),
-    )
-    plt.savefig(
-        os.path.join(output_directory, "all_circuits_best_fits_overlay_summary.png"),
         bbox_inches="tight",
         dpi=300,
     )
@@ -457,6 +379,7 @@ def plot_fits(
         combined_random_simulation_data,
         combined_random_dataframe,
         simulation_mode="individual",
+        show_title=False,
     )
     plt.savefig(
         os.path.join(
@@ -473,6 +396,7 @@ def plot_fits(
         simulation_mode="summary",
         summary_type="median_iqr",
         percentile_bounds=(10, 90),
+        show_title=False,
     )
     plt.savefig(
         os.path.join(output_directory, "all_circuits_random_fits_overlay_summary.png"),
@@ -483,31 +407,60 @@ def plot_fits(
 
 
 def main():
-    subfolder = "/10000_steps_updated"
-    subfolder = "/constrained_prior_3_tighter"
-    subfolder = "/cross_val_circuits"
+    subfolder = "/50000_steps"
+    # subfolder = "/conv_AU_corr"
+    # subfolder = "/cross_val_circuits"
+    subfolder = "/transfer_learning"
+    subfolder = "/fit_data_2025-08-28_50000_steps_Generalized_Adaptive_Metropolis_with_Global_Scaling/individual_circuits"
 
     input_directory = "../../data/fit_data/individual_circuits" + subfolder
     output_visualization_directory = "../../figures/individual_circuits" + subfolder
+    priors_csv_path = "../../data/prior/model_parameters_priors_updated_tighter.csv"
+
+    # creatre output directory if it does not exist
+    os.makedirs(output_visualization_directory, exist_ok=True)
 
     mcmc_results = load_individual_circuit_results(input_directory)
 
+    # Define processing order and inclusion
+    circuit_processing_sequence = [
+        # "constitutive sfGFP",
+        "sense_star_6",
+        "toehold_trigger",
+        "cascade",
+        "cffl_type_1",
+        "or_gate_c1ffl",
+        "star_antistar_1",
+        "trigger_antitrigger",
+        "inhibited_incoherent_cascade",
+        "inhibited_cascade",
+        "cffl_12",
+    ]
+
+    filtered_mcmc_results = {
+        circuit_name: mcmc_results[circuit_name]
+        for circuit_name in circuit_processing_sequence
+        if circuit_name in mcmc_results
+    }
+
     # Generate combined plots (existing functionality)
     plot_fits(
-        mcmc_results,
+        filtered_mcmc_results,
         output_visualization_directory,
-        sample_count=30,
+        sample_count=10,
         time_bounds_max=130,
         time_bounds_min=30,
+        priors_csv_path=priors_csv_path,
     )
 
     # Generate per-circuit plots (new functionality)
     generate_per_circuit_individual_plots(
-        mcmc_results,
+        filtered_mcmc_results,
         output_visualization_directory,
-        sample_count=30,
+        sample_count=1,
         time_bounds_max=130,
         time_bounds_min=30,
+        priors_csv_path=priors_csv_path,
     )
 
 

@@ -437,7 +437,7 @@ class CircuitFitter:
 
 
 class MCMCAdapter:
-    def __init__(self, circuit_fitter):
+    def __init__(self, circuit_fitter, log_prior=None):
         """
         Adapter to make CircuitFitter compatible with ParallelTempering
 
@@ -445,8 +445,11 @@ class MCMCAdapter:
         ----------
         circuit_fitter : CircuitFitter
             Instance of your CircuitFitter class
+        log_prior : function, optional
+            Custom log prior function, if None uses circuit_fitter's method
         """
         self.circuit_fitter = circuit_fitter
+        self.log_prior = log_prior
 
     def get_initial_parameters(self):
         """Get initial parameters from prior means in log space"""
@@ -471,17 +474,32 @@ class MCMCAdapter:
 
     def get_log_prior_function(self):
         """Returns a prior function compatible with ParallelTempering"""
+        if self.log_prior is not None:
+            return self.log_prior
+        else:
 
-        def log_prior(params):
-            # Reshape from (n_walkers, n_chains, n_params) to (n_samples, n_params)
-            original_shape = params.shape
-            params_2d = params.reshape(-1, original_shape[-1])
+            def log_prior(params):
+                """
+                Wrapper for log prior calculation
 
-            # Calculate prior and reshape back
-            prior_values = self.circuit_fitter.calculate_log_prior(params_2d)
-            return prior_values.reshape(original_shape[:-1])
+                Parameters
+                ----------
+                params : np.ndarray
+                    Array of shape (n_walkers, n_chains, n_params)
+                Returns
+                -------
+                np.ndarray
+                    Array of shape (n_walkers, n_chains) with log prior values
+                """
+                # Reshape from (n_walkers, n_chains, n_params) to (n_samples, n_params)
+                original_shape = params.shape
+                params_2d = params.reshape(-1, original_shape[-1])
 
-        return log_prior
+                # Calculate prior and reshape back
+                prior_values = self.circuit_fitter.calculate_log_prior(params_2d)
+                return prior_values.reshape(original_shape[:-1])
+
+            return log_prior
 
     def setup_parallel_tempering(self, n_walkers=1, n_chains=10):
         """
