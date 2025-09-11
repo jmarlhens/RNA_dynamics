@@ -26,7 +26,7 @@ def fit_single_circuit(
         priors,
         min_time=30,  # 30
         max_time=210,  # 210
-        n_samples=25,  # 20000,
+        n_samples=100000,  # 20000,
         n_walkers=5,  # 5
         n_chains=12,  # 10
 ):
@@ -214,8 +214,8 @@ def main(circuits_to_fit=None):
         else "ALL_AVAILABLE"
     )
     with open(f"{output_dir}{circs_ident}_{timestamp}.out", "w") as log:
-        # sys.stdout = log
-        # sys.stderr = log
+        sys.stdout = log
+        sys.stderr = log
 
         # List available circuits to verify
         available_circuits = circuit_manager.list_circuits()
