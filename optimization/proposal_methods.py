@@ -91,7 +91,7 @@ class GeneralizedAdaptiveProposal(AdaptiveProposal):
         self.variance = variance
 
         self.L_variance = np.linalg.cholesky(variance)
-        self.nu = lambda n: min(0.05, ((n + 1) / 2) ** (-1))
+        self.nu = lambda n: min(0.02, ((n + 1) / 5) ** (-1))
         self.radii = []
 
     def update_proposal(self, parameters, priors, likelihoods, step_accepts, alpha, iN):

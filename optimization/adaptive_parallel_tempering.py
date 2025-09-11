@@ -632,7 +632,7 @@ def visualize_covariance_evolution(means, covariances):
 
 
 if __name__ == '__main__':
-    test_multivariate_normal()
-    # test_smile()
+    # test_multivariate_normal()
+    test_smile()
     # sampling_test()
     pass
