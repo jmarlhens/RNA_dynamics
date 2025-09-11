@@ -6,7 +6,6 @@ k_rna_deg,0.00078,1
 k_rna_km,100.0,0.5
 k_tl,16.1,0.5
 K_tl,65.8,0.5
-k_prot_deg,0.0,0.25
 k_mat,0.2,1
 k_csy4,2.9,0.25
 k_tl_unbound_toehold,0.0025,0.75
