@@ -237,9 +237,12 @@ if __name__ == "__main__":
     print(f"\nBrightness correction factor: {correction_factor:.2f}")
 
 
-def setup_calibration():
+def setup_calibration(gfp_calibration_file: str = None) -> Dict:
     # Load calibration data
-    data = pd.read_csv("../../utils/calibration_gfp/gfp_Calibration.csv")
+    if gfp_calibration_file is None:
+        gfp_calibration_file = "../../utils/calibration_gfp/gfp_Calibration.csv"
+
+    data = pd.read_csv(gfp_calibration_file)
 
     # Fit the calibration curve
     calibration_results = fit_gfp_calibration(

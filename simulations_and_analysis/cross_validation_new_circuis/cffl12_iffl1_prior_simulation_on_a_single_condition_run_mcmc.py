@@ -38,6 +38,7 @@ for circuit_name, data_file in DATA_FILES.items():
     circuit_data[circuit_name] = {"experimental_data": data, "tspan": tspan}
 
 circuit_name = "cffl_12"
+circuit_name = "iffl_1"
 
 # Load priors
 priors = pd.read_csv("../../data/prior/model_parameters_priors_updated_tighter.csv")
@@ -56,9 +57,10 @@ calibration_params = setup_calibration()
 
 
 # only keep  a single condition_params ('STAR1 5 nM')
-single_condition = "STAR1 5 nM"
+selected_conditions = ["STAR1 5 nM"]
+selected_conditions = ["Sense-aTrigger 5 nM", "STAR-Trigger 10 nM"]
 condition_params_single_condition = {
-    single_condition: condition_params[single_condition]
+    condition: condition_params[condition] for condition in selected_conditions
 }
 
 
@@ -121,7 +123,7 @@ buffer_writer.close()
 
 print("Completed Model Calibration", flush=True)
 
-results_path = f"../../data/fit_data/individual_circuits/results_{safe_circuit_name}_{timestamp}_literature_prior.csv"
+results_path = f"../../data/fit_data/individual_circuits/transfer_learning/literature_prior/results_{safe_circuit_name}_{timestamp}.csv"
 results_writer = MCMCResultsWriter(path=results_path, param_names=parameters_to_fit)
 results_writer.save_state_in_file(
     parameters, priors_out, likelihoods, step_accepts, swap_accepts
