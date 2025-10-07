@@ -41,7 +41,8 @@ class Transcription(ReactionComplex):
 
         super().__init__(substrate=None, product=rna, model=model)
 
-        trancription_parameters = ["k_tx", "K_tx", "k_rna_deg"]
+        # trancription_parameters = ["k_tx", "K_tx", "k_rna_deg"]
+        trancription_parameters = ["k_tx", "k_rna_deg"]
         existing_parameters = set(model.parameters.keys())
         for param_name in trancription_parameters:
             if param_name not in existing_parameters:
@@ -53,11 +54,11 @@ class Transcription(ReactionComplex):
             (
                 model.parameters["k_" + sequence_name + "_concentration"]
                 * model.parameters["k_tx"]
-            )
-            / (
-                model.parameters["K_tx"]
-                + model.parameters["k_" + sequence_name + "_concentration"]
             ),
+            # / (
+            #     model.parameters["K_tx"]
+            #     + model.parameters["k_" + sequence_name + "_concentration"]
+            # ),
         )
 
         rules = []
@@ -94,7 +95,7 @@ class PulsedTranscription(ReactionComplex):
 
         # Set up basic parameters
         self.k_tx = self.parameters["k_tx"]
-        self.K_tx = self.parameters["K_tx"]
+        # self.K_tx = self.parameters["K_tx"]
         self.k_deg = self.parameters["k_rna_deg"]
 
         # Set up time tracking if using pulses
@@ -142,8 +143,8 @@ class PulsedTranscription(ReactionComplex):
         # Create transcription rate expression
         Expression(
             "k_tx_plasmid_" + sequence_name,
-            (model.expressions["k_" + sequence_name + "_concentration"] * self.k_tx)
-            / (self.K_tx + model.expressions["k_" + sequence_name + "_concentration"]),
+            (model.expressions["k_" + sequence_name + "_concentration"] * self.k_tx),
+            # / (self.K_tx + model.expressions["k_" + sequence_name + "_concentration"]),
         )
 
         # Create transcription rule

@@ -25,21 +25,21 @@ DATA_FILES = {
 CIRCUIT_CONDITIONS = {
     "constitutive sfGFP": {
         "sfGFP 3 nM": {
-            "k_sfGFP_concentration": 3,
-            # "k_Sense6_Trigger3_concentration": 0,
-            # "k_Star6_concentration": 0,
+            "k_GFP_concentration": 3,
+            "k_Sense6_Trigger3_concentration": 0,
+            "k_Star6_concentration": 0,
         },
         "sfGFP 3 nM + Se6Tr3 5 nM + St6 15 nM": {
-            "k_sfGFP_concentration": 3,
-            # "k_Sense6_Trigger3_concentration": 5,
-            # "k_Star6_concentration": 15,
+            "k_GFP_concentration": 3,
+            "k_Sense6_Trigger3_concentration": 5,
+            "k_Star6_concentration": 15,
         },
     },
     "constitutive sfGFP sim": {
         "sfGFP 3 nM": {
-            "k_sfGFP_concentration": 3,
-            # "k_Sense6_Trigger3_concentration": 0,
-            # "k_Star6_concentration": 0,
+            "k_GFP_concentration": 3,
+            "k_Sense6_Trigger3_concentration": 0,
+            "k_Star6_concentration": 0,
         },
     },
     "trigger_antitrigger": {
