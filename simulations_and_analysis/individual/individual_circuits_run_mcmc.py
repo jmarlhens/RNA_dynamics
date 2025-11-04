@@ -18,17 +18,17 @@ from utils.GFP_calibration import setup_calibration
 
 
 def fit_single_circuit(
-        circuit_manager,
-        circuit_name,
-        condition_params,
-        experimental_data,
-        tspan,
-        priors,
-        min_time=30,  # 30
-        max_time=210,  # 210
-        n_samples=100000,  # 20000,
-        n_walkers=5,  # 5
-        n_chains=12,  # 10
+    circuit_manager,
+    circuit_name,
+    condition_params,
+    experimental_data,
+    tspan,
+    priors,
+    min_time=30,  # 30
+    max_time=210,  # 210
+    n_samples=100000,  # 20000,
+    n_walkers=5,  # 5
+    n_chains=12,  # 10
 ):
     """
     Fit a single circuit and save its results using the new CircuitManager system
@@ -76,7 +76,9 @@ def fit_single_circuit(
     os.makedirs("../../data/fit_data/individual_circuits_buffer/", exist_ok=True)
     os.makedirs("../../data/fit_data/individual_circuits/", exist_ok=True)
     os.makedirs("../../data/fit_data/individual_circuits/trajectories/", exist_ok=True)
-    os.makedirs("../../data/fit_data/individual_circuits/analysis_trajectories/", exist_ok=True)
+    os.makedirs(
+        "../../data/fit_data/individual_circuits/analysis_trajectories/", exist_ok=True
+    )
     os.makedirs("../../data/fit_data/individual_circuits/analysis_data/", exist_ok=True)
 
     buffer_writer = MCMCResultsWriter(
@@ -99,7 +101,9 @@ def fit_single_circuit(
 
     results_path = f"../../data/fit_data/individual_circuits/results_{safe_circuit_name}_{timestamp}.csv"
     results_writer = MCMCResultsWriter(path=results_path, param_names=parameters_to_fit)
-    results_writer.save_state_in_file(parameters, priors_out, likelihoods, step_accepts, swap_accepts)
+    results_writer.save_state_in_file(
+        parameters, priors_out, likelihoods, step_accepts, swap_accepts
+    )
     results_writer.close()
 
     print(f"Stored samples in:\n{results_path}", flush=True)
@@ -112,7 +116,7 @@ def fit_single_circuit(
 
     for size in [10000, 8000, 6000, 4000, 2000]:
         plot_traces(
-            data=parameters[len(parameters) - size:],
+            data=parameters[len(parameters) - size :],
             file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{safe_circuit_name}_{timestamp}_{size}.pdf",
             param_names=parameters_to_fit,
         )
@@ -122,8 +126,10 @@ def fit_single_circuit(
     N = 100
     convolve = scipy.signal.convolve
     offset = int(N / 2)
-    data = convolve(step_accepts, np.expand_dims(np.ones(N) / N, axis=(1, 2)), mode="same")
-    data = data[offset: len(step_accepts) - offset]
+    data = convolve(
+        step_accepts, np.expand_dims(np.ones(N) / N, axis=(1, 2)), mode="same"
+    )
+    data = data[offset : len(step_accepts) - offset]
     data = np.expand_dims(data, axis=2)
     plot_traces(
         data=data,
@@ -131,8 +137,10 @@ def fit_single_circuit(
         param_names=[f"Chain {iX}" for iX in range(step_accepts.shape[-1])],
     )
 
-    data = convolve(swap_accepts, np.expand_dims(np.ones(N) / N, axis=(1, 2)), mode="same")
-    data = data[offset: len(step_accepts) - offset]
+    data = convolve(
+        swap_accepts, np.expand_dims(np.ones(N) / N, axis=(1, 2)), mode="same"
+    )
+    data = data[offset : len(step_accepts) - offset]
     data = np.expand_dims(data, axis=2)
     plot_traces(
         data=data,
@@ -152,14 +160,17 @@ def fit_single_circuit(
             param_names=[f"Chain {iX}" for iX in range(radii.shape[-1])],
         )
         file_path = f"../../data/fit_data/individual_circuits/analysis_data/radii_{safe_circuit_name}_{timestamp}.npy"
-        np.save(file_path,
-                pt.proposal_function.radii)
+        np.save(file_path, pt.proposal_function.radii)
         print(f"Saved Radii to {file_path}")
 
-
     for iChain in range(n_chains):
-        data = np.diagonal(np.array(pt.proposal_function.covariances), axis1=3, axis2=4)[:, :, iChain]
-        data = np.expand_dims(data, axis=2, )
+        data = np.diagonal(
+            np.array(pt.proposal_function.covariances), axis1=3, axis2=4
+        )[:, :, iChain]
+        data = np.expand_dims(
+            data,
+            axis=2,
+        )
         plot_traces(
             data=data,
             file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/covariances_{safe_circuit_name}_Chain_{iChain}_{timestamp}.pdf",
@@ -197,8 +208,10 @@ def fit_single_circuit(
 
 def main(circuits_to_fit=None):
     # Initialize CircuitManager with existing circuits file
+    prior_file = "../../data/prior/model_parameters_priors_092025_correction.csv"
+
     circuit_manager = CircuitManager(
-        parameters_file="../../data/prior/model_parameters_priors_updated_tighter.csv",
+        parameters_file=prior_file,
         json_file="../../data/circuits/circuits.json",
     )
 
@@ -233,27 +246,25 @@ def main(circuits_to_fit=None):
             print(f"Loaded data for {circuit_name}")
 
         # Load priors
-        priors = pd.read_csv(
-            "../../data/prior/model_parameters_priors_updated_tighter.csv"
-        )
+        priors = pd.read_csv(prior_file)
         priors = priors[priors["Parameter"] != "k_prot_deg"]
 
         # Fit each circuit individually
         if circuits_to_fit is None:
             circuits_to_fit = [
                 # "constitutive sfGFP sim",
-                # "constitutive sfGFP",  # J
+                "constitutive sfGFP",  # J
                 "sense_star_6",  # J
                 "toehold_trigger",  # J
                 "star_antistar_1",  # J
                 "trigger_antitrigger",  # J
-                "cascade",
-                "cffl_type_1",
-                "inhibited_incoherent_cascade",
-                "inhibited_cascade",
-                "or_gate_c1ffl",
-                "iffl_1",
-                "cffl_12",
+                # "cascade",
+                # "cffl_type_1",
+                # "inhibited_incoherent_cascade",
+                # "inhibited_cascade",
+                # "or_gate_c1ffl",
+                # "iffl_1",
+                # "cffl_12",
             ]
 
         # for circuit_name in ["cffl_12", "iffl_1", "inhibited_cascade"]:
