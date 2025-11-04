@@ -7,11 +7,11 @@ from simulations_and_analysis.individual import individual_circuits_run_mcmc
 
 def main(num_processes=1, waiting_time=5):
     circuits_to_fit = [
-        # "constitutive sfGFP",                   # J
-        "sense_star_6",                       # J
-        "toehold_trigger",                    # J
-        "star_antistar_1",                    # J
-        "trigger_antitrigger",                # J
+        "constitutive sfGFP",
+        "sense_star_6",
+        "toehold_trigger",
+        "star_antistar_1",
+        "trigger_antitrigger",
         "cascade",
         "cffl_type_1",
         "inhibited_incoherent_cascade",
@@ -50,12 +50,12 @@ def main(num_processes=1, waiting_time=5):
 
                 is_ready = res.ready()
 
-
                 do_wait = do_wait or not is_ready
                 if is_ready:
                     is_successful = res.successful()
                     completed_circuits.append(circuit_id)
-                    print(f"CIRCUIT {circuit_id} is READY and finished {'SUCCESSFUL' if is_successful else 'WITH EXCEPTION'}.")
+                    print(
+                        f"CIRCUIT {circuit_id} is READY and finished {'SUCCESSFUL' if is_successful else 'WITH EXCEPTION'}.")
                     if not is_successful:
                         print(f"EXCEPTION in {circuit_id}.")
 
@@ -69,7 +69,7 @@ if __name__ == '__main__':
         prog='Individual Parallel Circuits Run MCMC',
         description='Model calibration of individual circuits')
 
-    parser.add_argument('-n', '--num_processes', type=int, default=7)  # optional argument
+    parser.add_argument('-n', '--num_processes', type=int, default=2)  # optional argument
 
     args = parser.parse_args()
     num_processes = args.num_processes

@@ -28,7 +28,7 @@ class ParallelTempering(OptimizationAlgorithm):
         swap_mask[:, ::2] = 1
         self.swap_mask = swap_mask
 
-        self.temperatures = np.power(4, np.arange(self.n_chains), dtype=float)
+        self.temperatures = np.power(2, np.arange(self.n_chains), dtype=float)
         self.temperatures[-1] = np.inf
         # Value choice follows Vousden et al. 2016
 
