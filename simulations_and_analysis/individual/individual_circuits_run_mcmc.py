@@ -28,7 +28,7 @@ def fit_single_circuit(
     max_time=210,  # 210
     n_samples=100000,  # 20000,
     n_walkers=5,  # 5
-    n_chains=12,  # 10
+    n_chains=14,  # 10
 ):
     """
     Fit a single circuit and save its results using the new CircuitManager system
@@ -176,10 +176,10 @@ def fit_single_circuit(
             file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/covariances_{safe_circuit_name}_Chain_{iChain}_{timestamp}.pdf",
             param_names=parameters_to_fit,
         )
-
-    file_path = f"../../data/fit_data/individual_circuits/analysis_data/covariances_{safe_circuit_name}_{timestamp}.npy"
-    np.save(file_path, pt.proposal_function.covariances)
-    print(f"Saved Covariances to {file_path}")
+    # # Commented out storing covariances as the file gets huge for a large number of steps.
+    # file_path = f"../../data/fit_data/individual_circuits/analysis_data/covariances_{safe_circuit_name}_{timestamp}.npy"
+    # np.save(file_path, pt.proposal_function.covariances)
+    # print(f"Saved Covariances to {file_path}")
 
     print("Plotted analytical trajectories", flush=True)
 
