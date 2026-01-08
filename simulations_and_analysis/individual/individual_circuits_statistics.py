@@ -10,10 +10,6 @@ from analysis_and_figures.hierarchical_pairplot_analysis import (
     create_hierarchical_histogram_grid,
     create_circuit_prior_comparison_pairplot,
 )
-from analysis_and_figures.correlation_plots import (
-    create_circuit_correlation_summary,
-    create_circuit_correlation_matrices,
-)
 from analysis_and_figures.mcmc_analysis_hierarchical import (
     process_mcmc_data,
 )
@@ -22,10 +18,11 @@ from circuits.circuit_generation.circuit_manager import CircuitManager
 
 def load_individual_circuit_results(
     individual_results_directory="../../data/fit_data/individual_circuits/prior_updated",
+    prefix="buffer_",
 ):
     """Load individual circuit MCMC results from CSV files"""
     individual_circuit_fits = {}
-    results_pattern = os.path.join(individual_results_directory, "results_*.csv")
+    results_pattern = os.path.join(individual_results_directory, f"{prefix}*.csv")
     result_filepaths = glob.glob(results_pattern)
 
     for filepath in result_filepaths:
@@ -33,11 +30,6 @@ def load_individual_circuit_results(
         # Extract: results_circuit_name_timestamp.csv -> circuit_name
         circuit_name_parts = filename.split("_")[1:-2]
         circuit_name = "_".join(circuit_name_parts)
-
-        # skip constitutive sfGFP
-        if circuit_name == "constitutive sfGFP":
-            print(f"Skipping circuit: {circuit_name}")
-            continue
 
         circuit_results = pd.read_csv(filepath)
         individual_circuit_fits[circuit_name] = circuit_results
@@ -167,23 +159,6 @@ def execute_individual_to_hierarchical_comparison(
     )
     available_circuit_names = list(individual_circuit_fits.keys())
 
-    parameters_to_fit = (
-        all_parameters.Parameter.tolist()
-    )  # include all parameters (some circuits may not have all)
-    parameters = []
-    for circuit_name in available_circuit_names:
-        circuit = circuit_manager.create_circuit(circuit_name)
-        # Only keep the parameters that are actually part of the model ([parameter_name.name for parameter_name in circuit_config.model.parameters])
-        parameter_in_the_model = [
-            parameter_name.name for parameter_name in circuit.model.parameters
-        ]
-        parameters += [
-            param for param in parameters_to_fit if param in parameter_in_the_model
-        ]
-
-    # keep only unique parameters
-    fitted_parameter_names = list(set(parameters))
-
     if target_circuit_names is None:
         target_circuit_names = available_circuit_names
 
@@ -195,73 +170,154 @@ def execute_individual_to_hierarchical_comparison(
         for name, data in individual_circuit_fits.items()
         if name in target_circuit_names
     }
+    parameters_to_fit = (
+        all_parameters.Parameter.tolist()
+    )  # include all parameters (some circuits may not have all)
 
-    # Convert to θ format (circuit-specific parameters only)
-    theta_formatted_data = convert_individual_to_theta_format(
-        filtered_individual_fits, fitted_parameter_names, target_circuit_names
-    )
+    # only do the individual, one by one
+    for circuit_name, data in filtered_individual_fits.items():
+        circuit = circuit_manager.create_circuit(circuit_name)
+        # Only keep the parameters that are actually part of the model ([parameter_name.name for parameter_name in circuit_config.model.parameters])
+        parameter_in_the_model = [
+            parameter_name.name for parameter_name in circuit.model.parameters
+        ]
+        parameters = [
+            param for param in parameters_to_fit if param in parameter_in_the_model
+        ]
 
-    # Generate prior mean coordinates (single points)
-    prior_mean_coordinates = generate_prior_mean_coordinates(
-        prior_parameters_filepath, fitted_parameter_names
-    )
+        fitted_parameter_names = parameters
+        print(f"Processing circuit: {circuit_name}")
+        # Convert to θ format (circuit-specific parameters only)
+        theta_formatted_data = convert_individual_to_theta_format(
+            {circuit_name: data}, fitted_parameter_names, [circuit_name]
+        )
 
-    # Combine: circuits + prior means (NO ALPHA)
-    circuit_prior_comparison_dataset = pd.concat(
-        [theta_formatted_data, prior_mean_coordinates], ignore_index=True
-    )
+        # Generate prior mean coordinates (single points)
+        prior_mean_coordinates = generate_prior_mean_coordinates(
+            prior_parameters_filepath, fitted_parameter_names
+        )
 
-    print(f"Comparison dataset: {len(circuit_prior_comparison_dataset)} samples")
-    print(f"Data groups: {circuit_prior_comparison_dataset['Circuit'].unique()}")
+        # Combine: circuits + prior means (NO ALPHA)
+        circuit_prior_comparison_dataset = pd.concat(
+            [theta_formatted_data, prior_mean_coordinates], ignore_index=True
+        )
 
-    # Generate visualizations
+        print(f"Comparison dataset: {len(circuit_prior_comparison_dataset)} samples")
+        print(f"Data groups: {circuit_prior_comparison_dataset['Circuit'].unique()}")
 
-    print("Creating histogram grid...")
-    # Ridgeline with labels padded & legend on second pane
-    create_hierarchical_histogram_grid(
-        circuit_prior_comparison_dataset,
-        fitted_parameter_names,
-        output_visualization_directory + "/ridgeline_posterior_single_fits.png",
-        plot_kind="ridge",
-        ridge_offset=1.1,
-        ridge_label_pad=-0.0,  # more whitespace left of labels
-    )
+        print("Creating histogram grid...")
+        # Ridgeline with labels padded & legend on second pane
+        create_hierarchical_histogram_grid(
+            circuit_prior_comparison_dataset,
+            fitted_parameter_names,
+            output_visualization_directory
+            + f"/ridgeline_posterior_single_fits_{circuit_name}.png",
+            plot_kind="ridge",
+            ridge_offset=1.1,
+            ridge_label_pad=-0.0,
+        )
 
-    # KDE grid with truly shared y-limits and legend on pane #2
-    create_hierarchical_histogram_grid(
-        circuit_prior_comparison_dataset,
-        fitted_parameter_names,
-        output_visualization_directory + "/kde_grid.png",
-        plot_kind="kde",
-        share_y=True,  # global density scale
-        legend_on_idx=1,  # legend lives in second subplot
-    )
+        # KDE grid with truly shared y-limits and legend on pane #2
+        create_hierarchical_histogram_grid(
+            circuit_prior_comparison_dataset,
+            fitted_parameter_names,
+            output_visualization_directory + f"/kde_grid_{circuit_name}.png",
+            plot_kind="kde",
+            share_y=True,  # global density scale
+            legend_on_idx=1,  # legend lives in second subplot
+        )
 
-    print("Creating pairplot...")
-    create_circuit_prior_comparison_pairplot(
-        circuit_prior_comparison_dataset,
-        fitted_parameter_names,
-        output_visualization_directory + "/pairplot.png",
-        diagonal_visualization_type="kde",
-        offdiagonal_visualization_type="kde",
-    )
+        offdiagonal_visualization_type = "scatter"
+        print("Creating pairplot...")
+        create_circuit_prior_comparison_pairplot(
+            circuit_prior_comparison_dataset,
+            fitted_parameter_names,
+            output_visualization_directory
+            + f"/pairplot_{circuit_name}_offdiag_{offdiagonal_visualization_type}.png",
+            diagonal_visualization_type="kde",
+            offdiagonal_visualization_type=offdiagonal_visualization_type,
+        )
 
-    print("Creating correlation matrices...")
-    correlation_matrices = create_circuit_correlation_matrices(
-        filtered_individual_fits, fitted_parameter_names, output_visualization_directory
-    )
+        # print("Creating correlation matrices...")
+        # correlation_matrices = create_circuit_correlation_matrices(
+        #     filtered_individual_fits,
+        #     fitted_parameter_names,
+        #     output_visualization_directory,
+        # )
 
-    # Create correlation summary comparison
-    print("Creating correlation summary...")
-    correlation_summary = create_circuit_correlation_summary(
-        correlation_matrices, output_visualization_directory
-    )
+        # # Create correlation summary comparison
+        # print("Creating correlation summary...")
+        # correlation_summary = create_circuit_correlation_summary(
+        #     correlation_matrices, output_visualization_directory
+        # )
 
-    return {
-        "comparison_dataset": circuit_prior_comparison_dataset,
-        "correlation_matrices": correlation_matrices,
-        "correlation_summary": correlation_summary,
-    }
+    #
+    # # Convert to θ format (circuit-specific parameters only)
+    # theta_formatted_data = convert_individual_to_theta_format(
+    #     filtered_individual_fits, fitted_parameter_names, target_circuit_names
+    # )
+
+    # # Generate prior mean coordinates (single points)
+    # prior_mean_coordinates = generate_prior_mean_coordinates(
+    #     prior_parameters_filepath, fitted_parameter_names
+    # )
+    #
+    # # Combine: circuits + prior means (NO ALPHA)
+    # circuit_prior_comparison_dataset = pd.concat(
+    #     [theta_formatted_data, prior_mean_coordinates], ignore_index=True
+    # )
+    #
+    # print(f"Comparison dataset: {len(circuit_prior_comparison_dataset)} samples")
+    # print(f"Data groups: {circuit_prior_comparison_dataset['Circuit'].unique()}")
+    #
+    # # Generate visualizations
+    #
+    # print("Creating histogram grid...")
+    # # Ridgeline with labels padded & legend on second pane
+    # create_hierarchical_histogram_grid(
+    #     circuit_prior_comparison_dataset,
+    #     fitted_parameter_names,
+    #     output_visualization_directory + "/ridgeline_posterior_single_fits.png",
+    #     plot_kind="ridge",
+    #     ridge_offset=1.1,
+    #     ridge_label_pad=-0.0,
+    # )
+    #
+    # # KDE grid with truly shared y-limits and legend on pane #2
+    # create_hierarchical_histogram_grid(
+    #     circuit_prior_comparison_dataset,
+    #     fitted_parameter_names,
+    #     output_visualization_directory + "/kde_grid.png",
+    #     plot_kind="kde",
+    #     share_y=True,  # global density scale
+    #     legend_on_idx=1,  # legend lives in second subplot
+    # )
+    #
+    # print("Creating pairplot...")
+    # create_circuit_prior_comparison_pairplot(
+    #     circuit_prior_comparison_dataset,
+    #     fitted_parameter_names,
+    #     output_visualization_directory + "/pairplot.png",
+    #     diagonal_visualization_type="kde",
+    #     offdiagonal_visualization_type="kde",
+    # )
+    #
+    # print("Creating correlation matrices...")
+    # correlation_matrices = create_circuit_correlation_matrices(
+    #     filtered_individual_fits, fitted_parameter_names, output_visualization_directory
+    # )
+    #
+    # # Create correlation summary comparison
+    # print("Creating correlation summary...")
+    # correlation_summary = create_circuit_correlation_summary(
+    #     correlation_matrices, output_visualization_directory
+    # )
+    #
+    # return {
+    #     "comparison_dataset": circuit_prior_comparison_dataset,
+    #     "correlation_matrices": correlation_matrices,
+    #     "correlation_summary": correlation_summary,
+    # }
 
 
 def main():
@@ -272,7 +328,8 @@ def main():
     subfolder = "/conv_AU_corr"
     subfolder = "/shared_parameters/cross_val"
     subfolder = "/individual_circuits/100000_steps_sim_sfGFP"
-    # subfolder = "/shared_parameters/star_antistar_trigger_antitrigger"
+    subfolder = "/individual_circuits/individual_circuits_buffer_2025-09-12_Adaptive_Covariance_100k_steps"
+    # subfolder = "/shared_parameters/results_star_antistar_1_and_trigger_antitrigger"
     # subfolder = "/shared_parameters/cross_val_2"
 
     # Configuration

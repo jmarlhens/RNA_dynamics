@@ -15,9 +15,9 @@ from simulations_and_analysis.individual.individual_circuits_statistics import (
     load_individual_circuit_results,
 )
 from individual_circuits_simulations import (
-    setup_calibration,
     simulate_and_organize_parameter_sets,
 )
+from utils.GFP_calibration import setup_calibration
 
 
 def identify_transferable_parameters(
@@ -46,7 +46,7 @@ def identify_transferable_parameters(
     # target_default_parameters = target_circuit_config["default_parameters"]
 
     # Get kinetic parameters from model priors (these are typically shared across circuits)
-    model_priors = pd.read_csv("../../data/prior/model_parameters_priors.csv")
+    model_priors = pd.read_csv("../../data/prior/model_parameters_priors_updated.csv")
     kinetic_parameter_names = model_priors[
         model_priors["Parameter"] != "k_prot_deg"
     ].Parameter.tolist()
@@ -165,6 +165,8 @@ def create_target_circuit_configuration(
     )
     print("Circuit instance created successfully")
 
+    calibration_parameters = setup_calibration()
+
     target_circuit_configuration = CircuitConfig(
         model=target_circuit_instance.model,
         name=target_circuit_name,
@@ -173,9 +175,10 @@ def create_target_circuit_configuration(
         tspan=target_time_span,
         max_time=time_bounds_max,
         min_time=time_bounds_min,
+        calibration_params=calibration_parameters,
     )
 
-    model_priors = pd.read_csv("../../data/prior/model_parameters_priors.csv")
+    model_priors = pd.read_csv("../../data/prior/model_parameters_priors_updated.csv")
     target_circuit_fitter = CircuitFitter(
         [target_circuit_configuration],
         transferable_parameter_names,
@@ -272,6 +275,7 @@ def plot_cross_validation_comparison(
         target_organized_results,
         plot_mode="individual",
         likelihood_percentile_range=20,
+        normalize_fluorescence=False,
     )
 
     cross_validation_title = f"Cross-Validation: {target_circuit_name} using {source_circuit_name} parameters ({sample_count} samples)"
@@ -369,7 +373,7 @@ def run_cross_validation_analysis(
 
     # Initialize circuit manager and calibration
     circuit_manager = CircuitManager(
-        parameters_file="../../data/prior/model_parameters_priors.csv",
+        parameters_file="../../data/prior/model_parameters_priors_updated_tighter.csv",
         json_file="../../data/circuits/circuits.json",
     )
     calibration_parameters = setup_calibration()
@@ -382,7 +386,7 @@ def run_cross_validation_analysis(
 
     source_mcmc_raw_samples = mcmc_results_by_circuit[source_circuit_name]
     source_mcmc_processed = process_mcmc_data(
-        source_mcmc_raw_samples, burn_in=0.4, chain_idx=0
+        source_mcmc_raw_samples, burn_in=0.6, chain_idx=0
     )
     source_mcmc_filtered_samples = source_mcmc_processed["processed_data"]
 
@@ -449,12 +453,13 @@ def main_cross_validation():
     """Main function to run cross-validation analysis"""
 
     # Configuration
-    subfolder = "/updated_constrained_prior_2_heteroscedastic_model"
-    input_directory = "../../data/fit_data/individual_circuits" + subfolder
+    subfolder = "/cross_val"
+    input_directory = "../../data/fit_data/shared_parameters" + subfolder
     output_directory = "../../figures/cross_validation" + subfolder
 
     # Source circuit (providing parameters)
-    source_circuit_name = "star_antistar_1"
+    source_circuit_name = "star_antistar_1_and_trigger_antitrigger"
+    # source_circuit_name = "star_antistar_1_and_inhibited_cascade"
 
     # Target circuits (to validate)
     target_circuit_names = ["iffl_1", "cffl_12"]
@@ -475,7 +480,7 @@ def main_cross_validation():
         target_circuit_names=target_circuit_names,
         mcmc_results_by_circuit=mcmc_results,
         output_directory=output_directory,
-        sample_count=60,
+        sample_count=200,
         time_bounds_max=130,
         time_bounds_min=30,
     )

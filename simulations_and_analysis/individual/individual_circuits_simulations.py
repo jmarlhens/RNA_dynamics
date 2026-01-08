@@ -27,7 +27,7 @@ def create_circuit_simulation_data(
     calibration_parameters,
     time_bounds_max,
     time_bounds_min,
-    priors_csv_path="../../data/prior/model_parameters_priors_updated_tighter.csv",
+    priors_csv_path="../../data/prior/model_parameters_priors_092025_correction.csv",
 ):
     """Create circuit configuration and simulate parameter sets"""
     circuit_conditions = get_circuit_conditions(circuit_name)
@@ -205,11 +205,6 @@ def generate_per_circuit_individual_plots(
                 circuit_fitter.calibration_params["brightness_correction"],
             )
 
-            # circuit_trajectory_data.to_csv(
-            #     "../../data/data_parameter_estimation/constitutive_sfGFP_simulated_data_au.csv",
-            #     index=False,
-            # )
-
             # Generate two-column plots (experimental | simulation)
             for simulation_mode in ["individual", "summary"]:
                 _ = plot_single_circuit_two_column(
@@ -267,7 +262,7 @@ def plot_fits(
     sample_count=60,
     time_bounds_max=None,
     time_bounds_min=None,
-    priors_csv_path="../../data/prior/model_parameters_priors_updated_tighter.csv",
+    priors_csv_path="../../data/prior/model_parameters_priors_092025_correction.csv",
 ):
     """Plot fits for each circuit using both best and random samples"""
 
@@ -284,14 +279,14 @@ def plot_fits(
     combined_random_results = []
 
     for circuit_name, mcmc_raw_samples in mcmc_results_by_circuit.items():
-        # skip constitutive sfGFP
-        if circuit_name == "constitutive sfGFP":
-            continue
-
         print(f"Processing circuit {circuit_name}")
 
         # Filter and sample MCMC data
-        mcmc_processed = process_mcmc_data(mcmc_raw_samples, burn_in=0.4, chain_idx=0)
+        chain_idx = mcmc_raw_samples["chain"].max()
+        chain_idx = mcmc_raw_samples["chain"].min()
+        mcmc_processed = process_mcmc_data(
+            mcmc_raw_samples, burn_in=0.4, chain_idx=chain_idx
+        )
         mcmc_filtered_samples = mcmc_processed["processed_data"]
 
         print(
@@ -410,21 +405,28 @@ def main():
     subfolder = "/50000_steps"
     # subfolder = "/conv_AU_corr"
     # subfolder = "/cross_val_circuits"
-    subfolder = "/transfer_learning"
-    subfolder = "/fit_data_2025-08-28_50000_steps_Generalized_Adaptive_Metropolis_with_Global_Scaling/individual_circuits"
+    subfolder = "/transfer_learning/literature_prior"
+    subfolder = "/transfer_learning/data_informed_prior"
+    subfolder = "/new_version"
+    # subfolder = "/individual_circuits_buffer_2025-09-12_Adaptive_Covariance_100k_steps"
+    # subfolder = "/fit_data_2025-08-28_50000_steps_Generalized_Adaptive_Metropolis_with_Global_Scaling/individual_circuits"
+    subfolder = "/new_version"
+    subfolder = "/2025-11-11_100000_steps_adaptive_new_priors_part_1"
+    # subfolder = "/sim_sfGFP_val"
 
     input_directory = "../../data/fit_data/individual_circuits" + subfolder
     output_visualization_directory = "../../figures/individual_circuits" + subfolder
-    priors_csv_path = "../../data/prior/model_parameters_priors_updated_tighter.csv"
+    priors_csv_path = "../../data/prior/model_parameters_priors_092025_correction.csv"
 
     # creatre output directory if it does not exist
     os.makedirs(output_visualization_directory, exist_ok=True)
 
-    mcmc_results = load_individual_circuit_results(input_directory)
+    mcmc_results = load_individual_circuit_results(input_directory, prefix="results_")
 
     # Define processing order and inclusion
     circuit_processing_sequence = [
-        # "constitutive sfGFP",
+        "constitutive sfGFP",
+        "constitutive sfGFP sim",
         "sense_star_6",
         "toehold_trigger",
         "cascade",
@@ -434,7 +436,8 @@ def main():
         "trigger_antitrigger",
         "inhibited_incoherent_cascade",
         "inhibited_cascade",
-        "cffl_12",
+        # "cffl_12",
+        # "iffl_1",
     ]
 
     filtered_mcmc_results = {
