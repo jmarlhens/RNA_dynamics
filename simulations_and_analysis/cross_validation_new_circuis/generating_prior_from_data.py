@@ -137,9 +137,9 @@ def create_posterior_visualization_with_contours(
                     X_grid,
                     Y_grid,
                     density_values,
-                    colors="yellow",
+                    colors="white",
                     alpha=0.4,
-                    levels=20,
+                    levels=8,
                     linewidths=1,
                 )
 
@@ -234,20 +234,22 @@ def simulate_circuits_with_posterior_samples(
 ):
     """Run circuit simulations with posterior samples and generate trajectory plots."""
     time_max, time_min = time_boundaries
-    fitted_parameters = samples_dataframe.columns.tolist()
+    # fitted_parameters = samples_dataframe.columns.tolist()
 
     for circuit_name in circuit_names_list:
         circuit_configuration, circuit_fitter = create_circuit_simulation_data(
             circuit_name,
-            fitted_parameters,
             circuit_manager,
             calibration_parameters,
             time_max,
             time_min,
         )
 
+        # temporal fix
+        samples_dataframe_tmp = samples_dataframe[circuit_fitter.parameters_to_fit]
+
         simulation_data, results_dataframe = simulate_and_organize_parameter_sets(
-            samples_dataframe, circuit_fitter, fitted_parameters
+            samples_dataframe_tmp, circuit_fitter, circuit_fitter.parameters_to_fit
         )
 
         single_circuit_data = {
@@ -311,22 +313,22 @@ def simulations_from_posterior(
     )
 
     # Create combined dataset for visualization
-    prior_posterior_combined = pd.concat(
-        [samples_posterior, prior_coordinates], ignore_index=True
-    )
+    # prior_posterior_combined = pd.concat(
+    #     [samples_posterior, prior_coordinates], ignore_index=True
+    # )
 
-    # Generate visualization with contours
-    pairplot_figure = create_posterior_visualization_with_contours(
-        prior_posterior_combined,
-        visualization_parameters,
-        (posterior_mean, posterior_covariance),
-        output_directory,
-    )
-
-    pairplot_figure.savefig(
-        f"{output_directory}/posterior_sampled_and_approximated_pairplot.png", dpi=300
-    )
-    plt.show()
+    # # Generate visualization with contours
+    # pairplot_figure = create_posterior_visualization_with_contours(
+    #     prior_posterior_combined,
+    #     visualization_parameters,
+    #     (posterior_mean, posterior_covariance),
+    #     output_directory,
+    # )
+    #
+    # pairplot_figure.savefig(
+    #     f"{output_directory}/posterior_sampled_and_approximated_pairplot.png", dpi=300
+    # )
+    # plt.show()
 
     # Generate posterior samples and run circuit simulations
     posterior_samples = generate_posterior_samples_multivariate(
@@ -339,8 +341,48 @@ def simulations_from_posterior(
         posterior_covariance,
         parameter_names,
         final_sample_count=100,
-        confidence_level=0.1,
+        confidence_level=1.0,
     )
+
+    posterior_samples_truncated = generate_truncated_multivariate_posterior_samples(
+        posterior_mean,
+        posterior_covariance,
+        parameter_names,
+        final_sample_count=20000,
+        confidence_level=1.0,
+    )
+    samples_posterior_non_truncated = samples_posterior[parameter_names].sample(
+        n=20000, random_state=42
+    )
+    bins = np.histogram_bin_edges(
+        np.concatenate(
+            [
+                samples_posterior_non_truncated[visualization_parameters[0]],
+                posterior_samples_truncated[visualization_parameters[0]],
+            ]
+        ),
+        bins=30,
+    )
+    # in 1D
+    plt.figure(figsize=(6, 4))
+    plt.hist(
+        samples_posterior_non_truncated[visualization_parameters[0]],
+        bins=bins,
+        alpha=0.5,
+        label="MCMC Samples",
+    )
+    plt.hist(
+        posterior_samples_truncated[visualization_parameters[0]],
+        bins=bins,
+        alpha=0.5,
+        label="Truncated MVN Samples",
+    )
+    plt.title(f"Histogram of {visualization_parameters[0]} Samples")
+    plt.legend()
+    plt.xlabel(visualization_parameters[0])
+    plt.ylabel("Frequency")
+    plt.grid(True)
+    plt.show()
 
     calibration_parameters = setup_calibration()
     circuit_manager = CircuitManager(
@@ -354,7 +396,7 @@ def simulations_from_posterior(
         circuit_names_list,
         circuit_manager,
         calibration_parameters,
-        (130, 30),
+        (210, 30),
         output_directory,
     )
 
@@ -364,14 +406,14 @@ def simulations_from_posterior(
         circuit_names_list,
         circuit_manager,
         calibration_parameters,
-        (130, 30),
+        (210, 30),
         output_directory,
     )
 
 
 if __name__ == "__main__":
     # Configuration parameters
-    subfolder = "/shared_parameters/star_antistar_trigger_antitrigger"
+    subfolder = "/shared_parameters/results_star_antistar_1_and_trigger_antitrigger"
     individual_results_directory = "../../data/fit_data" + subfolder
     results_filename = (
         "results_star_antistar_1_and_trigger_antitrigger_20250902_215615.csv"

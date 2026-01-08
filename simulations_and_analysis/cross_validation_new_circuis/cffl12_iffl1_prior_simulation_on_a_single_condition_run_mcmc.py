@@ -59,6 +59,12 @@ calibration_params = setup_calibration()
 # only keep  a single condition_params ('STAR1 5 nM')
 selected_conditions = ["STAR1 5 nM"]
 selected_conditions = ["Sense-aTrigger 5 nM", "STAR-Trigger 10 nM"]
+selected_conditions = [
+    "Sense-aTrigger 0 nM",
+    "STAR-Trigger 0 nM",
+    "Sense-aTrigger 5 nM",
+]
+
 condition_params_single_condition = {
     condition: condition_params[condition] for condition in selected_conditions
 }
@@ -100,9 +106,12 @@ timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 safe_circuit_name = circuit_name.replace("/", "_")
 os.makedirs("../../data/fit_data/individual_circuits_buffer/", exist_ok=True)
 os.makedirs("../../data/fit_data/individual_circuits/", exist_ok=True)
-os.makedirs("../../data/fit_data/individual_circuits/trajectories/", exist_ok=True)
 os.makedirs(
-    "../../data/fit_data/individual_circuits/analysis_trajectories/", exist_ok=True
+    "../../data/fit_data/individual_circuits/obsolete/trajectories/", exist_ok=True
+)
+os.makedirs(
+    "../../data/fit_data/individual_circuits/obsolete/analysis_trajectories/",
+    exist_ok=True,
 )
 
 buffer_writer = MCMCResultsWriter(
@@ -124,6 +133,8 @@ buffer_writer.close()
 print("Completed Model Calibration", flush=True)
 
 results_path = f"../../data/fit_data/individual_circuits/transfer_learning/literature_prior/results_{safe_circuit_name}_{timestamp}.csv"
+# create the folder if it doesn't exist
+os.makedirs(os.path.dirname(results_path), exist_ok=True)
 results_writer = MCMCResultsWriter(path=results_path, param_names=parameters_to_fit)
 results_writer.save_state_in_file(
     parameters, priors_out, likelihoods, step_accepts, swap_accepts

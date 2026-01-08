@@ -74,12 +74,12 @@ def create_multivariate_log_prior(
     return calculate_log_prior
 
 
-subfolder = "/shared_parameters/star_antistar_trigger_antitrigger"
+subfolder = "/shared_parameters/results_star_antistar_1_and_trigger_antitrigger"
 individual_results_directory = "../../data/fit_data" + subfolder
-results_filename = "results_star_antistar_1_and_trigger_antitrigger_20250902_215615.csv"
+results_filename = "results_star_antistar_1_and_trigger_antitrigger_20251116_023618.csv"
 results_filepath = f"{individual_results_directory}/{results_filename}"
 prior_parameters_filepath = (
-    "../../data/prior/model_parameters_priors_updated_tighter.csv"
+    "../../data/prior/model_parameters_priors_092025_correction.csv"
 )
 
 # Load and process data
@@ -90,7 +90,7 @@ samples_posterior, prior_coordinates, _ = load_circuit_posterior_data(
 
 # Initialize CircuitManager with existing circuits file
 circuit_manager = CircuitManager(
-    parameters_file="../../data/prior/model_parameters_priors_updated_tighter.csv",
+    parameters_file="../../data/prior/model_parameters_priors_092025_correction.csv",
     json_file="../../data/circuits/circuits.json",
 )
 
@@ -102,7 +102,7 @@ os.makedirs(output_dir, exist_ok=True)
 # Define maximum simulation time
 min_time = 30
 max_time = 210
-n_samples = 10000
+n_samples = 60000
 n_walkers = 5
 n_chains = 12
 
@@ -113,10 +113,17 @@ for circuit_name, data_file in DATA_FILES.items():
     circuit_data[circuit_name] = {"experimental_data": data, "tspan": tspan}
 
 circuit_name = "cffl_12"
-# circuit_name = "iffl_1"
+selected_conditions = ["STAR1 5 nM", "STAR6 15 nM"]
+
+circuit_name = "iffl_1"
+selected_conditions = [
+    "Sense-aTrigger 0 nM",
+    "STAR-Trigger 0 nM",
+    "Sense-aTrigger 5 nM",
+]
 
 # Load priors
-priors = pd.read_csv("../../data/prior/model_parameters_priors_updated_tighter.csv")
+priors = pd.read_csv("../../data/prior/model_parameters_priors_092025_correction.csv")
 
 # Get condition parameters from centralized configuration
 condition_params = get_circuit_conditions(circuit_name)
@@ -132,8 +139,6 @@ calibration_params = setup_calibration()
 
 
 # only keep  a single condition_params ('STAR1 5 nM')
-selected_conditions = ["STAR1 5 nM", "STAR6 15 nM"]
-# selected_conditions = ["Sense-aTrigger 0 nM", "STAR-Trigger 0 nM"]
 condition_params_single_condition = {
     condition: condition_params[condition] for condition in selected_conditions
 }
@@ -189,9 +194,12 @@ timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 safe_circuit_name = circuit_name.replace("/", "_")
 os.makedirs("../../data/fit_data/individual_circuits_buffer/", exist_ok=True)
 os.makedirs("../../data/fit_data/individual_circuits/", exist_ok=True)
-os.makedirs("../../data/fit_data/individual_circuits/trajectories/", exist_ok=True)
 os.makedirs(
-    "../../data/fit_data/individual_circuits/analysis_trajectories/", exist_ok=True
+    "../../data/fit_data/individual_circuits/obsolete/trajectories/", exist_ok=True
+)
+os.makedirs(
+    "../../data/fit_data/individual_circuits/obsolete/analysis_trajectories/",
+    exist_ok=True,
 )
 
 buffer_writer = MCMCResultsWriter(
@@ -213,6 +221,8 @@ buffer_writer.close()
 print("Completed Model Calibration", flush=True)
 
 results_path = f"../../data/fit_data/individual_circuits/transfer_learning/data_informed_prior/results_{safe_circuit_name}_{timestamp}_informed_prior.csv"
+# create the folder if it doesn't exist
+os.makedirs(os.path.dirname(results_path), exist_ok=True)
 results_writer = MCMCResultsWriter(path=results_path, param_names=parameter_names)
 results_writer.save_state_in_file(
     parameters, priors_out, likelihoods, step_accepts, swap_accepts
