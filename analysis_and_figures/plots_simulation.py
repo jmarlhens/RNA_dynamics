@@ -2,6 +2,32 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from typing import Optional, Literal
+from matplotlib.colors import LinearSegmentedColormap
+
+COLORS = [
+    (0.30, 0.56, 1.00),
+    (0.35, 0.24, 1.00),
+    (1.00, 0.00, 0.42),
+    (1.00, 0.40, 0.10),
+    (1.00, 0.65, 0.19),
+]
+COLORS_DARK = [
+    (0.00, 0.24, 0.90),
+    (0.28, 0.00, 0.84),
+    (0.80, 0.00, 0.27),
+    (0.90, 0.24, 0.00),
+    (1.00, 0.50, 0.00),
+]
+COLORS_MAIN = [(0.30, 0.55, 1.00), (1.00, 0.40, 0.10)]
+COLORS_CMAP_ORANGE = ["#FFFFFF", "#FF5500", "#B3003C"]
+COLORS_CMAP_BLUE = ["#FFFFFF", "#69A3FF", "#4400D6"]
+
+COLORMAP_ORANGE = LinearSegmentedColormap.from_list("my_cmap", COLORS_CMAP_ORANGE)
+COLORMAP_BLUE = LinearSegmentedColormap.from_list("my_cmap", COLORS_CMAP_BLUE)
+
+
+COLOR_GRAY = "#808080"
+COLOR_REPLICATES = COLORS_DARK[2:]  # Use only redish colors for replicates
 
 
 def plot_single_circuit_two_column(
@@ -378,6 +404,7 @@ def plot_circuit_conditions_overlay(
     ribbon_alpha: float = 0.25,
     figsize: Optional[tuple] = None,
     show_title: bool = True,
+    cmap: LinearSegmentedColormap = COLORMAP_ORANGE,
 ) -> plt.Figure:
     """
     Plot circuits with conditions overlaid: experimental scatter (left) | simulations (right).
@@ -408,7 +435,11 @@ def plot_circuit_conditions_overlay(
         condition_names = list(circuit_config.condition_params.keys())
 
         # Generate consistent colors for conditions across both subplots
-        condition_colors = plt.cm.Set1(np.linspace(0, 1, len(condition_names)))
+        # condition_colors = plt.cm.Set1(np.linspace(0, 1, len(condition_names)))
+        # condition_color_mapping = dict(zip(condition_names, condition_colors))
+
+        # Use Orange cmap
+        condition_colors = cmap(np.linspace(0, 1, len(condition_names)))
         condition_color_mapping = dict(zip(condition_names, condition_colors))
 
         # Create subplot pair for this circuit
@@ -602,10 +633,16 @@ def plot_circuit_simulations(
 
         # Generate colors for conditions (used in summary mode)
         condition_colors = plt.cm.Set1(np.linspace(0, 1, len(condition_names)))
+        # change the cmap to the customised orange-blue cmap
+        # Use COLORMAP_ORANGE for conditions
+        # condition_colors = COLORMAP_ORANGE(np.linspace(0, 1, len(condition_names)))
 
         # Calculate circuit-level likelihood normalization once per row
         circuit_likelihood_norm = None
         cmap = plt.cm.viridis
+        # use the customised cmap instead
+        # cmap = COLORMAP_ORANGE
+
         if plot_mode == "individual":
             circuit_trajectory_data = trajectory_dataframe[
                 trajectory_dataframe["circuit"] == circuit_key
