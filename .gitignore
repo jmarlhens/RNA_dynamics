@@ -4,3 +4,4 @@ __pycache__/
 figures/
 data/fit_data/*.csv
 data/fit_data/
+figures_paper/
