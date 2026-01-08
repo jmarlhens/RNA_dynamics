@@ -23,16 +23,16 @@ def create_circuit_correlation_matrices(
 
     # Handle single circuit case
     if n_circuits == 1:
-        axes = [axes]
+        axes = np.array([[axes]])
     elif n_rows == 1:
         axes = axes.reshape(1, -1)
 
     if n_circuits > n_rows * n_cols:
         axes = axes.flatten()
 
-    for idx, (circuit_name, circuit_data) in enumerate(individual_circuit_fits.items()):
-        ax = axes[idx]
-
+    for (circuit_name, circuit_data), ax in zip(
+        individual_circuit_fits.items(), axes.flatten()
+    ):
         # Get parameter columns that exist in this circuit's data
         param_cols = [p for p in fitted_parameter_names if p in circuit_data.columns]
 
@@ -82,8 +82,8 @@ def create_circuit_correlation_matrices(
             ax.set_yticks([])
 
     # Hide empty subplots
-    for idx in range(n_circuits, len(axes)):
-        axes[idx].set_visible(False)
+    for ax in axes.flatten()[n_circuits:]:
+        ax.axis("off")
 
     # Set main title
     fig.suptitle(

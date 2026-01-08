@@ -264,7 +264,7 @@ def create_circuit_prior_comparison_pairplot(
 
     # Adaptive plot_kws based on visualization type
     if offdiagonal_visualization_type == "scatter":
-        offdiagonal_plot_parameters = {"alpha": 0.8, "s": 12, "edgecolor": "none"}
+        offdiagonal_plot_parameters = {"alpha": 0.6, "s": 8, "edgecolor": "none"}
     elif offdiagonal_visualization_type == "kde":
         offdiagonal_plot_parameters = {"alpha": 0.6, "levels": 5, "bw_adjust": 3.0}
     else:
@@ -379,6 +379,9 @@ def create_circuit_prior_comparison_pairplot(
                         zorder=10,
                     )
 
+    # legend off
+    pairplot_figure._legend.remove()
+
     # pairplot_figure.fig.suptitle(
     #     "Circuit-Specific Parameters vs Prior Means\n"
     #     "Red crosses: Prior means, Distributions: Circuit posteriors",
@@ -392,9 +395,11 @@ def create_circuit_prior_comparison_pairplot(
 
     # plt.tight_layout()
     plt.savefig(pairplot_filepath, dpi=200, bbox_inches="tight")
-    plt.close()
+    # plt.close()
 
     print(f"Circuit-prior comparison pairplot saved: {pairplot_filepath}")
+
+    return pairplot_figure
 
 
 def create_hierarchical_pairplot(pairplot_df, param_names, output_folder):

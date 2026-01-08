@@ -63,34 +63,30 @@ class MCMCAnalysis:
             - likelihood, prior, posterior
             - step_accepted
         """
-        # Create index arrays for each dimension
-        iterations = np.arange(self.n_samples)
-        walkers = np.arange(self.n_walkers)
-        chains = np.arange(self.n_chains)
+        # Calculate total size
+        total_size = self.n_samples * self.n_walkers * self.n_chains
 
-        # Create meshgrid for all combinations
-        iter_grid, walker_grid, chain_grid = np.meshgrid(
-            iterations, walkers, chains, indexing="ij"
-        )
-
-        # Create dictionary to store data
         data = {
-            "iteration": iter_grid.flatten(),
-            "walker": walker_grid.flatten(),
-            "chain": chain_grid.flatten(),
+            "iteration": np.repeat(
+                np.arange(self.n_samples), self.n_walkers * self.n_chains
+            ),
+            "walker": np.tile(
+                np.repeat(np.arange(self.n_walkers), self.n_chains), self.n_samples
+            ),
+            "chain": np.tile(np.arange(self.n_chains), self.n_samples * self.n_walkers),
         }
 
-        # Add parameters
+        # Reshape and flatten parameters more efficiently
+        # Reshape to (total_size, n_params) without intermediate copies
+        params_reshaped = self.parameters.reshape(total_size, self.n_params)
         for i, param_name in enumerate(self.parameter_names):
-            data[param_name] = self.parameters[..., i].flatten()
+            data[param_name] = params_reshaped[:, i]
 
-        # Add likelihood, prior, posterior
-        data["likelihood"] = self.likelihoods.flatten()
-        data["prior"] = self.priors.flatten()
-        data["posterior"] = self.likelihoods.flatten() + self.priors.flatten()
-
-        # Add step acceptance
-        data["step_accepted"] = self.step_accepts.flatten()
+        # Flatten other arrays directly (ravel is faster than flatten for contiguous arrays)
+        data["likelihood"] = self.likelihoods.ravel()
+        data["prior"] = self.priors.ravel()
+        data["posterior"] = data["likelihood"] + data["prior"]
+        data["step_accepted"] = self.step_accepts.ravel()
 
         # Create DataFrame
         return pd.DataFrame(data)
@@ -292,18 +288,9 @@ def analyze_mcmc_results(
         circuit_fitter,
     )
 
-    # Get best parameters
-    best_params = analyzer.get_best_parameters()
-    print("\nBest Parameters Found:")
-    for param, value in best_params["parameters"].items():
-        print(f"{param}: {value:.3e}")
-    print(f"Log Likelihood: {best_params['likelihood']:.3f}")
-    print(f"Log Prior: {best_params['prior']:.3f}")
-    print(f"Log Posterior: {best_params['posterior']:.3f}")
-
-    R_hat = convergence_test(parameters[int(len(parameters) / 2):], per_parameter_test=True)
-
-
+    R_hat = convergence_test(
+        parameters[int(len(parameters) / 2) :], per_parameter_test=True
+    )
 
     # Compute and print statistics
     stats = analyzer.compute_statistics()
@@ -323,17 +310,57 @@ def analyze_mcmc_results(
     # accept_fig = analyzer.plot_acceptance_rates()
 
     # Generate simulation plots for top 5 parameter sets
-    sim_figs, best_params_array = analyzer.plot_simulations(n_best=5)
+    # sim_figs, best_params_array = analyzer.plot_simulations(n_best=5)
 
     return {
         "analyzer": analyzer,
-        "best_parameters": best_params,
         "statistics": stats,
         "figures": {
             "traces": trace_fig,
             "distributions": dist_fig,
             # 'acceptance_rates': accept_fig,
-            "simulations": sim_figs,
+            # "simulations": sim_figs,
         },
-        "best_parameters_array": best_params_array,
+        # "best_parameters_array": best_params_array,
     }
+
+
+def dataframe_to_mcmc_arrays(mcmc_dataframe, parameter_names):
+    """Convert MCMC DataFrame to numpy arrays for mcmc_utils functions"""
+
+    # only keep steps > 500
+    # mcmc_dataframe = mcmc_dataframe[mcmc_dataframe['iteration'] > 500]
+
+    unique_iterations = sorted(mcmc_dataframe["iteration"].unique())
+    unique_walkers = sorted(mcmc_dataframe["walker"].unique())
+    unique_chains = sorted(mcmc_dataframe["chain"].unique())
+
+    # n_samples = len(unique_iterations)
+    # n_walkers = len(unique_walkers)
+    # n_chains = len(unique_chains)
+    # n_params = len(parameter_names)
+
+    # convergence_test format: (n_samples, n_walkers, n_chains, n_params)
+    # convergence_array = np.zeros((n_samples, n_walkers, n_chains, n_params))
+    #
+    # for _, row in mcmc_dataframe.iterrows():
+    #     sample_idx = unique_iterations.index(row['iteration'])
+    #     walker_idx = unique_walkers.index(row['walker'])
+    #     chain_idx = unique_chains.index(row['chain'])
+    #
+    #     for param_idx, param_name in enumerate(parameter_names):
+    #         convergence_array[sample_idx, walker_idx, chain_idx, param_idx] = row[param_name]
+
+    valid_parameter_names = list(
+        set(parameter_names).intersection(mcmc_dataframe.columns)
+    )
+
+    data = mcmc_dataframe[valid_parameter_names].values
+    # data = data[:, 3:]
+    convergence_array = data.reshape(
+        len(unique_iterations), len(unique_walkers), len(unique_chains), -1
+    )
+
+    pass
+
+    return {"convergence": convergence_array, "parameter_names": valid_parameter_names}
