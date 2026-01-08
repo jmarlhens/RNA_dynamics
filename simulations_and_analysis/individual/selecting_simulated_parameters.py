@@ -9,8 +9,8 @@ from utils.process_experimental_data import organize_results
 from analysis_and_figures.plots_simulation import extract_trajectory_data
 
 
-subfolder = "/50000_steps"
-file = "results_constitutive sfGFP_20250721_122844.csv"
+subfolder = ""
+file = "results_constitutive sfGFP_20251104_165911.csv"
 parameter_sim_folder = "../../data/data_parameter_estimation"
 input_directory = "../../data/fit_data/individual_circuits" + subfolder
 filepath = f"{input_directory}/{file}"
@@ -36,7 +36,7 @@ plt.show()
 # 		print(f"{param}: {highest_posterior[param]}")
 
 # new criteria is 2 * prior + likelihood
-mcmc_results["new_criteria"] = 6 * mcmc_results["prior"] + mcmc_results["likelihood"]
+mcmc_results["new_criteria"] = 4 * mcmc_results["prior"] + mcmc_results["likelihood"]
 
 # best parameters based on new criteria
 best_parameters = mcmc_results.loc[mcmc_results["new_criteria"].idxmax()]
@@ -60,12 +60,12 @@ for param in mcmc_results.columns:
 # 		print(f"{param}: {value}")
 
 circuit_manager = CircuitManager(
-    parameters_file="../../data/prior/model_parameters_priors_updated_tighter.csv",
+    parameters_file="../../data/prior/model_parameters_priors_092025_correction.csv",
     json_file="../../data/circuits/circuits.json",
 )
 
 model_priors = pd.read_csv(
-    "../../data/prior/model_parameters_priors_updated_tighter.csv"
+    "../../data/prior/model_parameters_priors_092025_correction.csv"
 )
 parameters_to_fit = model_priors[
     model_priors["Parameter"] != "k_prot_deg"
@@ -81,7 +81,7 @@ time_bounds_min = 30
 # Create circuit configuration
 circuit_configuration, circuit_fitter = create_circuit_simulation_data(
     circuit_name,
-    parameters_to_fit,
+    # parameters_to_fit,
     circuit_manager,
     calibration_parameters,
     time_bounds_max,
@@ -115,15 +115,6 @@ trajectory_records["protein_au"] = convert_nm_to_au(
 # add zeros for 30 first minutes. how much is dt, then how many steps for 30 minutes?
 dt = circuit_configuration.tspan[1] - circuit_configuration.tspan[0]
 num_steps = int(time_bounds_min / dt) + 1
-
-# let's create dataframe with zeros for first 30 minutes and then append the trajectory records
-# results should look like
-#          time    sfGFP 3 nM  sfGFP 3 nM  sfGFP 3 nM
-# 0         0  0.000000e+00  0.000000e+00  0.000000e+00
-# 1    2  0.000000e+00  0.000000e+00  0.000000e+00
-# 2    4  0.000000e+00  0.000000e+00  0.000000e+00
-# 3    6  0.000000e+00  0.000000e+00  0.000000e+00
-# 4    8  0.000000e+00  0.000000e+00  0.000000e+00
 
 zeros_df = pd.DataFrame(
     {
@@ -159,9 +150,9 @@ trajectory_records = pd.concat([trajectory_records] * 3, axis=1)
 
 # save
 trajectory_records.to_csv(
-    f"{parameter_sim_folder}/constitutive_sfGFP_simulated_data_au_2.csv", index=False
+    f"{parameter_sim_folder}/constitutive_sfGFP_simulated_data_au_3.csv", index=False
 )
 # save parameters
 best_parameters.to_csv(
-    f"{parameter_sim_folder}/constitutive_sfGFP_simulated_parameters_2.csv", index=True
+    f"{parameter_sim_folder}/constitutive_sfGFP_simulated_parameters_3.csv", index=True
 )

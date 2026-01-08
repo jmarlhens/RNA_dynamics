@@ -156,7 +156,7 @@ def execute_individual_to_hierarchical_comparison(
 ):
     """Execute complete individual-to-hierarchical comparison pipeline"""
     circuit_manager = CircuitManager(
-        parameters_file="../../data/prior/model_parameters_priors_updated_tighter.csv",
+        parameters_file="../../data/prior/model_parameters_priors_092025_correction.csv",
         json_file="../../data/circuits/circuits.json",
     )
 
@@ -213,7 +213,7 @@ def execute_individual_to_hierarchical_comparison(
     )
 
     true_theta = pd.read_csv(
-        "../../data/data_parameter_estimation/constitutive_sfGFP_simulated_parameters_2.csv",
+        "../../data/data_parameter_estimation/constitutive_sfGFP_simulated_parameters_3.csv",
         index_col=0,
     ).T
 
@@ -278,13 +278,14 @@ def execute_individual_to_hierarchical_comparison(
 def main():
     """Execute individual circuits hierarchical comparison analysis"""
     subfolder = "/individual_circuits/100000_steps_sim_sfGFP"
-    subfolder = "/individual_circuits/100000_steps_sim_sfGFP_2"
+    subfolder = "/individual_circuits/100000_steps_sim_sfGFP_3"
+    subfolder = "/individual_circuits/sim_sfGFP_val"
 
     # Configuration
     individual_results_directory = "../../data/fit_data" + subfolder
     # individual_results_directory = "../../data/fit_data/individual_circuits" + subfolder
     prior_parameters_filepath = (
-        "../../data/prior/model_parameters_priors_updated_tighter.csv"
+        "../../data/prior/model_parameters_priors_092025_correction.csv"
     )
     output_visualization_directory = "../../figures/individual_circuits" + subfolder
 
