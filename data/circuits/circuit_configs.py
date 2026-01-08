@@ -8,11 +8,12 @@ DATA_FILES = {
     "trigger_antitrigger": "../../data/data_parameter_estimation/trigger_antitrigger.csv",
     "sense_star_6": "../../data/data_parameter_estimation/sense_star.csv",
     "cascade": "../../data/data_parameter_estimation/cascade.csv",
+    "to1_cascade": "../../data/data_parameter_estimation/To1_cascade.csv",
     "toehold_trigger": "../../data/data_parameter_estimation/toehold_trigger.csv",
     "cffl_type_1": "../../data/data_parameter_estimation/c1_ffl_and.csv",
     "star_antistar_1": "../../data/data_parameter_estimation/star_antistar.csv",
     "constitutive sfGFP": "../../data/data_parameter_estimation/positive_control_sfGFP.csv",
-    "constitutive sfGFP sim": "../../data/data_parameter_estimation/constitutive_sfGFP_simulated_data_au_2.csv",
+    "constitutive sfGFP sim": "../../data/data_parameter_estimation/constitutive_sfGFP_simulated_data_au_3.csv",
     "cffl_12": "../../data/data_parameter_estimation/C-1,2-FFL.csv",
     "c-1fffl_or": "../../data/data_parameter_estimation/SI C-1FFL OR-based.csv",
     "inhibited_cascade": "../../data/data_parameter_estimation/antiTrigger with Cascade.csv",
@@ -176,6 +177,73 @@ CIRCUIT_CONDITIONS = {
             "k_Toehold3_GFP_concentration": 3,
             "k_Sense6_Trigger3_concentration": 5,
             "k_Star6_concentration": 0,
+        },
+    },
+    "to1_cascade": {
+        "To1 3 nM + Se1Tr1 15 nM + St1 15 nM": {
+            "k_Toehold1_GFP_concentration": 3,
+            "k_Sense1_Trigger1_concentration": 15,
+            "k_Star1_concentration": 15,
+        },
+        "To1 3 nM + Se1Tr1 15 nM + St1 10 nM": {
+            "k_Toehold1_GFP_concentration": 3,
+            "k_Sense1_Trigger1_concentration": 15,
+            "k_Star1_concentration": 10,
+        },
+        "To1 3 nM + Se1Tr1 15 nM + St1 5 nM": {
+            "k_Toehold1_GFP_concentration": 3,
+            "k_Sense1_Trigger1_concentration": 15,
+            "k_Star1_concentration": 5,
+        },
+        "To1 3 nM + Se1Tr1 10 nM + St1 15 nM": {
+            "k_Toehold1_GFP_concentration": 3,
+            "k_Sense1_Trigger1_concentration": 10,
+            "k_Star1_concentration": 15,
+        },
+        "To1 3 nM + Se1Tr1 10 nM + St1 10 nM": {
+            "k_Toehold1_GFP_concentration": 3,
+            "k_Sense1_Trigger1_concentration": 10,
+            "k_Star1_concentration": 10,
+        },
+        "To1 3 nM + Se1Tr1 10 nM + St1 5 nM": {
+            "k_Toehold1_GFP_concentration": 3,
+            "k_Sense1_Trigger1_concentration": 10,
+            "k_Star1_concentration": 5,
+        },
+        "To1 3 nM + Se1Tr1 5 nM + St1 15 nM": {
+            "k_Toehold1_GFP_concentration": 3,
+            "k_Sense1_Trigger1_concentration": 5,
+            "k_Star1_concentration": 15,
+        },
+        "To1 3 nM + Se1Tr1 5 nM + St1 10 nM": {
+            "k_Toehold1_GFP_concentration": 3,
+            "k_Sense1_Trigger1_concentration": 5,
+            "k_Star1_concentration": 10,
+        },
+        "To1 3 nM + Se1Tr1 5 nM + St1 5 nM": {
+            "k_Toehold1_GFP_concentration": 3,
+            "k_Sense1_Trigger1_concentration": 5,
+            "k_Star1_concentration": 5,
+        },
+        "To1 3 nM + Se1Tr1 15 nM": {
+            "k_Toehold1_GFP_concentration": 3,
+            "k_Sense1_Trigger1_concentration": 15,
+            "k_Star1_concentration": 0,
+        },
+        "To1 3 nM + Se1Tr1 10 nM": {
+            "k_Toehold1_GFP_concentration": 3,
+            "k_Sense1_Trigger1_concentration": 10,
+            "k_Star1_concentration": 0,
+        },
+        "To1 3 nM + Se1Tr1 5 nM": {
+            "k_Toehold1_GFP_concentration": 3,
+            "k_Sense1_Trigger1_concentration": 5,
+            "k_Star1_concentration": 0,
+        },
+        "To1 3 nM": {
+            "k_Toehold1_GFP_concentration": 3,
+            "k_Sense1_Trigger1_concentration": 0,
+            "k_Star1_concentration": 0,
         },
     },
     "cffl_type_1": {

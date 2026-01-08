@@ -203,6 +203,55 @@
       },
       "bindings": []
     },
+    "to1_cascade": {
+      "plasmids": [
+        {
+          "name": "star1_plasmid",
+          "tx_control": null,
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "Star1"
+            ]
+          ]
+        },
+        {
+          "name": "trigger1_plasmid",
+          "tx_control": [
+            "Sense1",
+            "Star1"
+          ],
+          "tl_control": null,
+          "cds": [
+            [
+              false,
+              "Trigger1"
+            ]
+          ]
+        },
+        {
+          "name": "gfp_plasmid",
+          "tx_control": null,
+          "tl_control": [
+            "Toehold1",
+            "Trigger1"
+          ],
+          "cds": [
+            [
+              true,
+              "GFP"
+            ]
+          ]
+        }
+      ],
+      "default_parameters": {
+        "k_Star1_concentration": 1,
+        "k_Sense1_Trigger1_concentration": 1,
+        "k_Toehold1_GFP_concentration": 1
+      },
+      "bindings": []
+    },
     "cffl_12": {
       "plasmids": [
         {
