@@ -134,7 +134,7 @@ class ParameterSamplingManager:
             parameters=base_params,
             use_pulses=use_pulses,
             pulse_config=_pulse_config,
-            pulse_plasmids=pulse_plasmids,  # Use plasmid names instead of indices
+            pulse_plasmids=pulse_plasmids,
             kinetics_type=kinetics_type,
         )
 

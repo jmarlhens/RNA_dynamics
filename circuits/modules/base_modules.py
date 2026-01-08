@@ -41,7 +41,7 @@ class Transcription(ReactionComplex):
 
         super().__init__(substrate=None, product=rna, model=model)
 
-        # trancription_parameters = ["k_tx", "K_tx", "k_rna_deg"]
+        # trancription_parameters = ["k_tx", "k_rna_deg"]
         trancription_parameters = ["k_tx", "k_rna_deg"]
         existing_parameters = set(model.parameters.keys())
         for param_name in trancription_parameters:
@@ -75,7 +75,11 @@ class Transcription(ReactionComplex):
 
 class PulsedTranscription(ReactionComplex):
     def __init__(
-        self, sequence_name: str = None, model: Model = None, pulse_config: dict = None
+        self,
+        sequence_name: str = None,
+        model: Model = None,
+        pulse_config: dict = None,
+        kinetic_parameters: dict = None,
     ):
         """
         Enhanced Transcription class that supports both constant and pulsing plasmid concentrations.
@@ -89,14 +93,17 @@ class PulsedTranscription(ReactionComplex):
                 - pulse_end (float): Time when pulse ends
                 - pulse_concentration (float): Concentration during pulse
                 - base_concentration (float): Concentration outside pulse
+            kinetic_parameters (dict): Kinetic parameters for transcription
         """
         rna = RNA.get_instance(sequence_name=sequence_name, model=model)
         super().__init__(substrate=None, product=rna, model=model)
 
-        # Set up basic parameters
-        self.k_tx = self.parameters["k_tx"]
-        # self.K_tx = self.parameters["K_tx"]
-        self.k_deg = self.parameters["k_rna_deg"]
+        # trancription_parameters = ["k_tx", "k_rna_deg"]
+        trancription_parameters = ["k_tx", "k_rna_deg"]
+        existing_parameters = set(model.parameters.keys())
+        for param_name in trancription_parameters:
+            if param_name not in existing_parameters:
+                Parameter(param_name, kinetic_parameters[param_name])
 
         # Set up time tracking if using pulses
         if pulse_config and pulse_config.get("use_pulse", False):
@@ -143,7 +150,10 @@ class PulsedTranscription(ReactionComplex):
         # Create transcription rate expression
         Expression(
             "k_tx_plasmid_" + sequence_name,
-            (model.expressions["k_" + sequence_name + "_concentration"] * self.k_tx),
+            (
+                model.expressions["k_" + sequence_name + "_concentration"]
+                * model.parameters["k_tx"]
+            ),
             # / (self.K_tx + model.expressions["k_" + sequence_name + "_concentration"]),
         )
 
@@ -472,7 +482,10 @@ class TranscriptionFactory:
                         "pulse_config is required for pulsed transcription"
                     )
                 return PulsedTranscription(
-                    sequence_name=sequence_name, model=model, pulse_config=pulse_config
+                    sequence_name=sequence_name,
+                    model=model,
+                    pulse_config=pulse_config,
+                    kinetic_parameters=kinetic_parameters,
                 )
         elif kinetics_type == KineticsType.MASS_ACTION:
             if transcription_type == TranscriptionType.CONSTANT:

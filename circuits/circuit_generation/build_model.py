@@ -39,9 +39,9 @@ def setup_model(
     """
     model = Model()
 
-    # Add the plasmid concentrations
-    for param_name, param_value in plasmid_concentration_parameters.items():
-        Parameter(param_name, param_value)
+    # # Add the plasmid concentrations
+    # for param_name, param_value in plasmid_concentration_parameters.items():
+    #     Parameter(param_name, param_value)
 
     # Filter out parameters that will be replaced by expressions for pulsed plasmids
     filtered_parameters = parameters.copy()
@@ -91,17 +91,15 @@ def setup_model(
                 rna_name = "_".join(rna_name_parts)
                 parameters_to_remove.append(f"k_{rna_name}_concentration")
 
-        # Remove identified parameters
+        # Also remove from plasmid_concentration_parameters
         for param_name in parameters_to_remove:
-            if param_name in filtered_parameters:
-                print(
-                    f"Removing parameter {param_name} as it will be replaced by a pulsed expression"
-                )
-                filtered_parameters.pop(param_name)
+            if param_name in plasmid_concentration_parameters:
+                print(f"Removing plasmid concentration parameter {param_name}")
+                plasmid_concentration_parameters.pop(param_name)
 
-    # Add filtered parameters to the model
-    # for param_name, param_value in filtered_parameters.items():
-    #     Parameter(param_name, param_value)
+    # Add the plasmid concentrations (after filtering for pulses)
+    for param_name, param_value in plasmid_concentration_parameters.items():
+        Parameter(param_name, param_value)
 
     # Process each plasmid
     for idx, plasmid in enumerate(plasmids):
@@ -208,6 +206,7 @@ def process_plasmid(
                 transcription_type=TranscriptionType.PULSED,
                 sequence_name=rna_name,
                 model=model,
+                kinetic_parameters=kinetic_parameters,
                 pulse_config=pulse_config,
                 kinetics_type=kinetics_type,
             )
@@ -218,6 +217,7 @@ def process_plasmid(
                 sequence_name=rna_name,
                 model=model,
                 kinetic_parameters=kinetic_parameters,
+                pulse_config=None,
                 kinetics_type=kinetics_type,
             )
         rna = transcription.product
