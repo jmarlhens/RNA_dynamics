@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 import pandas as pd
 import scipy.signal
@@ -105,6 +106,9 @@ def fit_multiple_circuits(
     # initial_parameters = load_best_parameters_from_csv(previous_csv, parameters_to_fit)
 
     # Setup and run parallel tempering
+    print(
+        f"Running MCMC with {n_chains} chains and {n_walkers} walkers per chain for {n_samples} samples..."
+    )
     pt = adapter.setup_parallel_tempering(n_walkers=n_walkers, n_chains=n_chains)
     parameters, priors_out, likelihoods, step_accepts, swap_accepts = pt.run(
         initial_parameters=initial_parameters,
@@ -133,14 +137,14 @@ def fit_multiple_circuits(
 
     plot_traces(
         data=parameters,
-        file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{circuit_names_str}_{timestamp}_full.pdf",
+        file_path=f"../../data/fit_data/individual_circuits/obsolete/trajectories/traces_walker_{circuit_names_str}_{timestamp}_full.pdf",
         param_names=parameters_to_fit,
     )
 
     for size in [10000, 8000, 6000, 4000, 2000]:
         plot_traces(
             data=parameters[len(parameters) - size :],
-            file_path=f"../../data/fit_data/individual_circuits/trajectories/traces_walker_{circuit_names_str}_{timestamp}_{size}.pdf",
+            file_path=f"../../data/fit_data/individual_circuits/obsolete/trajectories/traces_walker_{circuit_names_str}_{timestamp}_{size}.pdf",
             param_names=parameters_to_fit,
         )
 
@@ -157,55 +161,59 @@ def fit_multiple_circuits(
         data,
         axis=2,
     )
+
+    os.makedirs(
+        "../../data/fit_data/individual_circuits/analysis_trajectories", exist_ok=True
+    )
     plot_traces(
         data=data,
         file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/step_accepts_{circuit_names_str}_{timestamp}.pdf",
         param_names=[f"Chain {iX}" for iX in range(step_accepts.shape[-1])],
     )
 
-    data = convolve(
-        swap_accepts, np.expand_dims(np.ones(N) / N, axis=(1, 2)), mode="same"
-    )
-    data = data[offset : len(step_accepts) - offset]
-    data = np.expand_dims(
-        data,
-        axis=2,
-    )
-    plot_traces(
-        data=data,
-        file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/swap_accepts_{circuit_names_str}_{timestamp}.pdf",
-        param_names=[
-            f"Chain {iX} and Chain {iX + 1}" for iX in range(swap_accepts.shape[-1])
-        ],
-    )
-
-    if hasattr(pt.proposal_function, "radii"):
-        radii = np.array(pt.proposal_function.radii)
-        data = radii
-        data = np.expand_dims(
-            data,
-            axis=2,
-        )
-        plot_traces(
-            data=data,
-            file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/radii_{circuit_names_str}_{timestamp}.pdf",
-            param_names=[f"Chain {iX}" for iX in range(radii.shape[-1])],
-        )
-
-    for iChain in range(n_chains):
-        radii = np.array(pt.proposal_function.radii)
-        data = np.diagonal(
-            np.array(pt.proposal_function.covariances), axis1=3, axis2=4
-        )[:, :, iChain]
-        data = np.expand_dims(
-            data,
-            axis=2,
-        )
-        plot_traces(
-            data=data,
-            file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/covariances_{circuit_names_str}_Chain_{iChain}_{timestamp}.pdf",
-            param_names=[f"Chain {iX}" for iX in range(radii.shape[-1])],
-        )
+    # data = convolve(
+    #     swap_accepts, np.expand_dims(np.ones(N) / N, axis=(1, 2)), mode="same"
+    # )
+    # data = data[offset : len(step_accepts) - offset]
+    # data = np.expand_dims(
+    #     data,
+    #     axis=2,
+    # )
+    # plot_traces(
+    #     data=data,
+    #     file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/swap_accepts_{circuit_names_str}_{timestamp}.pdf",
+    #     param_names=[
+    #         f"Chain {iX} and Chain {iX + 1}" for iX in range(swap_accepts.shape[-1])
+    #     ],
+    # )
+    #
+    # if hasattr(pt.proposal_function, "radii"):
+    #     radii = np.array(pt.proposal_function.radii)
+    #     data = radii
+    #     data = np.expand_dims(
+    #         data,
+    #         axis=2,
+    #     )
+    #     plot_traces(
+    #         data=data,
+    #         file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/radii_{circuit_names_str}_{timestamp}.pdf",
+    #         param_names=[f"Chain {iX}" for iX in range(radii.shape[-1])],
+    #     )
+    #
+    # for iChain in range(n_chains):
+    #     radii = np.array(pt.proposal_function.radii)
+    #     data = np.diagonal(
+    #         np.array(pt.proposal_function.covariances), axis1=3, axis2=4
+    #     )[:, :, iChain]
+    #     data = np.expand_dims(
+    #         data,
+    #         axis=2,
+    #     )
+    #     plot_traces(
+    #         data=data,
+    #         file_path=f"../../data/fit_data/individual_circuits/analysis_trajectories/covariances_{circuit_names_str}_Chain_{iChain}_{timestamp}.pdf",
+    #         param_names=[f"Chain {iX}" for iX in range(radii.shape[-1])],
+    #     )
 
     print("Plotted analytical trajectories", flush=True)
     # # Plot and save best fit results for ALL circuits
@@ -231,7 +239,7 @@ def main_shared_fit():
 
     # Initialize CircuitManager
     circuit_manager = CircuitManager(
-        parameters_file="../../data/prior/model_parameters_priors_updated_tighter.csv",
+        parameters_file="../../data/prior/model_parameters_priors_092025_correction.csv",
         json_file="../../data/circuits/circuits.json",
     )
 
@@ -273,11 +281,12 @@ def main_shared_fit():
             return
 
     # Load priors
-    priors = pd.read_csv("../../data/prior/model_parameters_priors_updated_tighter.csv")
+    priors = pd.read_csv(
+        "../../data/prior/model_parameters_priors_092025_correction.csv"
+    )
     priors = priors[priors["Parameter"] != "k_prot_deg"]
 
     # Fit both circuits together with shared parameters
-    print("\n=== FITTING CIRCUITS TOGETHER WITH SHARED PARAMETERS ===")
     print(f"Circuits: {circuits_to_fit}")
     print(f"Parameters to fit: {priors.Parameter.tolist()}")
 
@@ -290,7 +299,7 @@ def main_shared_fit():
         priors=priors,
         min_time=min_time,
         max_time=max_time,
-        n_samples=100000,
+        n_samples=60000,
         n_walkers=4,
         n_chains=12,
     )
